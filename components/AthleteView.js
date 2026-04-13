@@ -150,7 +150,8 @@ function MyProgram({ programs, exercises, colors, cats, isMobile, athlete, addLo
     return "—";
   };
   const getVideoUrl = (block) => {
-    if (block.exerciseId) { const f = exercises.find(e => e.id === block.exerciseId); if (f) return f.video_url || ""; }
+    if (block.exerciseId) { const f = exercises.find(e => e.id === block.exerciseId); if (f && f.video_url) return f.video_url; }
+    if (block.exerciseName) { const f = exercises.find(e => e.name === block.exerciseName); if (f && f.video_url) return f.video_url; }
     return "";
   };
   const updateResult = (blockId, field, value) => {
@@ -410,7 +411,9 @@ function AthleteLog({ addLog, athlete, exercises, cats, colors, isMobile, progra
               const cc = colors[block.category];
               const result = blockResults[block.id] || {};
               const resolvedEx = block.exerciseId ? exercises.find(e => e.id === block.exerciseId) : null;
-              const videoUrl = resolvedEx?.video_url || "";
+              const resolvedByName = !resolvedEx && block.exerciseName ? exercises.find(e => e.name === block.exerciseName) : null;
+              const matchedEx = resolvedEx || resolvedByName;
+              const videoUrl = matchedEx?.video_url || "";
               const isOpen = !isMobile || expandedEx === block.id;
               const hasInput = result.sets || result.reps || result.load || result.rpe || result.notes;
 

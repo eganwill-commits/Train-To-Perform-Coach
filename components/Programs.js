@@ -390,7 +390,7 @@ function ProgramDetail({ program, exercises, cats, colors, addBlock, updateBlock
                 const isFirst = bi === 0;
                 const isLast = bi === day.blocks.length - 1;
                 const resolvedEx = resolvedId !== "__custom__" ? exercises.find(e => e.id === resolvedId) : null;
-                const videoUrl = resolvedEx?.video_url || "";
+                const videoUrl = resolvedEx?.video_url || (block.exerciseName ? exercises.find(e => e.name === block.exerciseName)?.video_url : "") || "";
 
                 return (
                   <div key={block.id} style={{ background: cc?.light || "#F9FAFB", border: `1px solid ${cc?.border || "#E5E7EB"}`, borderRadius: 10, marginBottom: 8, borderLeft: `4px solid ${cc?.bg || "#999"}`, overflow: "hidden" }}>
