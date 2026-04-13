@@ -100,7 +100,7 @@ export default function AthleteView({ athlete, onLogout }) {
           <button onClick={onLogout} style={{ background: "none", border: "none", color: "#71717A", fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>Sign Out</button>
         </div>
       </nav>
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0 }}>
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0, maxWidth: "100%" }}>
         {isMobile && (
           <header className="t2p-mobile-header" style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", background: "#fff", borderBottom: "1px solid #E4E4E7", flexShrink: 0 }}>
             <button onClick={() => setNavOpen(true)} style={{ background: "none", border: "none", cursor: "pointer", padding: 4, display: "flex", flexDirection: "column", gap: 5 }}>
@@ -197,7 +197,7 @@ function MyProgram({ programs, exercises, colors, cats, isMobile, athlete }) {
   return (
     <div>
       <button onClick={() => setSelectedProg(null)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 14, color: "#71717A", marginBottom: 12, fontFamily: "inherit" }}>← Back</button>
-      <h2 style={{ margin: "0 0 8px", fontSize: isMobile ? 20 : 24, fontFamily: "'Space Mono', monospace" }}>{prog.name}</h2>
+      <h2 style={{ margin: "0 0 8px", fontSize: isMobile ? 18 : 24, fontFamily: "'Space Mono', monospace", wordBreak: "break-word" }}>{prog.name}</h2>
       {prog.description && <p style={{ color: "#71717A", fontSize: 14, margin: "0 0 16px" }}>{prog.description}</p>}
       <div style={{ display: "flex", gap: 6, marginBottom: 16, flexWrap: "wrap" }}>
         {weeks.map((w, i) => {
@@ -282,6 +282,7 @@ function AthleteLog({ addLog, athlete, exercises, cats, colors, isMobile, progra
   const [blockResults, setBlockResults] = useState({});
   const [submitting, setSubmitting] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [expandedEx, setExpandedEx] = useState(null);
 
   // Build workout options from programs
   const workoutOptions = [];
@@ -334,11 +335,10 @@ function AthleteLog({ addLog, athlete, exercises, cats, colors, isMobile, progra
     setTimeout(() => setSaved(false), 3000);
   };
 
-  // Check if already logged
   const alreadyLogged = selected && (logs || []).some(l => l.athlete_id === athlete.id && l.date === date && l.day_label === selected.day.label && l.week_label === selected.weekLabel);
 
   return (
-    <div>
+    <div style={{ maxWidth: "100%" }}>
       <h2 style={{ margin: "0 0 20px", fontSize: isMobile ? 22 : 28, fontFamily: "'Space Mono', monospace" }}>Log Workout</h2>
       {saved && <div style={{ background: "#F0FDF4", color: "#16A34A", padding: "10px 14px", borderRadius: 8, marginBottom: 16, fontWeight: 600, fontSize: 14 }}>Workout logged!</div>}
 
@@ -347,7 +347,7 @@ function AthleteLog({ addLog, athlete, exercises, cats, colors, isMobile, progra
           <Input label="Date" type="date" value={date} onChange={e => setDate(e.target.value)} />
           <div>
             <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>Select Workout</div>
-            <select value={selectedWorkout} onChange={e => { setSelectedWorkout(e.target.value); setBlockResults({}); }} style={{ width: "100%", padding: "9px 12px", border: "1px solid #E4E4E7", borderRadius: 8, fontSize: 14, fontFamily: "inherit", boxSizing: "border-box" }}>
+            <select value={selectedWorkout} onChange={e => { setSelectedWorkout(e.target.value); setBlockResults({}); setExpandedEx(null); }} style={{ width: "100%", padding: "9px 12px", border: "1px solid #E4E4E7", borderRadius: 8, fontSize: 14, fontFamily: "inherit", boxSizing: "border-box" }}>
               <option value="">— Choose a workout —</option>
               {workoutOptions.map(o => <option key={o.value} value={o.value}>{o.label} ({o.day.blocks.length} exercises)</option>)}
             </select>
@@ -359,37 +359,56 @@ function AthleteLog({ addLog, athlete, exercises, cats, colors, isMobile, progra
         <div>
           {alreadyLogged && (
             <div style={{ background: "#FFF7ED", border: "1px solid #F97316", padding: "10px 14px", borderRadius: 8, marginBottom: 12, fontSize: 13, color: "#F97316", fontWeight: 600 }}>
-              This workout is already logged for {date}. Submitting again will add duplicate entries.
+              Already logged for {date}.
             </div>
           )}
 
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {selected.day.blocks.map((block, bi) => {
               const cc = colors[block.category];
               const result = blockResults[block.id] || {};
               const resolvedEx = block.exerciseId ? exercises.find(e => e.id === block.exerciseId) : null;
               const videoUrl = resolvedEx?.video_url || "";
+              const isOpen = !isMobile || expandedEx === block.id;
+              const hasInput = result.sets || result.reps || result.load || result.rpe || result.notes;
 
               return (
-                <Card key={block.id} style={{ padding: 12, borderLeft: `4px solid ${cc?.bg || "#999"}` }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <Card key={block.id} style={{ padding: 0, borderLeft: `4px solid ${cc?.bg || "#999"}`, overflow: "hidden" }}>
+                  {/* Header - always visible */}
+                  <div onClick={isMobile ? () => setExpandedEx(expandedEx === block.id ? null : block.id) : undefined} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 12px", cursor: isMobile ? "pointer" : "default" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, flex: 1, minWidth: 0 }}>
                       <Badge color={cc?.bg || "#999"}>{block.category}</Badge>
-                      <span style={{ fontWeight: 700, fontSize: 14 }}>{getDisplayName(block)}</span>
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <div style={{ fontWeight: 700, fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{getDisplayName(block)}</div>
+                        <div style={{ fontSize: 11, color: "#71717A" }}>
+                          {[block.sets && block.reps ? `${block.sets}×${block.reps}` : null, block.load ? `@ ${block.load}` : null].filter(Boolean).join(" ") || ""}
+                        </div>
+                      </div>
                     </div>
-                    {videoUrl && <a href={videoUrl} target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, color: "#fff", background: "#2563EB", textDecoration: "none", fontWeight: 700, padding: "3px 10px", borderRadius: 999 }}>▶ Video</a>}
+                    <div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0 }}>
+                      {hasInput && <span style={{ width: 8, height: 8, borderRadius: 4, background: "#16A34A" }} />}
+                      {videoUrl && <a href={videoUrl} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} style={{ display: "inline-flex", alignItems: "center", fontSize: 11, color: "#fff", background: "#2563EB", textDecoration: "none", fontWeight: 700, padding: "2px 8px", borderRadius: 999 }}>▶</a>}
+                      {isMobile && <span style={{ fontSize: 12, color: "#A1A1AA", transform: isOpen ? "rotate(180deg)" : "none", transition: "transform .2s" }}>▼</span>}
+                    </div>
                   </div>
-                  <div style={{ fontSize: 12, color: "#71717A", marginBottom: 8 }}>
-                    Programmed: {block.sets}×{block.reps}{block.load ? ` @ ${block.load}` : ""}{block.tempo ? ` tempo ${block.tempo}` : ""}{block.rest ? ` / ${block.rest}s rest` : ""}
-                  </div>
-                  {block.notes && <div style={{ fontSize: 12, color: "#52525B", marginBottom: 8, fontStyle: "italic" }}>{block.notes}</div>}
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 6 }}>
-                    <label style={{ fontSize: 10, color: "#71717A" }}>Sets<input type="number" value={result.sets ?? ""} onChange={e => updateResult(block.id, "sets", e.target.value)} placeholder={block.sets || ""} style={{ width: "100%", padding: "5px 6px", border: "1px solid #E4E4E7", borderRadius: 6, fontSize: 14, fontFamily: "inherit", marginTop: 1, boxSizing: "border-box" }} /></label>
-                    <label style={{ fontSize: 10, color: "#71717A" }}>Reps<input value={result.reps ?? ""} onChange={e => updateResult(block.id, "reps", e.target.value)} placeholder={block.reps || ""} style={{ width: "100%", padding: "5px 6px", border: "1px solid #E4E4E7", borderRadius: 6, fontSize: 14, fontFamily: "inherit", marginTop: 1, boxSizing: "border-box" }} /></label>
-                    <label style={{ fontSize: 10, color: "#71717A" }}>Load<input value={result.load ?? ""} onChange={e => updateResult(block.id, "load", e.target.value)} placeholder={block.load || "lbs"} style={{ width: "100%", padding: "5px 6px", border: "1px solid #E4E4E7", borderRadius: 6, fontSize: 14, fontFamily: "inherit", marginTop: 1, boxSizing: "border-box" }} /></label>
-                    <label style={{ fontSize: 10, color: "#71717A" }}>RPE<input value={result.rpe ?? ""} onChange={e => updateResult(block.id, "rpe", e.target.value)} placeholder="1-10" style={{ width: "100%", padding: "5px 6px", border: "1px solid #E4E4E7", borderRadius: 6, fontSize: 14, fontFamily: "inherit", marginTop: 1, boxSizing: "border-box" }} /></label>
-                  </div>
-                  <label style={{ fontSize: 10, color: "#71717A", display: "block", marginTop: 6 }}>Notes<input value={result.notes ?? ""} onChange={e => updateResult(block.id, "notes", e.target.value)} placeholder="How did it feel?" style={{ width: "100%", padding: "5px 6px", border: "1px solid #E4E4E7", borderRadius: 6, fontSize: 14, fontFamily: "inherit", marginTop: 1, boxSizing: "border-box" }} /></label>
+
+                  {/* Expanded content */}
+                  {isOpen && (
+                    <div style={{ padding: "0 12px 12px", borderTop: "1px solid #E4E4E7" }}>
+                      {block.notes && <div style={{ fontSize: 12, color: "#52525B", padding: "8px 0 4px", fontStyle: "italic" }}>{block.notes}</div>}
+                      {videoUrl && (
+                        <a href={videoUrl} target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, color: "#fff", background: "#2563EB", textDecoration: "none", fontWeight: 700, padding: "4px 12px", borderRadius: 999, marginTop: 6, marginBottom: 8 }}>▶ Watch Movement Video</a>
+                      )}
+                      <div style={{ fontSize: 11, fontWeight: 700, color: "#71717A", textTransform: "uppercase", letterSpacing: 0.5, marginTop: 8, marginBottom: 6 }}>Your Results</div>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+                        <label style={{ fontSize: 10, color: "#71717A" }}>Sets<input type="number" value={result.sets ?? ""} onChange={e => updateResult(block.id, "sets", e.target.value)} placeholder={block.sets || ""} style={{ width: "100%", padding: "8px 8px", border: "1px solid #E4E4E7", borderRadius: 6, fontSize: 16, fontFamily: "inherit", marginTop: 2, boxSizing: "border-box" }} /></label>
+                        <label style={{ fontSize: 10, color: "#71717A" }}>Reps<input value={result.reps ?? ""} onChange={e => updateResult(block.id, "reps", e.target.value)} placeholder={block.reps || ""} style={{ width: "100%", padding: "8px 8px", border: "1px solid #E4E4E7", borderRadius: 6, fontSize: 16, fontFamily: "inherit", marginTop: 2, boxSizing: "border-box" }} /></label>
+                        <label style={{ fontSize: 10, color: "#71717A" }}>Load<input value={result.load ?? ""} onChange={e => updateResult(block.id, "load", e.target.value)} placeholder={block.load || "lbs"} style={{ width: "100%", padding: "8px 8px", border: "1px solid #E4E4E7", borderRadius: 6, fontSize: 16, fontFamily: "inherit", marginTop: 2, boxSizing: "border-box" }} /></label>
+                        <label style={{ fontSize: 10, color: "#71717A" }}>RPE<input value={result.rpe ?? ""} onChange={e => updateResult(block.id, "rpe", e.target.value)} placeholder="1-10" style={{ width: "100%", padding: "8px 8px", border: "1px solid #E4E4E7", borderRadius: 6, fontSize: 16, fontFamily: "inherit", marginTop: 2, boxSizing: "border-box" }} /></label>
+                      </div>
+                      <label style={{ fontSize: 10, color: "#71717A", display: "block", marginTop: 6 }}>Notes<input value={result.notes ?? ""} onChange={e => updateResult(block.id, "notes", e.target.value)} placeholder="How did it feel?" style={{ width: "100%", padding: "8px 8px", border: "1px solid #E4E4E7", borderRadius: 6, fontSize: 16, fontFamily: "inherit", marginTop: 2, boxSizing: "border-box" }} /></label>
+                    </div>
+                  )}
                 </Card>
               );
             })}

@@ -285,7 +285,7 @@ export default function CoachApp({ onLogout }) {
           {onLogout && <button onClick={onLogout} style={{ background: "none", border: "none", color: "#71717A", fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}>Sign Out</button>}
         </div>
       </nav>
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0 }}>
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0, maxWidth: "100%" }}>
         {isMobile && (
           <header className="t2p-mobile-header" style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", background: "#fff", borderBottom: "1px solid #E4E4E7", flexShrink: 0 }}>
             <button onClick={() => setNavOpen(true)} style={{ background: "none", border: "none", cursor: "pointer", padding: 4, display: "flex", flexDirection: "column", gap: 5 }}>

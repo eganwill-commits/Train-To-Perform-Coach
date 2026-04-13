@@ -11,14 +11,16 @@ export default function RootLayout({ children }) {
         <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;600;700&family=Space+Mono:wght@700&display=swap" rel="stylesheet" />
         <style>{`
           * { margin: 0; padding: 0; box-sizing: border-box; }
-          html { height: -webkit-fill-available; overflow: hidden; }
-          body { overflow: hidden; -webkit-font-smoothing: antialiased; min-height: 100vh; min-height: -webkit-fill-available; min-height: 100dvh; }
+          html { height: -webkit-fill-available; overflow: hidden; max-width: 100vw; }
+          body { overflow: hidden; -webkit-font-smoothing: antialiased; min-height: 100vh; min-height: -webkit-fill-available; min-height: 100dvh; max-width: 100vw; overflow-x: hidden; }
           input, select, button, textarea { font-size: 16px !important; }
           @media (min-width: 769px) { input, select, button, textarea { font-size: 14px !important; } }
           .t2p-root {
             height: 100vh;
             height: -webkit-fill-available;
             height: 100dvh;
+            max-width: 100vw;
+            overflow-x: hidden;
           }
           .t2p-mobile-header {
             padding-top: 12px;
@@ -30,7 +32,9 @@ export default function RootLayout({ children }) {
           }
           .t2p-main {
             overflow: auto;
+            overflow-x: hidden;
             -webkit-overflow-scrolling: touch;
+            max-width: 100%;
           }
         `}</style>
       </head>
