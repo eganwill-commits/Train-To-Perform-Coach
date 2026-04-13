@@ -297,7 +297,7 @@ export default function CoachApp({ onLogout }) {
             <span style={{ fontSize: 13, color: "#A1A1AA", marginLeft: "auto", textTransform: "capitalize" }}>{page}</span>
           </header>
         )}
-        <main className="t2p-main" style={{ flex: 1, padding: isMobile ? 16 : 32 }}>
+        <main className="t2p-main" style={{ flex: 1, padding: isMobile ? "12px 10px" : 32, maxWidth: "100%", overflowX: "hidden" }}>
           {page === "dashboard" && <Dashboard {...pp} />}
           {page === "seasons" && <Seasons {...pp} />}
           {page === "athletes" && <Athletes {...pp} />}
