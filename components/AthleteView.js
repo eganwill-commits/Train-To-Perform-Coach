@@ -255,7 +255,7 @@ function MyProgram({ programs, exercises, colors, cats, isMobile, athlete, addLo
                   <div onClick={() => setExpandedBlock(isOpen ? null : block.id)} style={{ display: "flex", alignItems: "center", padding: "8px 8px", cursor: "pointer", gap: 6 }}>
                     <Badge color={cc?.bg || "#999"}>{block.category}</Badge>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontWeight: 600, fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{getDisplayName(block)}</div>
+                      <div style={{ fontWeight: 600, fontSize: 13, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", lineHeight: 1.3 }}>{getDisplayName(block)}</div>
                       {!isOpen && <div style={{ fontSize: 11, color: "#71717A" }}>{[block.sets && block.reps ? `${block.sets}×${block.reps}` : null, block.load ? `@ ${block.load}` : null].filter(Boolean).join(" ") || ""}</div>}
                     </div>
                     {hasInput && <span style={{ width: 7, height: 7, borderRadius: 4, background: "#16A34A", flexShrink: 0 }} />}
@@ -424,7 +424,7 @@ function AthleteLog({ addLog, athlete, exercises, cats, colors, isMobile, progra
                     <div style={{ display: "flex", alignItems: "center", gap: 8, flex: 1, minWidth: 0 }}>
                       <Badge color={cc?.bg || "#999"}>{block.category}</Badge>
                       <div style={{ minWidth: 0, flex: 1 }}>
-                        <div style={{ fontWeight: 700, fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{getDisplayName(block)}</div>
+                        <div style={{ fontWeight: 700, fontSize: 14, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", lineHeight: 1.3 }}>{getDisplayName(block)}</div>
                         <div style={{ fontSize: 11, color: "#71717A" }}>
                           {[block.sets && block.reps ? `${block.sets}×${block.reps}` : null, block.load ? `@ ${block.load}` : null].filter(Boolean).join(" ") || ""}
                         </div>

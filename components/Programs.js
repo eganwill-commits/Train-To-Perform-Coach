@@ -402,7 +402,7 @@ function ProgramDetail({ program, exercises, cats, colors, addBlock, updateBlock
                             <div style={{ display: "flex", alignItems: "center", gap: 8, flex: 1, minWidth: 0 }}>
                               <Badge color={cc?.bg || "#999"}>{block.category}</Badge>
                               <div style={{ minWidth: 0, flex: 1 }}>
-                                <div style={{ fontWeight: 600, fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{displayName}</div>
+                                <div style={{ fontWeight: 600, fontSize: 13, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", lineHeight: 1.3 }}>{displayName}</div>
                                 <div style={{ fontSize: 11, color: "#71717A" }}>{[block.sets && block.reps ? `${block.sets}×${block.reps}` : null, block.load ? `@ ${block.load}` : null].filter(Boolean).join(" ") || "—"}</div>
                               </div>
                             </div>
