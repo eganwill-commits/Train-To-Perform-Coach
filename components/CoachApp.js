@@ -306,7 +306,7 @@ export default function CoachApp({ onLogout }) {
           {page === "library" && <Library {...pp} />}
           {page === "log" && <LogPage {...pp} />}
           {page === "settings" && <Settings {...pp} />}
-          {page === "ai-chat" && <AIChat isMobile={isMobile} />}
+          {page === "ai-chat" && <AIChat isMobile={isMobile} isCoach athletes={pp.athletes} programs={pp.programs} logs={pp.logs} exercises={pp.exercises} baselines={pp.baselines} videoSubs={pp.videoSubs} />}
         </main>
       </div>
     </div>

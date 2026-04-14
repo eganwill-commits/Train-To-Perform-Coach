@@ -45,11 +45,16 @@ You are built into the T2P Coach Platform and help athletes and coaches with:
 
 export async function POST(request) {
   try {
-    const { messages } = await request.json();
+    const { messages, coachContext } = await request.json();
     
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey) {
       return NextResponse.json({ error: "ANTHROPIC_API_KEY not set. Add it in Vercel Settings → Environment Variables, then redeploy." }, { status: 500 });
+    }
+
+    let systemPrompt = SYSTEM_PROMPT;
+    if (coachContext) {
+      systemPrompt += `\n\nYou are now in COACH MODE. You have access to real athlete data from the T2P platform. Use this data to provide specific, actionable coaching insights. Reference athletes by name, cite their actual numbers, and make concrete recommendations based on their progress.\n${coachContext}`;
     }
 
     const response = await fetch("https://api.anthropic.com/v1/messages", {
@@ -61,8 +66,8 @@ export async function POST(request) {
       },
       body: JSON.stringify({
         model: "claude-sonnet-4-20250514",
-        max_tokens: 1024,
-        system: SYSTEM_PROMPT,
+        max_tokens: 2048,
+        system: systemPrompt,
         messages: messages.slice(-10),
       }),
     });
