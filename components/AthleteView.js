@@ -5,6 +5,7 @@ import { PILLAR_COLORS, ATHLETE_NAV } from "../lib/constants";
 import { Badge, Btn, Card, Input, Select, Modal, EmptyState, SearchableSelect } from "./ui";
 import { printDay } from "./printHelper";
 import T2PLogo from "./T2PLogo";
+import AIChat from "./AIChat";
 
 function useIsMobile(bp = 768) {
   const [m, setM] = useState(false);
@@ -117,6 +118,7 @@ export default function AthleteView({ athlete, onLogout }) {
           {page === "log" && <AthleteLog addLog={addLog} athlete={athlete} exercises={exercises} cats={cats} colors={colors} isMobile={isMobile} programs={programs} logs={logs} />}
           {page === "my-logs" && <MyLogs logs={logs} colors={colors} cats={cats} isMobile={isMobile} deleteLog={deleteLog} deleteDayLogs={deleteDayLogs} />}
           {page === "my-videos" && <MyVideos videoSubs={videoSubs} addVideoSub={addVideoSub} athlete={athlete} exercises={exercises} cats={cats} colors={colors} isMobile={isMobile} />}
+          {page === "ai-chat" && <AIChat isMobile={isMobile} athleteName={athlete.name} />}
         </main>
       </div>
     </div>

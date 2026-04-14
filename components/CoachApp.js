@@ -9,6 +9,7 @@ import Library from "./Library";
 import LogPage from "./LogPage";
 import Settings from "./Settings";
 import Seasons from "./Seasons";
+import AIChat from "./AIChat";
 import T2PLogo from "./T2PLogo";
 
 function useIsMobile(bp = 768) {
@@ -305,6 +306,7 @@ export default function CoachApp({ onLogout }) {
           {page === "library" && <Library {...pp} />}
           {page === "log" && <LogPage {...pp} />}
           {page === "settings" && <Settings {...pp} />}
+          {page === "ai-chat" && <AIChat isMobile={isMobile} />}
         </main>
       </div>
     </div>
