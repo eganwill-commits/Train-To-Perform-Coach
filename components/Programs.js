@@ -271,6 +271,13 @@ function ProgramDetail({ program, exercises, cats, colors, addBlock, updateBlock
     await updateProgram(program.id, { weeks });
   };
 
+  const setDayStatus = async (weekIndex, dayIndex, status) => {
+    const weeks = JSON.parse(JSON.stringify(program.weeks));
+    const day = weeks[weekIndex].days[dayIndex];
+    day.status = day.status === status ? "" : status;
+    await updateProgram(program.id, { weeks });
+  };
+
   const ath = athletes.find(a => a.id === program.athlete_id);
   const weeks = program.weeks || [];
   const week = weeks[aw];
@@ -360,9 +367,13 @@ function ProgramDetail({ program, exercises, cats, colors, addBlock, updateBlock
           const isLogged = dayLogs.length > 0;
 
           return (
-            <Card key={day.id} style={{ padding: 14 }}>
+            <Card key={day.id} style={{ padding: 14, border: day.status === "completed" ? "2px solid #16A34A" : day.status === "missed" ? "2px solid #DC2626" : "1px solid #E4E4E7", background: day.status === "completed" ? "#F0FDF418" : day.status === "missed" ? "#FEF2F218" : "#fff" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-                <h4 style={{ margin: 0, fontSize: 15 }}>{day.label}</h4>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  {day.status === "completed" && <span style={{ color: "#16A34A", fontWeight: 700, fontSize: 14 }}>✓</span>}
+                  {day.status === "missed" && <span style={{ color: "#DC2626", fontWeight: 700, fontSize: 14 }}>✗</span>}
+                  <h4 style={{ margin: 0, fontSize: 15 }}>{day.label}</h4>
+                </div>
                 <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                   <button onClick={() => printDay(program, week.label, day, exercises, colors)} style={{ background: "none", border: "1px solid #E4E4E7", borderRadius: 6, cursor: "pointer", padding: "4px 10px", fontSize: 12, color: "#52525B", fontFamily: "inherit", fontWeight: 600 }}>🖨</button>
                   <div style={{ position: "relative" }}>
@@ -524,6 +535,16 @@ function ProgramDetail({ program, exercises, cats, colors, addBlock, updateBlock
                   )}
                 </div>
               )}
+
+              {/* Day status buttons */}
+              <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+                <button onClick={() => setDayStatus(aw, di, "completed")} style={{ flex: 1, padding: "5px", borderRadius: 6, border: day.status === "completed" ? "2px solid #16A34A" : "1px solid #E4E4E7", background: day.status === "completed" ? "#F0FDF4" : "#fff", color: day.status === "completed" ? "#16A34A" : "#A1A1AA", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>
+                  ✓ Completed
+                </button>
+                <button onClick={() => setDayStatus(aw, di, "missed")} style={{ flex: 1, padding: "5px", borderRadius: 6, border: day.status === "missed" ? "2px solid #DC2626" : "1px solid #E4E4E7", background: day.status === "missed" ? "#FEF2F2" : "#fff", color: day.status === "missed" ? "#DC2626" : "#A1A1AA", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>
+                  ✗ Missed
+                </button>
+              </div>
             </Card>
           );
         })}

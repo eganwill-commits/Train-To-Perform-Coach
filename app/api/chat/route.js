@@ -49,7 +49,7 @@ export async function POST(request) {
     
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey) {
-      return NextResponse.json({ error: "API key not configured" }, { status: 500 });
+      return NextResponse.json({ error: "ANTHROPIC_API_KEY not set. Add it in Vercel Settings → Environment Variables, then redeploy." }, { status: 500 });
     }
 
     const response = await fetch("https://api.anthropic.com/v1/messages", {
@@ -63,13 +63,13 @@ export async function POST(request) {
         model: "claude-sonnet-4-20250514",
         max_tokens: 1024,
         system: SYSTEM_PROMPT,
-        messages: messages.slice(-10), // Keep last 10 messages for context
+        messages: messages.slice(-10),
       }),
     });
 
     if (!response.ok) {
-      const err = await response.text();
-      return NextResponse.json({ error: "API error: " + err }, { status: response.status });
+      const errText = await response.text();
+      return NextResponse.json({ error: `API error (${response.status}): ${errText.slice(0, 300)}` }, { status: response.status });
     }
 
     const data = await response.json();

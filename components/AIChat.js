@@ -39,7 +39,7 @@ export default function AIChat({ isMobile, athleteName }) {
       });
       const data = await res.json();
       if (data.error) {
-        setMessages([...newMessages, { role: "assistant", content: "Sorry, I couldn't process that. Please try again." }]);
+        setMessages([...newMessages, { role: "assistant", content: "⚠️ " + data.error }]);
       } else {
         setMessages([...newMessages, { role: "assistant", content: data.text }]);
       }

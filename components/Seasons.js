@@ -29,25 +29,31 @@ export default function Seasons({ groups, athletes, programs, logs, colors, cats
     const groupLogs = logs.filter(l => athleteIds.includes(l.athlete_id));
     const availableAthletes = athletes.filter(a => !athleteIds.includes(a.id));
 
-    // Count exercises from completed/missed weeks in programs
+    // Count exercises from completed/missed weeks AND days in programs
     const allAthletePrograms = programs.filter(p => athleteIds.includes(p.athlete_id));
     const programCats = { completed: {}, missed: {} };
     cats.forEach(c => { programCats.completed[c] = 0; programCats.missed[c] = 0; });
     let completedWeeks = 0, missedWeeks = 0, totalWeeks = 0;
+    let completedSessions = 0, missedSessions = 0, totalSessions = 0;
     allAthletePrograms.forEach(p => {
       (p.weeks || []).forEach(w => {
         totalWeeks++;
-        if (w.status === "completed" || w.status === "missed") {
-          if (w.status === "completed") completedWeeks++;
-          else missedWeeks++;
-          (w.days || []).forEach(d => {
+        if (w.status === "completed") completedWeeks++;
+        else if (w.status === "missed") missedWeeks++;
+        (w.days || []).forEach(d => {
+          if (d.blocks && d.blocks.length > 0) totalSessions++;
+          // Day-level status takes priority, then fall back to week status
+          const dayStatus = d.status || w.status || "";
+          if (dayStatus === "completed" || dayStatus === "missed") {
+            if (dayStatus === "completed") completedSessions++;
+            else missedSessions++;
             (d.blocks || []).forEach(b => {
-              if (b.category && programCats[w.status][b.category] !== undefined) {
-                programCats[w.status][b.category]++;
+              if (b.category && programCats[dayStatus][b.category] !== undefined) {
+                programCats[dayStatus][b.category]++;
               }
             });
-          });
-        }
+          }
+        });
       });
     });
     const totalProgrammed = Object.values(programCats.completed).reduce((a, b) => a + b, 0) + Object.values(programCats.missed).reduce((a, b) => a + b, 0);
@@ -78,20 +84,24 @@ export default function Seasons({ groups, athletes, programs, logs, colors, cats
             <div style={{ fontSize: 12, color: "#71717A" }}>Athletes</div>
           </Card>
           <Card style={{ padding: 14, textAlign: "center" }}>
-            <div style={{ fontSize: 24, fontWeight: 700 }}>{groupPrograms.length}</div>
-            <div style={{ fontSize: 12, color: "#71717A" }}>Programs</div>
-          </Card>
-          <Card style={{ padding: 14, textAlign: "center" }}>
             <div style={{ display: "flex", justifyContent: "center", gap: 8 }}>
               <span style={{ fontSize: 24, fontWeight: 700, color: "#16A34A" }}>{completedWeeks}</span>
               <span style={{ fontSize: 24, fontWeight: 700, color: "#D4D4D8" }}>/</span>
               <span style={{ fontSize: 24, fontWeight: 700, color: "#DC2626" }}>{missedWeeks}</span>
             </div>
-            <div style={{ fontSize: 12, color: "#71717A" }}>Completed / Missed</div>
+            <div style={{ fontSize: 12, color: "#71717A" }}>Weeks: Done / Missed</div>
           </Card>
           <Card style={{ padding: 14, textAlign: "center" }}>
-            <div style={{ fontSize: 24, fontWeight: 700 }}>{groupLogs.length}</div>
-            <div style={{ fontSize: 12, color: "#71717A" }}>Workouts Logged</div>
+            <div style={{ display: "flex", justifyContent: "center", gap: 8 }}>
+              <span style={{ fontSize: 24, fontWeight: 700, color: "#16A34A" }}>{completedSessions}</span>
+              <span style={{ fontSize: 24, fontWeight: 700, color: "#D4D4D8" }}>/</span>
+              <span style={{ fontSize: 24, fontWeight: 700, color: "#DC2626" }}>{missedSessions}</span>
+            </div>
+            <div style={{ fontSize: 12, color: "#71717A" }}>Sessions: Done / Missed</div>
+          </Card>
+          <Card style={{ padding: 14, textAlign: "center" }}>
+            <div style={{ fontSize: 24, fontWeight: 700 }}>{totalSessions > 0 ? Math.round((completedSessions / totalSessions) * 100) : 0}%</div>
+            <div style={{ fontSize: 12, color: "#71717A" }}>Session Attendance</div>
           </Card>
         </div>
 
@@ -108,27 +118,31 @@ export default function Seasons({ groups, athletes, programs, logs, colors, cats
               const athletePrograms = allAthletePrograms.filter(p => p.athlete_id === a.id);
               const athleteLogs = groupLogs.filter(l => l.athlete_id === a.id);
 
-              // Per-athlete week stats
-              let aCompleted = 0, aMissed = 0, aTotal = 0;
+              // Per-athlete week and session stats
+              let aCompWeeks = 0, aMissWeeks = 0, aTotalWeeks = 0;
+              let aCompSessions = 0, aMissSessions = 0, aTotalSessions = 0;
               const aCats = { completed: {}, missed: {} };
               cats.forEach(c => { aCats.completed[c] = 0; aCats.missed[c] = 0; });
               athletePrograms.forEach(p => {
                 (p.weeks || []).forEach(w => {
-                  aTotal++;
-                  if (w.status === "completed" || w.status === "missed") {
-                    if (w.status === "completed") aCompleted++;
-                    else aMissed++;
-                    (w.days || []).forEach(d => {
+                  aTotalWeeks++;
+                  if (w.status === "completed") aCompWeeks++;
+                  else if (w.status === "missed") aMissWeeks++;
+                  (w.days || []).forEach(d => {
+                    if (d.blocks && d.blocks.length > 0) aTotalSessions++;
+                    const dayStatus = d.status || w.status || "";
+                    if (dayStatus === "completed" || dayStatus === "missed") {
+                      if (dayStatus === "completed") aCompSessions++;
+                      else aMissSessions++;
                       (d.blocks || []).forEach(b => {
-                        if (b.category && aCats[w.status][b.category] !== undefined) aCats[w.status][b.category]++;
+                        if (b.category && aCats[dayStatus][b.category] !== undefined) aCats[dayStatus][b.category]++;
                       });
-                    });
-                  }
+                    }
+                  });
                 });
               });
-              const aTracked = aCompleted + aMissed;
               const aTotalEx = Object.values(aCats.completed).reduce((s, v) => s + v, 0) + Object.values(aCats.missed).reduce((s, v) => s + v, 0);
-              const attendancePct = aTracked > 0 ? Math.round((aCompleted / aTracked) * 100) : 0;
+              const attendancePct = aTotalSessions > 0 ? Math.round((aCompSessions / aTotalSessions) * 100) : 0;
 
               return (
                 <Card key={a.id} style={{ padding: 16 }}>
@@ -138,25 +152,27 @@ export default function Seasons({ groups, athletes, programs, logs, colors, cats
                       <div style={{ fontSize: 13, color: "#71717A", marginTop: 2 }}>{a.sport}{a.age ? ` · Age ${a.age}` : ""}</div>
                     </div>
                     <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                      {aTracked > 0 && (
+                      {(aCompSessions + aMissSessions) > 0 && (
                         <span style={{ fontSize: 13, fontWeight: 700, color: attendancePct >= 80 ? "#16A34A" : attendancePct >= 50 ? "#F97316" : "#DC2626" }}>{attendancePct}%</span>
                       )}
                       <button onClick={() => removeAthleteFromGroup(detail, a.id)} style={{ background: "none", border: "none", cursor: "pointer", color: "#A1A1AA", fontSize: 14 }} title="Remove from season">✕</button>
                     </div>
                   </div>
 
-                  {/* Week progress bar */}
-                  {aTotal > 0 && (
+                  {/* Session progress bar */}
+                  {aTotalSessions > 0 && (
                     <div style={{ marginTop: 10 }}>
-                      <div style={{ display: "flex", gap: 2, marginBottom: 4 }}>
-                        {athletePrograms.flatMap(p => (p.weeks || []).map((w, i) => (
-                          <div key={`${p.id}-${i}`} style={{ flex: 1, height: 6, borderRadius: 3, background: w.status === "completed" ? "#16A34A" : w.status === "missed" ? "#DC2626" : "#E4E4E7" }} />
-                        )))}
+                      <div style={{ display: "flex", gap: 1, marginBottom: 4 }}>
+                        {athletePrograms.flatMap(p => (p.weeks || []).flatMap((w, wi) => (w.days || []).map((d, di) => {
+                          if (!d.blocks || d.blocks.length === 0) return null;
+                          const ds = d.status || w.status || "";
+                          return <div key={`${p.id}-${wi}-${di}`} style={{ flex: 1, height: 6, borderRadius: 2, background: ds === "completed" ? "#16A34A" : ds === "missed" ? "#DC2626" : "#E4E4E7" }} />;
+                        }))).filter(Boolean)}
                       </div>
                       <div style={{ fontSize: 11, color: "#71717A" }}>
-                        <span style={{ color: "#16A34A", fontWeight: 600 }}>{aCompleted}</span> completed
-                        {aMissed > 0 && <> · <span style={{ color: "#DC2626", fontWeight: 600 }}>{aMissed}</span> missed</>}
-                        {" · "}{aTotal - aTracked} remaining
+                        <span style={{ color: "#16A34A", fontWeight: 600 }}>{aCompSessions}</span> sessions done
+                        {aMissSessions > 0 && <> · <span style={{ color: "#DC2626", fontWeight: 600 }}>{aMissSessions}</span> missed</>}
+                        {" · "}{aTotalSessions - aCompSessions - aMissSessions} remaining
                       </div>
                     </div>
                   )}
