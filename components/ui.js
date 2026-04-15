@@ -11,8 +11,10 @@ export function Select({ label, options, ...props }) { return <label style={{ di
 export function SearchableSelect({ label, value, onChange, options, placeholder = "Search…", groupBy }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
+  const [dropPos, setDropPos] = useState({ top: 0, left: 0, width: 0 });
   const ref = useRef(null);
   const inputRef = useRef(null);
+  const btnRef = useRef(null);
   const selectedLabel = options.find(o => (o.value ?? o) === value)?.label ?? options.find(o => (o.value ?? o) === value) ?? "";
 
   useEffect(() => {
@@ -21,8 +23,16 @@ export function SearchableSelect({ label, value, onChange, options, placeholder 
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
-  const q = search.toLowerCase();
-  const searchWords = q.split(/\s+/).filter(Boolean);
+  const openDropdown = () => {
+    if (btnRef.current) {
+      const rect = btnRef.current.getBoundingClientRect();
+      setDropPos({ top: rect.bottom + 4, left: rect.left, width: rect.width });
+    }
+    setOpen(!open);
+    setTimeout(() => inputRef.current?.focus(), 50);
+  };
+
+  const searchWords = search.toLowerCase().split(/\s+/).filter(Boolean);
   const filtered = search ? options.filter(o => {
     const label = ((o.label ?? o) + "").toLowerCase();
     return searchWords.every(word => label.includes(word));
@@ -36,12 +46,12 @@ export function SearchableSelect({ label, value, onChange, options, placeholder 
   return (
     <div ref={ref} style={{ position: "relative" }}>
       {label && <div style={{ fontSize: 13, fontWeight: 600, color: "#52525B", marginBottom: 4 }}>{label}</div>}
-      <button type="button" onClick={() => { setOpen(!open); setTimeout(() => inputRef.current?.focus(), 50); }} style={{ width: "100%", padding: "7px 10px", border: "1px solid #E4E4E7", borderRadius: 6, fontSize: 13, fontFamily: "inherit", boxSizing: "border-box", background: "#fff", textAlign: "left", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+      <button ref={btnRef} type="button" onClick={openDropdown} style={{ width: "100%", padding: "7px 10px", border: "1px solid #E4E4E7", borderRadius: 6, fontSize: 13, fontFamily: "inherit", boxSizing: "border-box", background: "#fff", textAlign: "left", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <span style={{ overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", lineHeight: 1.3, textAlign: "left" }}>{selectedLabel || placeholder}</span>
         <span style={{ color: "#A1A1AA", fontSize: 10, marginLeft: 6 }}>▼</span>
       </button>
       {open && (
-        <div style={{ position: "absolute", top: "100%", left: 0, right: 0, marginTop: 4, background: "#fff", border: "1px solid #E4E4E7", borderRadius: 8, boxShadow: "0 4px 20px rgba(0,0,0,.12)", zIndex: 100, maxHeight: 240, display: "flex", flexDirection: "column" }}>
+        <div style={{ position: "fixed", top: dropPos.top, left: dropPos.left, width: dropPos.width, background: "#fff", border: "1px solid #E4E4E7", borderRadius: 8, boxShadow: "0 4px 20px rgba(0,0,0,.15)", zIndex: 9999, maxHeight: 260, display: "flex", flexDirection: "column" }}>
           <div style={{ padding: "6px 8px", borderBottom: "1px solid #F4F4F5", flexShrink: 0 }}>
             <input ref={inputRef} type="text" value={search} onChange={e => setSearch(e.target.value)} placeholder="Search…" style={{ width: "100%", padding: "6px 8px", border: "1px solid #E4E4E7", borderRadius: 6, fontSize: 13, fontFamily: "inherit", outline: "none", boxSizing: "border-box" }} />
           </div>

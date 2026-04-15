@@ -397,6 +397,11 @@ function ProgramDetail({ program, exercises, cats, colors, addBlock, updateBlock
                 const resolvedId = resolveExerciseId(block);
                 const displayName = getDisplayName(block);
                 const catExercises = exercises.filter(ex => ex.category === block.category);
+                const otherExercises = exercises.filter(ex => ex.category !== block.category);
+                const allOptions = [
+                  ...catExercises.map(ex => ({ value: ex.id, label: ex.name, group: block.category })),
+                  ...otherExercises.map(ex => ({ value: ex.id, label: ex.name, group: ex.category })),
+                ];
                 const isCustom = resolvedId === "__custom__";
                 const isFirst = bi === 0;
                 const isLast = bi === day.blocks.length - 1;
@@ -433,7 +438,7 @@ function ProgramDetail({ program, exercises, cats, colors, addBlock, updateBlock
                               </div>
                               {!isCustom && (
                                 <div style={{ marginBottom: 6 }}>
-                                  <SearchableSelect value={resolvedId} onChange={e => updateBlock(aw, di, bi, "exerciseId", e.target.value)} options={catExercises.map(ex => ({ value: ex.id, label: ex.name }))} placeholder="Select exercise…" />
+                                  <SearchableSelect value={resolvedId} onChange={e => updateBlock(aw, di, bi, "exerciseId", e.target.value)} options={allOptions} groupBy placeholder="Select exercise…" />
                                 </div>
                               )}
                               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 4 }}>
@@ -474,7 +479,7 @@ function ProgramDetail({ program, exercises, cats, colors, addBlock, updateBlock
                           <div style={{ width: "100%", marginBottom: 4, padding: "5px 8px", border: "1px solid #E4E4E7", borderRadius: 6, fontSize: 13, fontFamily: "inherit", boxSizing: "border-box", background: "#fff", color: "#18181B", fontWeight: 600 }}>{displayName}</div>
                         ) : (
                           <div style={{ marginBottom: 4 }}>
-                            <SearchableSelect value={resolvedId} onChange={e => updateBlock(aw, di, bi, "exerciseId", e.target.value)} options={catExercises.map(ex => ({ value: ex.id, label: ex.name }))} placeholder="Select exercise…" />
+                            <SearchableSelect value={resolvedId} onChange={e => updateBlock(aw, di, bi, "exerciseId", e.target.value)} options={allOptions} groupBy placeholder="Select exercise…" />
                           </div>
                         )}
                         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 4, marginTop: 4 }}>
