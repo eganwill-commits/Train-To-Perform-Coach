@@ -694,7 +694,7 @@ function MyVideos({ videoSubs, addVideoSub, athlete, exercises, cats, colors, is
           {uploadMode === "upload" ? (
             <div>
               <label style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8, padding: "24px 16px", border: "2px dashed #D4D4D8", borderRadius: 10, cursor: "pointer", background: selectedFile ? "#F0FDF4" : "#FAFAFA", transition: "background .2s" }}>
-                <input type="file" accept="video/*" capture="environment" onChange={handleFileSelect} style={{ display: "none" }} />
+                <input type="file" accept="video/*" onChange={handleFileSelect} style={{ display: "none" }} />
                 {selectedFile ? (
                   <>
                     <span style={{ fontSize: 28 }}>✓</span>
@@ -704,7 +704,7 @@ function MyVideos({ videoSubs, addVideoSub, athlete, exercises, cats, colors, is
                 ) : (
                   <>
                     <span style={{ fontSize: 28 }}>🎥</span>
-                    <span style={{ fontWeight: 600, fontSize: 14, color: "#52525B" }}>Tap to record or choose video</span>
+                    <span style={{ fontWeight: 600, fontSize: 14, color: "#52525B" }}>Tap to choose from library or record</span>
                     <span style={{ fontSize: 12, color: "#A1A1AA" }}>MP4, MOV, WebM · Max 100MB</span>
                   </>
                 )}
