@@ -1,12 +1,12 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Badge, Btn, Card, Input, Modal, EmptyState } from "./ui";
 
 function formatDate(d) {
   return new Date(d + "T12:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
 }
 
-export default function Athletes({ athletes, addAthlete, updateAthlete, deleteAthlete, logs, colors, cats, isMobile, groups, groupAthletes, addAthleteToGroup, removeAthleteFromGroup, baselines, updateBaseline, videoSubs, updateVideoSub, deleteVideoSub }) {
+export default function Athletes({ athletes, addAthlete, updateAthlete, deleteAthlete, logs, colors, cats, isMobile, groups, groupAthletes, addAthleteToGroup, removeAthleteFromGroup, baselines, updateBaseline, videoSubs, updateVideoSub, deleteVideoSub, focusAthleteId, onFocusClear }) {
   const [modal, setModal] = useState(false);
   const [edit, setEdit] = useState(null);
   const [form, setForm] = useState({ name: "", age: "", sport: "", notes: "" });
@@ -15,6 +15,14 @@ export default function Athletes({ athletes, addAthlete, updateAthlete, deleteAt
   const [expandedDay, setExpandedDay] = useState(null);
   const [editingBaseline, setEditingBaseline] = useState(null);
   const [baselineForm, setBaselineForm] = useState({});
+
+  // Open athlete from external navigation (alerts)
+  useEffect(() => {
+    if (focusAthleteId) {
+      setDetail(focusAthleteId);
+      if (onFocusClear) onFocusClear();
+    }
+  }, [focusAthleteId]);
 
   const openNew = () => { setForm({ name: "", age: "", sport: "", notes: "" }); setEdit(null); setModal(true); };
   const openEdit = (a) => { setForm({ name: a.name, age: a.age || "", sport: a.sport || "", notes: a.notes || "" }); setEdit(a.id); setModal(true); };

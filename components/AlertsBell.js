@@ -12,7 +12,7 @@ function setLastChecked() {
   if (typeof window !== "undefined") localStorage.setItem(LS_KEY, new Date().toISOString());
 }
 
-export default function AlertsBell({ logs, videoSubs, athletes, isMobile }) {
+export default function AlertsBell({ logs, videoSubs, athletes, isMobile, onNavigate }) {
   const [open, setOpen] = useState(false);
   const [lastChecked, setLC] = useState(getLastChecked);
   const ref = useRef(null);
@@ -90,20 +90,20 @@ export default function AlertsBell({ logs, videoSubs, athletes, isMobile }) {
               <div>
                 {/* Video submissions */}
                 {newVideos.map(v => (
-                  <div key={v.id} style={{ display: "flex", gap: 10, padding: "12px 16px", borderBottom: "1px solid #F4F4F5", alignItems: "start" }}>
+                  <div key={v.id} onClick={() => { if (onNavigate) { onNavigate(v.athlete_id); setOpen(false); } }} style={{ display: "flex", gap: 10, padding: "12px 16px", borderBottom: "1px solid #F4F4F5", alignItems: "start", cursor: onNavigate ? "pointer" : "default" }}>
                     <span style={{ fontSize: 20, flexShrink: 0 }}>🎥</span>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontWeight: 600, fontSize: 14 }}>{v.athlete_name || getAthleteName(v.athlete_id)}</div>
                       <div style={{ fontSize: 13, color: "#52525B" }}>Submitted video: <strong>{v.exercise_name || "Movement"}</strong></div>
                       {v.notes && <div style={{ fontSize: 12, color: "#71717A", fontStyle: "italic", marginTop: 2 }}>{v.notes}</div>}
-                      <div style={{ fontSize: 11, color: "#A1A1AA", marginTop: 3 }}>{timeAgo(v.created_at)}</div>
+                      <div style={{ fontSize: 11, color: "#A1A1AA", marginTop: 3 }}>{timeAgo(v.created_at)}{onNavigate && <span style={{ color: "#2563EB", fontWeight: 600, marginLeft: 8 }}>View →</span>}</div>
                     </div>
                   </div>
                 ))}
 
                 {/* Workout logs */}
                 {logAlerts.map((g, i) => (
-                  <div key={i} style={{ display: "flex", gap: 10, padding: "12px 16px", borderBottom: "1px solid #F4F4F5", alignItems: "start" }}>
+                  <div key={i} onClick={() => { if (onNavigate) { onNavigate(g.athlete_id); setOpen(false); } }} style={{ display: "flex", gap: 10, padding: "12px 16px", borderBottom: "1px solid #F4F4F5", alignItems: "start", cursor: onNavigate ? "pointer" : "default" }}>
                     <span style={{ fontSize: 20, flexShrink: 0 }}>💪</span>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontWeight: 600, fontSize: 14 }}>{getAthleteName(g.athlete_id)}</div>
@@ -111,7 +111,7 @@ export default function AlertsBell({ logs, videoSubs, athletes, isMobile }) {
                         Logged <strong>{g.count} exercises</strong>
                         {g.week_label || g.day_label ? ` — ${g.week_label ? g.week_label.replace(/WEEK\s*/i, "W").split("—")[0].trim() : ""} ${g.day_label || ""}` : ""}
                       </div>
-                      <div style={{ fontSize: 11, color: "#A1A1AA", marginTop: 3 }}>{timeAgo(g.latest)}</div>
+                      <div style={{ fontSize: 11, color: "#A1A1AA", marginTop: 3 }}>{timeAgo(g.latest)}{onNavigate && <span style={{ color: "#2563EB", fontWeight: 600, marginLeft: 8 }}>View →</span>}</div>
                     </div>
                   </div>
                 ))}

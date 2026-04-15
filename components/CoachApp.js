@@ -26,6 +26,7 @@ function useIsMobile(bp = 768) {
 
 export default function CoachApp({ onLogout }) {
   const [page, setPage] = useState("dashboard");
+  const [focusAthleteId, setFocusAthleteId] = useState(null);
   const [athletes, setAthletes] = useState([]);
   const [programs, setPrograms] = useState([]);
   const [exercises, setExercises] = useState([]);
@@ -246,7 +247,8 @@ export default function CoachApp({ onLogout }) {
     setVideoSubs(prev => prev.filter(v => v.id !== id));
   }, []);
 
-  const nav = (id) => { setPage(id); if (isMobile) setNavOpen(false); };
+  const nav = (id) => { setPage(id); setFocusAthleteId(null); if (isMobile) setNavOpen(false); };
+  const navToAthlete = (athleteId) => { setFocusAthleteId(athleteId); setPage("athletes"); if (isMobile) setNavOpen(false); };
 
   if (!loaded) return (
     <div className="t2p-root" style={{ display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'DM Sans', sans-serif" }}>
@@ -283,7 +285,7 @@ export default function CoachApp({ onLogout }) {
         <div style={{ padding: "0 20px 28px", borderBottom: "1px solid #27272A", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <T2PLogo />
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <AlertsBell logs={logs} videoSubs={videoSubs} athletes={athletes} isMobile={isMobile} />
+            <AlertsBell logs={logs} videoSubs={videoSubs} athletes={athletes} isMobile={isMobile} onNavigate={navToAthlete} />
             {isMobile && <button onClick={() => setNavOpen(false)} style={{ background: "none", border: "none", color: "#A1A1AA", fontSize: 22, cursor: "pointer", padding: 4 }}>✕</button>}
           </div>
         </div>
@@ -314,7 +316,7 @@ export default function CoachApp({ onLogout }) {
             </button>
             <T2PLogo size="small" variant="dark" />
             <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
-              <AlertsBell logs={logs} videoSubs={videoSubs} athletes={athletes} isMobile={isMobile} />
+              <AlertsBell logs={logs} videoSubs={videoSubs} athletes={athletes} isMobile={isMobile} onNavigate={navToAthlete} />
               <span style={{ fontSize: 13, color: "#A1A1AA", textTransform: "capitalize" }}>{page}</span>
             </div>
           </header>
@@ -322,7 +324,7 @@ export default function CoachApp({ onLogout }) {
         <main className="t2p-main" style={{ flex: 1, padding: isMobile ? "12px 10px" : 32, maxWidth: "100%", overflowX: "hidden" }}>
           {page === "dashboard" && <Dashboard {...pp} />}
           {page === "seasons" && <Seasons {...pp} />}
-          {page === "athletes" && <Athletes {...pp} />}
+          {page === "athletes" && <Athletes {...pp} focusAthleteId={focusAthleteId} onFocusClear={() => setFocusAthleteId(null)} />}
           {page === "programs" && <Programs {...pp} />}
           {page === "library" && <Library {...pp} />}
           {page === "log" && <LogPage {...pp} />}
