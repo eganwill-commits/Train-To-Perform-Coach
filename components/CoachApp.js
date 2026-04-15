@@ -10,6 +10,7 @@ import LogPage from "./LogPage";
 import Settings from "./Settings";
 import Seasons from "./Seasons";
 import AIChat from "./AIChat";
+import AlertsBell from "./AlertsBell";
 import T2PLogo from "./T2PLogo";
 
 function useIsMobile(bp = 768) {
@@ -68,6 +69,20 @@ export default function CoachApp({ onLogout }) {
     }
     loadData();
   }, []);
+
+  // Poll for new logs and videos every 30 seconds
+  useEffect(() => {
+    if (!loaded) return;
+    const poll = setInterval(async () => {
+      const [lRes, vRes] = await Promise.all([
+        supabase.from("logs").select("*").order("date", { ascending: false }),
+        supabase.from("video_submissions").select("*").order("created_at", { ascending: false }),
+      ]);
+      if (lRes.data) setLogs(lRes.data);
+      if (vRes.data) setVideoSubs(vRes.data);
+    }, 30000);
+    return () => clearInterval(poll);
+  }, [loaded]);
 
   // Save helpers — update local state + Supabase
   const saveAthletes = useCallback(async (newAthletes) => {
@@ -267,7 +282,10 @@ export default function CoachApp({ onLogout }) {
       }}>
         <div style={{ padding: "0 20px 28px", borderBottom: "1px solid #27272A", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <T2PLogo />
-          {isMobile && <button onClick={() => setNavOpen(false)} style={{ background: "none", border: "none", color: "#A1A1AA", fontSize: 22, cursor: "pointer", padding: 4 }}>✕</button>}
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <AlertsBell logs={logs} videoSubs={videoSubs} athletes={athletes} isMobile={isMobile} />
+            {isMobile && <button onClick={() => setNavOpen(false)} style={{ background: "none", border: "none", color: "#A1A1AA", fontSize: 22, cursor: "pointer", padding: 4 }}>✕</button>}
+          </div>
         </div>
         <div style={{ flex: 1, padding: "12px 10px", display: "flex", flexDirection: "column", gap: 2 }}>
           {NAV_ITEMS.map(n => (
@@ -295,7 +313,10 @@ export default function CoachApp({ onLogout }) {
               <span style={{ display: "block", width: 22, height: 2, background: "#18181B", borderRadius: 2 }} />
             </button>
             <T2PLogo size="small" variant="dark" />
-            <span style={{ fontSize: 13, color: "#A1A1AA", marginLeft: "auto", textTransform: "capitalize" }}>{page}</span>
+            <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
+              <AlertsBell logs={logs} videoSubs={videoSubs} athletes={athletes} isMobile={isMobile} />
+              <span style={{ fontSize: 13, color: "#A1A1AA", textTransform: "capitalize" }}>{page}</span>
+            </div>
           </header>
         )}
         <main className="t2p-main" style={{ flex: 1, padding: isMobile ? "12px 10px" : 32, maxWidth: "100%", overflowX: "hidden" }}>
