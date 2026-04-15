@@ -224,16 +224,28 @@ function MyProgram({ programs, exercises, colors, cats, isMobile, athlete, addLo
       {prog.description && <p style={{ color: "#71717A", fontSize: 12, margin: "0 0 10px" }}>{prog.description}</p>}
       {saved && <div style={{ background: "#F0FDF4", color: "#16A34A", padding: "10px 14px", borderRadius: 8, marginBottom: 10, fontWeight: 600, fontSize: 14 }}>Workout logged!</div>}
 
-      <div style={{ display: "flex", gap: 4, marginBottom: 12, flexWrap: "wrap" }}>
-        {weeks.map((w, i) => {
-          const st = w.status || "";
-          const isActive = aw === i;
-          const bg = isActive ? "#18181B" : st === "completed" ? "#16A34A" : st === "missed" ? "#DC2626" : "#fff";
-          const fg = isActive || st === "completed" || st === "missed" ? "#fff" : "#52525B";
-          const bd = isActive ? "#18181B" : st === "completed" ? "#16A34A" : st === "missed" ? "#DC2626" : "#E4E4E7";
-          return <button key={w.id} onClick={() => setAw(i)} style={{ padding: "4px 9px", borderRadius: 6, border: `2px solid ${bd}`, background: bg, color: fg, fontWeight: 600, fontSize: 11, cursor: "pointer", fontFamily: "inherit", lineHeight: 1.2 }}>{st === "completed" ? "✓" : st === "missed" ? "✗" : ""}W{i + 1}</button>;
-        })}
-      </div>
+      {/* Week tabs — current and past only */}
+      {(() => {
+        const currentWi = weeks.findIndex(w => w.status !== "completed" && w.status !== "missed");
+        const maxVisible = currentWi >= 0 ? currentWi : weeks.length - 1;
+        return (
+          <div style={{ display: "flex", gap: 4, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
+            {weeks.map((w, i) => {
+              if (i > maxVisible) return null;
+              const st = w.status || "";
+              const isActive = aw === i;
+              const isCurrent = i === maxVisible;
+              const bg = isActive ? "#18181B" : st === "completed" ? "#16A34A" : st === "missed" ? "#DC2626" : "#fff";
+              const fg = isActive || st === "completed" || st === "missed" ? "#fff" : "#52525B";
+              const bd = isActive ? "#18181B" : st === "completed" ? "#16A34A" : st === "missed" ? "#DC2626" : "#E4E4E7";
+              return <button key={w.id} onClick={() => setAw(i)} style={{ padding: "4px 9px", borderRadius: 6, border: `2px solid ${bd}`, background: bg, color: fg, fontWeight: 600, fontSize: 11, cursor: "pointer", fontFamily: "inherit", lineHeight: 1.2 }}>{st === "completed" ? "✓" : st === "missed" ? "✗" : ""}{isCurrent ? "→ " : ""}W{i + 1}</button>;
+            })}
+            {maxVisible < weeks.length - 1 && (
+              <span style={{ fontSize: 11, color: "#A1A1AA", marginLeft: 4 }}>+{weeks.length - maxVisible - 1} upcoming</span>
+            )}
+          </div>
+        );
+      })()}
 
       {week && week.days.map(day => {
         const dayLogged = (logs || []).some(l => l.athlete_id === athlete.id && l.date === new Date().toISOString().slice(0, 10) && l.day_label === day.label && l.week_label === week.label);
