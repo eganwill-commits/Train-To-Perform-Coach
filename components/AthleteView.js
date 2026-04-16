@@ -497,8 +497,8 @@ function MyLogs({ logs, colors, cats, isMobile, deleteLog, deleteDayLogs }) {
 
   return (
     <div>
-      <h2 style={{ margin: "0 0 20px", fontSize: isMobile ? 22 : 28, fontFamily: "'Space Mono', monospace" }}>My History</h2>
-      {sortedDays.length === 0 ? <EmptyState icon="◇" title="No workouts logged yet" sub="Log your first workout to see it here." /> : (
+      <h2 style={{ margin: "0 0 20px", fontSize: isMobile ? 22 : 28, fontFamily: "'Space Mono', monospace" }}>Completed Workouts</h2>
+      {sortedDays.length === 0 ? <EmptyState icon="◇" title="No completed workouts yet" sub="Log your first workout to see it here." /> : (
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {sortedDays.map(day => {
             const isExpanded = expandedDay === `${day.date}-${day.day_label}`;
@@ -543,7 +543,7 @@ function MyLogs({ logs, colors, cats, isMobile, deleteLog, deleteDayLogs }) {
                                 </div>
                                 {l.notes && <div style={{ fontSize: 11, color: "#A1A1AA", fontStyle: "italic", marginTop: 1 }}>{l.notes}</div>}
                               </div>
-                              <button onClick={(e) => { e.stopPropagation(); deleteLog(l.id); }} style={{ background: "none", border: "none", cursor: "pointer", color: "#D4D4D8", fontSize: 14, flexShrink: 0 }}>✕</button>
+                              <button onClick={(e) => { e.stopPropagation(); if (confirm("Delete this exercise?")) deleteLog(l.id); }} style={{ background: "none", border: "none", cursor: "pointer", color: "#D4D4D8", fontSize: 14, flexShrink: 0 }} title="Delete exercise">✕</button>
                             </div>
                           ))}
                         </div>

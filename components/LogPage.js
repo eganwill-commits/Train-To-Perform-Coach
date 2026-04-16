@@ -12,6 +12,7 @@ function formatLoggedAt(ts) {
 }
 
 export default function LogPage({ logs, addLog, deleteLog, unlogDay, athletes, exercises, cats, colors, isMobile }) {
+  const [tab, setTab] = useState("workouts");
   const [modal, setModal] = useState(false);
   const [expandedDay, setExpandedDay] = useState(null);
   const [form, setForm] = useState({ athlete_id: "", exercise_id: "", category: "", sets: "", reps: "", load: "", rpe: "", notes: "", date: new Date().toISOString().slice(0, 10) });
@@ -32,7 +33,7 @@ export default function LogPage({ logs, addLog, deleteLog, unlogDay, athletes, e
 
   const catEx = exercises.filter(e => e.category === form.category);
 
-  // Group logs by athlete + date
+  // Group logs by athlete + date for Workouts view
   const grouped = {};
   logs.forEach(l => {
     const key = `${l.athlete_id || l.athlete_name}-${l.date}-${l.day_label || ""}`;
@@ -47,10 +48,15 @@ export default function LogPage({ logs, addLog, deleteLog, unlogDay, athletes, e
     if (l.week_label && !grouped[key].week_label) grouped[key].week_label = l.week_label;
     if (l.day_label && !grouped[key].day_label) grouped[key].day_label = l.day_label;
   });
-
   const sortedDays = Object.values(grouped).sort((a, b) => new Date(b.date) - new Date(a.date));
 
-  // Check if logged_at date differs from workout date
+  // Flat exercises list sorted by most recent
+  const sortedExercises = [...logs].sort((a, b) => {
+    const da = a.logged_at || a.date;
+    const db = b.logged_at || b.date;
+    return new Date(db) - new Date(da);
+  });
+
   const datesAreDifferent = (workoutDate, loggedAt) => {
     if (!loggedAt) return false;
     const wd = new Date(workoutDate + "T12:00:00").toDateString();
@@ -58,106 +64,185 @@ export default function LogPage({ logs, addLog, deleteLog, unlogDay, athletes, e
     return wd !== ld;
   };
 
+  const tabStyle = (active) => ({
+    padding: "8px 16px", borderRadius: 8, border: "none",
+    background: active ? "#18181B" : "transparent",
+    color: active ? "#fff" : "#71717A",
+    fontWeight: 600, fontSize: 14, cursor: "pointer", fontFamily: "inherit",
+  });
+
   return (
     <div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24, gap: 12 }}>
-        <h2 style={{ margin: 0, fontSize: isMobile ? 22 : 28, fontFamily: "'Space Mono', monospace" }}>Workout Log</h2>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, gap: 12 }}>
+        <h2 style={{ margin: 0, fontSize: isMobile ? 22 : 28, fontFamily: "'Space Mono', monospace" }}>Log</h2>
         <Btn onClick={openNew} small={isMobile}>+ Log</Btn>
       </div>
 
-      {sortedDays.length === 0 ? <EmptyState icon="◇" title="No workouts logged" sub="Start tracking." action="+ Log Workout" onAction={openNew} /> : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {sortedDays.map(day => {
-            const isExpanded = expandedDay === day.key;
-            const catArray = Array.from(day.categories);
-            const showLoggedDate = datesAreDifferent(day.date, day.logged_at);
+      {/* Tabs */}
+      <div style={{ display: "flex", gap: 4, marginBottom: 20, background: "#F4F4F5", borderRadius: 10, padding: 4, width: "fit-content" }}>
+        <button onClick={() => setTab("workouts")} style={tabStyle(tab === "workouts")}>Workouts Logged</button>
+        <button onClick={() => setTab("exercises")} style={tabStyle(tab === "exercises")}>Exercises Logged</button>
+      </div>
 
-            return (
-              <Card key={day.key} style={{ padding: 0, overflow: "hidden" }}>
-                <div
-                  onClick={() => setExpandedDay(isExpanded ? null : day.key)}
-                  style={{ padding: isMobile ? "12px 14px" : "14px 18px", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center", background: isExpanded ? "#F9FAFB" : "#fff", borderBottom: isExpanded ? "1px solid #E4E4E7" : "none" }}
-                >
-                  <div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <span style={{ fontWeight: 700, fontSize: 15 }}>{day.athlete_name}</span>
-                      {(day.week_label || day.day_label) && (
-                        <span style={{ fontSize: 11, fontWeight: 700, color: "#F97316", background: "#FFF7ED", padding: "1px 8px", borderRadius: 4 }}>
-                          {day.week_label ? day.week_label.replace(/WEEK\s*/i, "W").split("—")[0].trim() : ""}{day.day_label ? ` ${day.day_label}` : ""}
-                        </span>
-                      )}
-                    </div>
-                    <div style={{ fontSize: 12, color: "#71717A", marginTop: 2 }}>
-                      {formatDate(day.date)} · {day.entries.length} exercise{day.entries.length !== 1 ? "s" : ""}
-                    </div>
-                    {showLoggedDate && (
-                      <div style={{ fontSize: 11, color: "#A1A1AA", marginTop: 1 }}>
-                        Logged {formatLoggedAt(day.logged_at)}
-                      </div>
-                    )}
-                  </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <div style={{ display: "flex", gap: 4 }}>
-                      {catArray.map(c => <Badge key={c} color={colors[c]?.bg || "#71717A"}>{c}</Badge>)}
-                    </div>
-                    <span style={{ fontSize: 18, color: "#A1A1AA", transition: "transform .2s", transform: isExpanded ? "rotate(180deg)" : "none" }}>▼</span>
-                  </div>
-                </div>
+      {/* Workouts Logged Tab */}
+      {tab === "workouts" && (
+        <>
+          {sortedDays.length === 0 ? <EmptyState icon="◇" title="No workouts logged" sub="Start tracking." action="+ Log Workout" onAction={openNew} /> : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {sortedDays.map(day => {
+                const isExpanded = expandedDay === day.key;
+                const catArray = Array.from(day.categories);
+                const showLoggedDate = datesAreDifferent(day.date, day.logged_at);
 
-                {isExpanded && (
-                  <div style={{ padding: isMobile ? "10px 14px 14px" : "12px 18px 18px" }}>
-                    {cats.filter(c => day.entries.some(e => e.category === c)).map(cat => {
-                      const catEntries = day.entries.filter(e => e.category === cat);
-                      const cc = colors[cat];
-                      return (
-                        <div key={cat} style={{ marginBottom: 12 }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-                            <div style={{ width: 4, height: 16, borderRadius: 2, background: cc?.bg || "#999" }} />
-                            <span style={{ fontSize: 12, fontWeight: 700, color: cc?.text || "#52525B", textTransform: "uppercase", letterSpacing: 0.5 }}>{cat}</span>
-                          </div>
-                          {catEntries.map(l => (
-                            <div key={l.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0 6px 12px", borderBottom: "1px solid #F4F4F5", gap: 8 }}>
-                              <div style={{ flex: 1, minWidth: 0 }}>
-                                <div style={{ fontWeight: 600, fontSize: 13 }}>{l.exercise_name}</div>
-                                <div style={{ fontSize: 12, color: "#71717A" }}>
-                                  {[
-                                    l.sets && l.reps ? `${l.sets}×${l.reps}` : l.reps || l.sets || null,
-                                    l.load ? `@ ${l.load}` : null,
-                                    l.rpe ? `RPE ${l.rpe}` : null,
-                                  ].filter(Boolean).join(" · ") || "—"}
-                                </div>
-                                {l.notes && <div style={{ fontSize: 11, color: "#A1A1AA", marginTop: 2, fontStyle: "italic" }}>{l.notes}</div>}
-                              </div>
-                              <button onClick={(e) => { e.stopPropagation(); deleteLog(l.id); }} style={{ background: "none", border: "none", cursor: "pointer", color: "#D4D4D8", fontSize: 14, flexShrink: 0 }}>✕</button>
-                            </div>
-                          ))}
+                return (
+                  <Card key={day.key} style={{ padding: 0, overflow: "hidden" }}>
+                    <div
+                      onClick={() => setExpandedDay(isExpanded ? null : day.key)}
+                      style={{ padding: isMobile ? "12px 14px" : "14px 18px", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center", background: isExpanded ? "#F9FAFB" : "#fff", borderBottom: isExpanded ? "1px solid #E4E4E7" : "none" }}
+                    >
+                      <div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <span style={{ fontWeight: 700, fontSize: 15 }}>{day.athlete_name}</span>
+                          {(day.week_label || day.day_label) && (
+                            <span style={{ fontSize: 11, fontWeight: 700, color: "#F97316", background: "#FFF7ED", padding: "1px 8px", borderRadius: 4 }}>
+                              {day.week_label ? day.week_label.replace(/WEEK\s*/i, "W").split("—")[0].trim() : ""}{day.day_label ? ` ${day.day_label}` : ""}
+                            </span>
+                          )}
                         </div>
-                      );
-                    })}
-                    {/* Delete entire day */}
-                    {unlogDay && (
-                      <div style={{ marginTop: 8, paddingTop: 10, borderTop: "1px solid #E4E4E7" }}>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            const label = [day.week_label, day.day_label].filter(Boolean).join(" ") || formatDate(day.date);
-                            if (confirm(`Delete ${day.entries.length} logged exercises for ${day.athlete_name} — ${label}?`)) {
-                              unlogDay(day.athlete_id, day.date, day.day_label, day.week_label);
-                              setExpandedDay(null);
-                            }
-                          }}
-                          style={{ width: "100%", padding: "8px", background: "#FEE2E2", color: "#DC2626", border: "none", borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}
-                        >
-                          Delete This Workout ({day.entries.length} exercises)
-                        </button>
+                        <div style={{ fontSize: 12, color: "#71717A", marginTop: 2 }}>
+                          {formatDate(day.date)} · {day.entries.length} exercise{day.entries.length !== 1 ? "s" : ""}
+                        </div>
+                        {showLoggedDate && (
+                          <div style={{ fontSize: 11, color: "#A1A1AA", marginTop: 1 }}>
+                            Logged {formatLoggedAt(day.logged_at)}
+                          </div>
+                        )}
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <div style={{ display: "flex", gap: 4 }}>
+                          {catArray.map(c => <Badge key={c} color={colors[c]?.bg || "#71717A"}>{c}</Badge>)}
+                        </div>
+                        <span style={{ fontSize: 18, color: "#A1A1AA", transition: "transform .2s", transform: isExpanded ? "rotate(180deg)" : "none" }}>▼</span>
+                      </div>
+                    </div>
+
+                    {isExpanded && (
+                      <div style={{ padding: isMobile ? "10px 14px 14px" : "12px 18px 18px" }}>
+                        {cats.filter(c => day.entries.some(e => e.category === c)).map(cat => {
+                          const catEntries = day.entries.filter(e => e.category === cat);
+                          const cc = colors[cat];
+                          return (
+                            <div key={cat} style={{ marginBottom: 12 }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                                <div style={{ width: 4, height: 16, borderRadius: 2, background: cc?.bg || "#999" }} />
+                                <span style={{ fontSize: 12, fontWeight: 700, color: cc?.text || "#52525B", textTransform: "uppercase", letterSpacing: 0.5 }}>{cat}</span>
+                              </div>
+                              {catEntries.map(l => (
+                                <div key={l.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0 6px 12px", borderBottom: "1px solid #F4F4F5", gap: 8 }}>
+                                  <div style={{ flex: 1, minWidth: 0 }}>
+                                    <div style={{ fontWeight: 600, fontSize: 13 }}>{l.exercise_name}</div>
+                                    <div style={{ fontSize: 12, color: "#71717A" }}>
+                                      {[
+                                        l.sets && l.reps ? `${l.sets}×${l.reps}` : l.reps || l.sets || null,
+                                        l.load ? `@ ${l.load}` : null,
+                                        l.rpe ? `RPE ${l.rpe}` : null,
+                                      ].filter(Boolean).join(" · ") || "—"}
+                                    </div>
+                                    {l.notes && <div style={{ fontSize: 11, color: "#A1A1AA", marginTop: 2, fontStyle: "italic" }}>{l.notes}</div>}
+                                  </div>
+                                  <button onClick={(e) => { e.stopPropagation(); if (confirm("Delete this exercise?")) deleteLog(l.id); }} style={{ background: "none", border: "none", cursor: "pointer", color: "#D4D4D8", fontSize: 14, flexShrink: 0 }} title="Delete exercise">✕</button>
+                                </div>
+                              ))}
+                            </div>
+                          );
+                        })}
+                        {unlogDay && (
+                          <div style={{ marginTop: 8, paddingTop: 10, borderTop: "1px solid #E4E4E7" }}>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const label = [day.week_label, day.day_label].filter(Boolean).join(" ") || formatDate(day.date);
+                                if (confirm(`Delete ${day.entries.length} logged exercises for ${day.athlete_name} — ${label}?`)) {
+                                  unlogDay(day.athlete_id, day.date, day.day_label, day.week_label);
+                                  setExpandedDay(null);
+                                }
+                              }}
+                              style={{ width: "100%", padding: "8px", background: "#FEE2E2", color: "#DC2626", border: "none", borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}
+                            >
+                              Delete Entire Workout ({day.entries.length} exercises)
+                            </button>
+                          </div>
+                        )}
                       </div>
                     )}
-                  </div>
-                )}
+                  </Card>
+                );
+              })}
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Exercises Logged Tab */}
+      {tab === "exercises" && (
+        <>
+          {sortedExercises.length === 0 ? <EmptyState icon="◇" title="No exercises logged" sub="Start tracking." /> : (
+            <div>
+              <div style={{ fontSize: 13, color: "#71717A", marginBottom: 12 }}>{sortedExercises.length} total exercises logged</div>
+              <Card style={{ padding: 0, overflow: "hidden" }}>
+                {/* Header */}
+                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr auto" : "1.5fr 1fr 1fr 0.8fr 0.5fr auto", gap: 0, padding: "10px 16px", background: "#F9FAFB", borderBottom: "1px solid #E4E4E7", fontSize: 11, fontWeight: 700, color: "#71717A", textTransform: "uppercase", letterSpacing: 0.5 }}>
+                  <div>Exercise</div>
+                  <div>Athlete</div>
+                  {!isMobile && <div>Date</div>}
+                  {!isMobile && <div>Performance</div>}
+                  {!isMobile && <div>Cat</div>}
+                  <div></div>
+                </div>
+                {sortedExercises.map(l => {
+                  const cc = colors[l.category];
+                  return (
+                    <div key={l.id} style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr auto" : "1.5fr 1fr 1fr 0.8fr 0.5fr auto", gap: 0, padding: "10px 16px", borderBottom: "1px solid #F4F4F5", alignItems: "center", fontSize: 13 }}>
+                      <div>
+                        <div style={{ fontWeight: 600 }}>{l.exercise_name}</div>
+                        {isMobile && (
+                          <div style={{ fontSize: 11, color: "#A1A1AA", marginTop: 1 }}>
+                            {formatDate(l.date)} · {[l.sets && l.reps ? `${l.sets}×${l.reps}` : null, l.load ? `@${l.load}` : null].filter(Boolean).join(" ")}
+                          </div>
+                        )}
+                        {l.notes && <div style={{ fontSize: 11, color: "#A1A1AA", fontStyle: "italic", marginTop: 1 }}>{l.notes}</div>}
+                      </div>
+                      <div style={{ color: "#52525B" }}>{l.athlete_name}</div>
+                      {!isMobile && (
+                        <div style={{ color: "#71717A", fontSize: 12 }}>
+                          {formatDate(l.date)}
+                          {(l.week_label || l.day_label) && (
+                            <div style={{ fontSize: 10, color: "#A1A1AA" }}>
+                              {l.week_label ? l.week_label.replace(/WEEK\s*/i, "W").split("—")[0].trim() : ""} {l.day_label || ""}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      {!isMobile && (
+                        <div style={{ color: "#52525B", fontSize: 12 }}>
+                          {[l.sets && l.reps ? `${l.sets}×${l.reps}` : l.reps || l.sets || null, l.load ? `@ ${l.load}` : null, l.rpe ? `RPE ${l.rpe}` : null].filter(Boolean).join(" · ") || "—"}
+                        </div>
+                      )}
+                      {!isMobile && (
+                        <div>
+                          {l.category && <Badge color={cc?.bg || "#71717A"}>{l.category}</Badge>}
+                        </div>
+                      )}
+                      <div>
+                        <button onClick={() => { if (confirm(`Delete ${l.exercise_name} for ${l.athlete_name}?`)) deleteLog(l.id); }} style={{ background: "none", border: "none", cursor: "pointer", color: "#D4D4D8", fontSize: 14 }} title="Delete exercise">✕</button>
+                      </div>
+                    </div>
+                  );
+                })}
               </Card>
-            );
-          })}
-        </div>
+            </div>
+          )}
+        </>
       )}
 
       <Modal open={modal} onClose={() => setModal(false)} title="Log Workout">
