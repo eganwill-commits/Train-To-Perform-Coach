@@ -69,6 +69,12 @@ export default function AthleteView({ athlete, onLogout }) {
     setLogs(prev => prev.filter(l => !(l.athlete_id === athlete.id && l.date === date && l.day_label === dayLabel)));
   }, [logs, athlete.id]);
 
+  const deleteVideoSub = useCallback(async (id) => {
+    if (!confirm("Delete this video submission?")) return;
+    await supabase.from("video_submissions").delete().eq("id", id);
+    setVideoSubs(prev => prev.filter(v => v.id !== id));
+  }, []);
+
   const nav = (id) => { setPage(id); if (isMobile) setNavOpen(false); };
 
   if (!loaded) return <div className="t2p-root" style={{ display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'DM Sans', sans-serif" }}><p style={{ color: "#71717A" }}>Loading…</p></div>;
@@ -117,9 +123,9 @@ export default function AthleteView({ athlete, onLogout }) {
           </header>
         )}
         <main className="t2p-main" style={{ flex: 1, padding: isMobile ? "12px 10px" : 32, maxWidth: "100%", overflowX: "hidden" }}>
-          {page === "my-program" && <MyProgram programs={programs} exercises={exercises} colors={colors} cats={cats} isMobile={isMobile} athlete={athlete} addLog={addLog} logs={logs} groups={groups} addVideoSub={addVideoSub} />}
+          {page === "my-program" && <MyProgram programs={programs} exercises={exercises} colors={colors} cats={cats} isMobile={isMobile} athlete={athlete} addLog={addLog} logs={logs} groups={groups} addVideoSub={addVideoSub} videoSubs={videoSubs} deleteVideoSub={deleteVideoSub} />}
           {page === "my-logs" && <MyLogs logs={logs} colors={colors} cats={cats} isMobile={isMobile} deleteLog={deleteLog} deleteDayLogs={deleteDayLogs} />}
-          {page === "my-videos" && <MyVideos videoSubs={videoSubs} addVideoSub={addVideoSub} athlete={athlete} exercises={exercises} cats={cats} colors={colors} isMobile={isMobile} />}
+          {page === "my-videos" && <MyVideos videoSubs={videoSubs} addVideoSub={addVideoSub} deleteVideoSub={deleteVideoSub} athlete={athlete} exercises={exercises} cats={cats} colors={colors} isMobile={isMobile} />}
           {page === "ai-chat" && <AIChat isMobile={isMobile} athleteName={athlete.name} />}
         </main>
       </div>
@@ -128,7 +134,7 @@ export default function AthleteView({ athlete, onLogout }) {
 }
 
 
-function MyProgram({ programs, exercises, colors, cats, isMobile, athlete, addLog, logs, groups, addVideoSub }) {
+function MyProgram({ programs, exercises, colors, cats, isMobile, athlete, addLog, logs, groups, addVideoSub, videoSubs, deleteVideoSub }) {
   const [selectedProg, setSelectedProg] = useState(null);
   const [expandedBlock, setExpandedBlock] = useState(null);
   const [aw, setAw] = useState(0);
@@ -439,6 +445,42 @@ function MyProgram({ programs, exercises, colors, cats, isMobile, athlete, addLo
                           )}
                         </div>
                       )}
+
+                      {/* Previous video submissions for this exercise */}
+                      {(() => {
+                        const exName = getDisplayName(block);
+                        const exVideos = (videoSubs || []).filter(v => v.exercise_name === exName);
+                        if (exVideos.length === 0) return null;
+                        const statusColors = { pending: { bg: "#FFF7ED", color: "#F97316", label: "Pending Review" }, reviewed: { bg: "#F0FDF4", color: "#16A34A", label: "Reviewed ✓" }, "needs-work": { bg: "#FEF2F2", color: "#DC2626", label: "Needs Work" } };
+                        return (
+                          <div style={{ marginTop: 10, paddingTop: 8, borderTop: "1px dashed #D4D4D8" }}>
+                            <div style={{ fontSize: 10, fontWeight: 700, color: "#71717A", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 6 }}>My Submissions ({exVideos.length})</div>
+                            {exVideos.map(v => {
+                              const sc = statusColors[v.status] || statusColors.pending;
+                              return (
+                                <div key={v.id} style={{ padding: "8px", background: "#F9FAFB", borderRadius: 8, border: "1px solid #E4E4E7", marginBottom: 6 }}>
+                                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                                    <a href={v.video_url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, color: "#2563EB", fontWeight: 600, textDecoration: "none" }}>▶ Watch Video</a>
+                                    <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                                      <span style={{ fontSize: 10, fontWeight: 600, color: sc.color, background: sc.bg, padding: "2px 8px", borderRadius: 4 }}>{sc.label}</span>
+                                      {deleteVideoSub && <button onClick={() => deleteVideoSub(v.id)} style={{ background: "none", border: "none", cursor: "pointer", color: "#D4D4D8", fontSize: 14 }} title="Delete video">✕</button>}
+                                    </div>
+                                  </div>
+                                  <div style={{ fontSize: 11, color: "#A1A1AA" }}>
+                                    {new Date(v.date || v.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                                  </div>
+                                  {v.coach_feedback && (
+                                    <div style={{ marginTop: 4, padding: "6px 8px", background: "#fff", borderRadius: 6, border: "1px solid #E4E4E7" }}>
+                                      <div style={{ fontSize: 10, color: "#A1A1AA", textTransform: "uppercase", marginBottom: 2 }}>Coach Feedback</div>
+                                      <div style={{ fontSize: 12, color: "#18181B", whiteSpace: "pre-wrap" }}>{v.coach_feedback}</div>
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        );
+                      })()}
                     </div>
                   )}
                 </div>
@@ -755,7 +797,7 @@ function MyLogs({ logs, colors, cats, isMobile, deleteLog, deleteDayLogs }) {
   );
 }
 
-function MyVideos({ videoSubs, addVideoSub, athlete, exercises, cats, colors, isMobile }) {
+function MyVideos({ videoSubs, addVideoSub, deleteVideoSub, athlete, exercises, cats, colors, isMobile }) {
   const [modal, setModal] = useState(false);
   const [form, setForm] = useState({ exercise_name: "", video_url: "", notes: "" });
   const [uploadMode, setUploadMode] = useState("upload"); // "upload" or "link"
@@ -838,9 +880,12 @@ function MyVideos({ videoSubs, addVideoSub, athlete, exercises, cats, colors, is
                   <div style={{ fontWeight: 700, fontSize: 15 }}>{v.exercise_name || "Movement Video"}</div>
                   <div style={{ fontSize: 12, color: "#71717A", marginTop: 2 }}>{new Date(v.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</div>
                 </div>
-                <span style={{ fontSize: 12, fontWeight: 700, color: statusColor[v.status] || "#71717A", background: `${statusColor[v.status] || "#71717A"}15`, padding: "3px 10px", borderRadius: 999 }}>
-                  {statusLabel[v.status] || v.status}
-                </span>
+                <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: statusColor[v.status] || "#71717A", background: `${statusColor[v.status] || "#71717A"}15`, padding: "3px 10px", borderRadius: 999 }}>
+                    {statusLabel[v.status] || v.status}
+                  </span>
+                  {deleteVideoSub && <button onClick={() => deleteVideoSub(v.id)} style={{ background: "none", border: "none", cursor: "pointer", color: "#D4D4D8", fontSize: 16 }} title="Delete video">✕</button>}
+                </div>
               </div>
               <a href={v.video_url} target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 13, color: "#fff", background: "#2563EB", textDecoration: "none", fontWeight: 700, padding: "5px 14px", borderRadius: 999, marginTop: 10 }}>▶ Watch Video</a>
               {v.notes && <div style={{ fontSize: 13, color: "#52525B", marginTop: 8, fontStyle: "italic" }}>{v.notes}</div>}

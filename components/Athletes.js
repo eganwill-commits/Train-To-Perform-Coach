@@ -234,7 +234,7 @@ export default function Athletes({ athletes, addAthlete, updateAthlete, deleteAt
                       </div>
                       <div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0 }}>
                         <a href={v.video_url} target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, color: "#fff", background: "#2563EB", textDecoration: "none", fontWeight: 700, padding: "4px 12px", borderRadius: 999 }}>▶ Watch</a>
-                        <button onClick={() => deleteVideoSub(v.id)} style={{ background: "none", border: "none", cursor: "pointer", color: "#D4D4D8", fontSize: 14 }}>✕</button>
+                        <button onClick={() => { if (confirm("Delete this video submission?")) deleteVideoSub(v.id); }} style={{ background: "none", border: "none", cursor: "pointer", color: "#D4D4D8", fontSize: 14 }} title="Delete video">✕</button>
                       </div>
                     </div>
                     {/* Coach feedback area */}
