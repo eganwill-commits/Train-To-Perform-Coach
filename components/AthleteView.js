@@ -19,6 +19,7 @@ export default function AthleteView({ athlete, onLogout }) {
   const [exercises, setExercises] = useState([]);
   const [logs, setLogs] = useState([]);
   const [videoSubs, setVideoSubs] = useState([]);
+  const [groups, setGroups] = useState([]);
   const [loaded, setLoaded] = useState(false);
   const [navOpen, setNavOpen] = useState(false);
   const isMobile = useIsMobile();
@@ -27,16 +28,18 @@ export default function AthleteView({ athlete, onLogout }) {
 
   useEffect(() => {
     async function load() {
-      const [pRes, eRes, lRes, vRes] = await Promise.all([
+      const [pRes, eRes, lRes, vRes, gRes] = await Promise.all([
         supabase.from("programs").select("*").eq("athlete_id", athlete.id),
         supabase.from("exercises").select("*"),
         supabase.from("logs").select("*").eq("athlete_id", athlete.id).order("date", { ascending: false }),
         supabase.from("video_submissions").select("*").eq("athlete_id", athlete.id).order("created_at", { ascending: false }),
+        supabase.from("program_groups").select("*"),
       ]);
       setPrograms(pRes.data || []);
       setExercises(eRes.data || []);
       setLogs(lRes.data || []);
       setVideoSubs(vRes.data || []);
+      setGroups(gRes.data || []);
       setLoaded(true);
     }
     load();
@@ -114,7 +117,7 @@ export default function AthleteView({ athlete, onLogout }) {
           </header>
         )}
         <main className="t2p-main" style={{ flex: 1, padding: isMobile ? "12px 10px" : 32, maxWidth: "100%", overflowX: "hidden" }}>
-          {page === "my-program" && <MyProgram programs={programs} exercises={exercises} colors={colors} cats={cats} isMobile={isMobile} athlete={athlete} addLog={addLog} logs={logs} />}
+          {page === "my-program" && <MyProgram programs={programs} exercises={exercises} colors={colors} cats={cats} isMobile={isMobile} athlete={athlete} addLog={addLog} logs={logs} groups={groups} />}
           {page === "log" && <AthleteLog addLog={addLog} athlete={athlete} exercises={exercises} cats={cats} colors={colors} isMobile={isMobile} programs={programs} logs={logs} />}
           {page === "my-logs" && <MyLogs logs={logs} colors={colors} cats={cats} isMobile={isMobile} deleteLog={deleteLog} deleteDayLogs={deleteDayLogs} />}
           {page === "my-videos" && <MyVideos videoSubs={videoSubs} addVideoSub={addVideoSub} athlete={athlete} exercises={exercises} cats={cats} colors={colors} isMobile={isMobile} />}
@@ -126,7 +129,7 @@ export default function AthleteView({ athlete, onLogout }) {
 }
 
 
-function MyProgram({ programs, exercises, colors, cats, isMobile, athlete, addLog, logs }) {
+function MyProgram({ programs, exercises, colors, cats, isMobile, athlete, addLog, logs, groups }) {
   const [selectedProg, setSelectedProg] = useState(null);
   const [expandedBlock, setExpandedBlock] = useState(null);
   const [aw, setAw] = useState(0);
@@ -191,10 +194,14 @@ function MyProgram({ programs, exercises, colors, cats, isMobile, athlete, addLo
               const wks = p.weeks || [];
               const completed = wks.filter(w => w.status === "completed").length;
               const missed = wks.filter(w => w.status === "missed").length;
+              const grp = (groups || []).find(g => g.id === p.group_id);
               return (
                 <Card key={p.id} onClick={() => setSelectedProg(p.id)} style={{ cursor: "pointer" }}>
                   <div style={{ fontWeight: 700, fontSize: 18 }}>{p.name}</div>
-                  <div style={{ fontSize: 13, color: "#71717A", marginTop: 4 }}>{wks.length} weeks</div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4 }}>
+                    <span style={{ fontSize: 13, color: "#71717A" }}>{wks.length} weeks</span>
+                    {grp && <Badge color="#16A34A">{grp.name}</Badge>}
+                  </div>
                   {p.description && <p style={{ fontSize: 13, color: "#52525B", marginTop: 8 }}>{p.description}</p>}
                   {wks.length > 0 && (
                     <div style={{ marginTop: 10 }}>
@@ -221,6 +228,7 @@ function MyProgram({ programs, exercises, colors, cats, isMobile, athlete, addLo
     <div style={{ maxWidth: "100%", overflowX: "hidden" }}>
       <button onClick={() => setSelectedProg(null)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 14, color: "#71717A", marginBottom: 8, fontFamily: "inherit" }}>← Back</button>
       <h2 style={{ margin: "0 0 6px", fontSize: isMobile ? 16 : 24, fontFamily: "'Space Mono', monospace", wordBreak: "break-word", lineHeight: 1.3 }}>{prog.name}</h2>
+      {(() => { const grp = (groups || []).find(g => g.id === prog.group_id); return grp ? <div style={{ marginBottom: 6 }}><Badge color="#16A34A">{grp.name}</Badge></div> : null; })()}
       {prog.description && <p style={{ color: "#71717A", fontSize: 12, margin: "0 0 10px" }}>{prog.description}</p>}
       {saved && <div style={{ background: "#F0FDF4", color: "#16A34A", padding: "10px 14px", borderRadius: 8, marginBottom: 10, fontWeight: 600, fontSize: 14 }}>Workout logged!</div>}
 
