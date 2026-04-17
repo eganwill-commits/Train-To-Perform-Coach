@@ -555,7 +555,18 @@ function ProgramDetail({ program, exercises, cats, colors, addBlock, updateBlock
 
               {/* Coach Notes for the day */}
               <div style={{ marginTop: 10, padding: "8px 10px", background: "#FFFBEB", borderRadius: 8, border: "1px solid #FDE68A" }}>
-                <label style={{ fontSize: 11, fontWeight: 700, color: "#92400E", textTransform: "uppercase", letterSpacing: 0.5, display: "block", marginBottom: 4 }}>Coach Notes</label>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                  <label style={{ fontSize: 11, fontWeight: 700, color: "#92400E", textTransform: "uppercase", letterSpacing: 0.5 }}>Coach Notes</label>
+                  <label style={{ display: "flex", alignItems: "center", gap: 4, cursor: "pointer", fontSize: 11, color: day.coachNotesShared ? "#1E40AF" : "#A1A1AA", fontWeight: 600 }}>
+                    <input
+                      type="checkbox"
+                      checked={!!day.coachNotesShared}
+                      onChange={e => updateDayField(aw, di, "coachNotesShared", e.target.checked)}
+                      style={{ accentColor: "#2563EB", cursor: "pointer" }}
+                    />
+                    Share with athlete
+                  </label>
+                </div>
                 <BlurInput
                   value={day.coachNotes || ""}
                   onSave={v => updateDayField(aw, di, "coachNotes", v)}

@@ -314,6 +314,14 @@ function MyProgram({ programs, exercises, colors, cats, isMobile, athlete, addLo
               );
             })}
 
+            {/* Shared Coach Notes */}
+            {day.coachNotes && day.coachNotesShared && (
+              <div style={{ marginTop: 8, padding: "8px 10px", background: "#FFFBEB", borderRadius: 8, border: "1px solid #FDE68A" }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#92400E", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 3 }}>📝 Coach Notes</div>
+                <div style={{ fontSize: 13, color: "#78350F", whiteSpace: "pre-wrap", lineHeight: 1.4 }}>{day.coachNotes}</div>
+              </div>
+            )}
+
             {/* Log day button */}
             {day.blocks.length > 0 && addLog && (
               <div style={{ marginTop: 6 }}>
