@@ -118,7 +118,6 @@ export default function AthleteView({ athlete, onLogout }) {
         )}
         <main className="t2p-main" style={{ flex: 1, padding: isMobile ? "12px 10px" : 32, maxWidth: "100%", overflowX: "hidden" }}>
           {page === "my-program" && <MyProgram programs={programs} exercises={exercises} colors={colors} cats={cats} isMobile={isMobile} athlete={athlete} addLog={addLog} logs={logs} groups={groups} />}
-          {page === "log" && <AthleteLog addLog={addLog} athlete={athlete} exercises={exercises} cats={cats} colors={colors} isMobile={isMobile} programs={programs} logs={logs} />}
           {page === "my-logs" && <MyLogs logs={logs} colors={colors} cats={cats} isMobile={isMobile} deleteLog={deleteLog} deleteDayLogs={deleteDayLogs} />}
           {page === "my-videos" && <MyVideos videoSubs={videoSubs} addVideoSub={addVideoSub} athlete={athlete} exercises={exercises} cats={cats} colors={colors} isMobile={isMobile} />}
           {page === "ai-chat" && <AIChat isMobile={isMobile} athleteName={athlete.name} />}
@@ -195,6 +194,21 @@ function MyProgram({ programs, exercises, colors, cats, isMobile, athlete, addLo
               const completed = wks.filter(w => w.status === "completed").length;
               const missed = wks.filter(w => w.status === "missed").length;
               const grp = (groups || []).find(g => g.id === p.group_id);
+              // Session-level stats
+              let compSessions = 0, missSessions = 0, totalSessions = 0;
+              wks.forEach(w => {
+                (w.days || []).forEach(d => {
+                  if (d.blocks && d.blocks.length > 0) {
+                    totalSessions++;
+                    const ds = d.status || w.status || "";
+                    if (ds === "completed") compSessions++;
+                    else if (ds === "missed") missSessions++;
+                  }
+                });
+              });
+              const tracked = compSessions + missSessions;
+              const attendancePct = tracked > 0 ? Math.round((compSessions / tracked) * 100) : null;
+              const completionPct = totalSessions > 0 ? Math.round((compSessions / totalSessions) * 100) : 0;
               return (
                 <Card key={p.id} onClick={() => setSelectedProg(p.id)} style={{ cursor: "pointer" }}>
                   <div style={{ fontWeight: 700, fontSize: 18 }}>{p.name}</div>
@@ -203,8 +217,23 @@ function MyProgram({ programs, exercises, colors, cats, isMobile, athlete, addLo
                     {grp && <Badge color="#16A34A">{grp.name}</Badge>}
                   </div>
                   {p.description && <p style={{ fontSize: 13, color: "#52525B", marginTop: 8 }}>{p.description}</p>}
+                  {/* Stats row */}
+                  {totalSessions > 0 && (
+                    <div style={{ display: "flex", gap: 12, marginTop: 10 }}>
+                      {attendancePct !== null && (
+                        <div style={{ textAlign: "center", flex: 1, padding: "8px", background: "#F9FAFB", borderRadius: 8 }}>
+                          <div style={{ fontSize: 20, fontWeight: 700, color: attendancePct >= 80 ? "#16A34A" : attendancePct >= 50 ? "#F97316" : "#DC2626" }}>{attendancePct}%</div>
+                          <div style={{ fontSize: 10, color: "#A1A1AA", textTransform: "uppercase", letterSpacing: 0.3 }}>Attendance</div>
+                        </div>
+                      )}
+                      <div style={{ textAlign: "center", flex: 1, padding: "8px", background: "#F9FAFB", borderRadius: 8 }}>
+                        <div style={{ fontSize: 20, fontWeight: 700, color: "#52525B" }}>{completionPct}%</div>
+                        <div style={{ fontSize: 10, color: "#A1A1AA", textTransform: "uppercase", letterSpacing: 0.3 }}>Completed</div>
+                      </div>
+                    </div>
+                  )}
                   {wks.length > 0 && (
-                    <div style={{ marginTop: 10 }}>
+                    <div style={{ marginTop: 8 }}>
                       <div style={{ display: "flex", gap: 2 }}>
                         {wks.map((w, i) => <div key={i} style={{ flex: 1, height: 6, borderRadius: 3, background: w.status === "completed" ? "#16A34A" : w.status === "missed" ? "#DC2626" : "#E4E4E7" }} />)}
                       </div>
@@ -230,6 +259,42 @@ function MyProgram({ programs, exercises, colors, cats, isMobile, athlete, addLo
       <h2 style={{ margin: "0 0 6px", fontSize: isMobile ? 16 : 24, fontFamily: "'Space Mono', monospace", wordBreak: "break-word", lineHeight: 1.3 }}>{prog.name}</h2>
       {(() => { const grp = (groups || []).find(g => g.id === prog.group_id); return grp ? <div style={{ marginBottom: 6 }}><Badge color="#16A34A">{grp.name}</Badge></div> : null; })()}
       {prog.description && <p style={{ color: "#71717A", fontSize: 12, margin: "0 0 10px" }}>{prog.description}</p>}
+
+      {/* Attendance & Completion stats */}
+      {(() => {
+        let cs = 0, ms = 0, ts = 0;
+        (prog.weeks || []).forEach(w => {
+          (w.days || []).forEach(d => {
+            if (d.blocks && d.blocks.length > 0) {
+              ts++;
+              const ds = d.status || w.status || "";
+              if (ds === "completed") cs++;
+              else if (ds === "missed") ms++;
+            }
+          });
+        });
+        const tr = cs + ms;
+        if (ts === 0) return null;
+        return (
+          <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
+            {tr > 0 && (
+              <div style={{ flex: 1, textAlign: "center", padding: "8px", background: "#F9FAFB", borderRadius: 8, border: "1px solid #E4E4E7" }}>
+                <div style={{ fontSize: 20, fontWeight: 700, color: Math.round((cs / tr) * 100) >= 80 ? "#16A34A" : "#F97316" }}>{Math.round((cs / tr) * 100)}%</div>
+                <div style={{ fontSize: 10, color: "#A1A1AA", textTransform: "uppercase", letterSpacing: 0.3 }}>Attendance</div>
+              </div>
+            )}
+            <div style={{ flex: 1, textAlign: "center", padding: "8px", background: "#F9FAFB", borderRadius: 8, border: "1px solid #E4E4E7" }}>
+              <div style={{ fontSize: 20, fontWeight: 700, color: "#52525B" }}>{Math.round((cs / ts) * 100)}%</div>
+              <div style={{ fontSize: 10, color: "#A1A1AA", textTransform: "uppercase", letterSpacing: 0.3 }}>Program Completed</div>
+            </div>
+            <div style={{ flex: 1, textAlign: "center", padding: "8px", background: "#F9FAFB", borderRadius: 8, border: "1px solid #E4E4E7" }}>
+              <div style={{ fontSize: 20, fontWeight: 700, color: "#52525B" }}>{cs}<span style={{ fontSize: 13, fontWeight: 400, color: "#A1A1AA" }}>/{ts}</span></div>
+              <div style={{ fontSize: 10, color: "#A1A1AA", textTransform: "uppercase", letterSpacing: 0.3 }}>Sessions Done</div>
+            </div>
+          </div>
+        );
+      })()}
+
       {saved && <div style={{ background: "#F0FDF4", color: "#16A34A", padding: "10px 14px", borderRadius: 8, marginBottom: 10, fontWeight: 600, fontSize: 14 }}>Workout logged!</div>}
 
       {/* Week tabs — current and past only */}
@@ -256,12 +321,21 @@ function MyProgram({ programs, exercises, colors, cats, isMobile, athlete, addLo
       })()}
 
       {week && week.days.map(day => {
+        const dayStatus = day.status || week.status || "";
         const dayLogged = (logs || []).some(l => l.athlete_id === athlete.id && l.date === new Date().toISOString().slice(0, 10) && l.day_label === day.label && l.week_label === week.label);
         return (
-          <Card key={day.id} style={{ padding: isMobile ? 10 : 14, marginBottom: 10, overflow: "hidden" }}>
+          <Card key={day.id} style={{ padding: isMobile ? 10 : 14, marginBottom: 10, overflow: "hidden", border: dayStatus === "completed" ? "2px solid #16A34A" : dayStatus === "missed" ? "2px solid #DC2626" : "1px solid #E4E4E7", background: dayStatus === "missed" ? "#FEF2F218" : "#fff" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-              <h4 style={{ margin: 0, fontSize: 15 }}>{day.label}</h4>
-              <span style={{ fontSize: 11, color: "#A1A1AA" }}>{day.blocks.length} exercises</span>
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                {dayStatus === "completed" && <span style={{ color: "#16A34A", fontWeight: 700, fontSize: 14 }}>✓</span>}
+                {dayStatus === "missed" && <span style={{ color: "#DC2626", fontWeight: 700, fontSize: 14 }}>✗</span>}
+                <h4 style={{ margin: 0, fontSize: 15 }}>{day.label}</h4>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                {dayStatus === "missed" && <span style={{ fontSize: 11, fontWeight: 600, color: "#DC2626" }}>Missed</span>}
+                {dayStatus === "completed" && <span style={{ fontSize: 11, fontWeight: 600, color: "#16A34A" }}>Done</span>}
+                <span style={{ fontSize: 11, color: "#A1A1AA" }}>{day.blocks.length} exercises</span>
+              </div>
             </div>
 
             {day.blocks.map(block => {
@@ -333,8 +407,10 @@ function MyProgram({ programs, exercises, colors, cats, isMobile, athlete, addLo
             {/* Log day button */}
             {day.blocks.length > 0 && addLog && (
               <div style={{ marginTop: 6 }}>
-                {dayLogged ? (
-                  <div style={{ background: "#F0FDF4", padding: "8px", borderRadius: 6, fontSize: 13, color: "#16A34A", fontWeight: 600, textAlign: "center" }}>✓ Logged today</div>
+                {dayStatus === "missed" ? (
+                  <div style={{ background: "#FEF2F2", padding: "8px", borderRadius: 6, fontSize: 13, color: "#DC2626", fontWeight: 600, textAlign: "center" }}>✗ Session missed</div>
+                ) : dayLogged || dayStatus === "completed" ? (
+                  <div style={{ background: "#F0FDF4", padding: "8px", borderRadius: 6, fontSize: 13, color: "#16A34A", fontWeight: 600, textAlign: "center" }}>✓ {dayLogged ? "Logged today" : "Completed"}</div>
                 ) : (
                   <button onClick={() => submitDay(day, week.label)} disabled={submitting === day.id} style={{ width: "100%", padding: "10px", background: "#18181B", color: "#fff", border: "none", borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: submitting === day.id ? "default" : "pointer", fontFamily: "inherit", opacity: submitting === day.id ? 0.5 : 1 }}>
                     {submitting === day.id ? "Logging…" : `Log ${day.label}`}
