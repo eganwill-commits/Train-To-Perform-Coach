@@ -153,6 +153,12 @@ export default function Programs({ programs, addProgram, updateProgram, deletePr
     await updateProgram(ap.id, { weeks });
   };
 
+  const updateDayField = async (wi, di, field, value) => {
+    const weeks = JSON.parse(JSON.stringify(ap.weeks));
+    weeks[wi].days[di][field] = value;
+    await updateProgram(ap.id, { weeks });
+  };
+
   const moveBlock = async (wi, di, bi, direction) => {
     const weeks = JSON.parse(JSON.stringify(ap.weeks));
     const blocks = weeks[wi].days[di].blocks;
@@ -275,6 +281,12 @@ function ProgramDetail({ program, exercises, cats, colors, addBlock, updateBlock
     const weeks = JSON.parse(JSON.stringify(program.weeks));
     const day = weeks[weekIndex].days[dayIndex];
     day.status = day.status === status ? "" : status;
+    await updateProgram(program.id, { weeks });
+  };
+
+  const updateWeekField = async (weekIndex, field, value) => {
+    const weeks = JSON.parse(JSON.stringify(program.weeks));
+    weeks[weekIndex][field] = value;
     await updateProgram(program.id, { weeks });
   };
 
@@ -541,6 +553,18 @@ function ProgramDetail({ program, exercises, cats, colors, addBlock, updateBlock
                 </div>
               )}
 
+              {/* Coach Notes for the day */}
+              <div style={{ marginTop: 10, padding: "8px 10px", background: "#FFFBEB", borderRadius: 8, border: "1px solid #FDE68A" }}>
+                <label style={{ fontSize: 11, fontWeight: 700, color: "#92400E", textTransform: "uppercase", letterSpacing: 0.5, display: "block", marginBottom: 4 }}>Coach Notes</label>
+                <BlurInput
+                  value={day.coachNotes || ""}
+                  onSave={v => updateDayField(aw, di, "coachNotes", v)}
+                  placeholder="Notes for the day — warm-up reminders, focus areas, recovery tips…"
+                  multiline
+                  style={{ width: "100%", padding: "6px 8px", border: "1px solid #FDE68A", borderRadius: 6, fontSize: 13, fontFamily: "inherit", boxSizing: "border-box", background: "#fff", minHeight: 48, resize: "vertical" }}
+                />
+              </div>
+
               {/* Day status buttons */}
               <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
                 <button onClick={() => setDayStatus(aw, di, "completed")} style={{ flex: 1, padding: "5px", borderRadius: 6, border: day.status === "completed" ? "2px solid #16A34A" : "1px solid #E4E4E7", background: day.status === "completed" ? "#F0FDF4" : "#fff", color: day.status === "completed" ? "#16A34A" : "#A1A1AA", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>
@@ -553,6 +577,18 @@ function ProgramDetail({ program, exercises, cats, colors, addBlock, updateBlock
             </Card>
           );
         })}
+      </div>
+
+      {/* Weekly Recap */}
+      <div style={{ marginTop: 16, padding: "14px 16px", background: "#EFF6FF", borderRadius: 10, border: "1px solid #BFDBFE" }}>
+        <label style={{ fontSize: 12, fontWeight: 700, color: "#1E40AF", textTransform: "uppercase", letterSpacing: 0.5, display: "block", marginBottom: 6 }}>📋 Weekly Recap — {week.label}</label>
+        <BlurInput
+          value={week.coachRecap || ""}
+          onSave={v => updateWeekField(aw, "coachRecap", v)}
+          placeholder="Summarize the week — what went well, areas to improve, notes for the athlete…"
+          multiline
+          style={{ width: "100%", padding: "8px 10px", border: "1px solid #BFDBFE", borderRadius: 8, fontSize: 13, fontFamily: "inherit", boxSizing: "border-box", background: "#fff", minHeight: 64, resize: "vertical", lineHeight: 1.5 }}
+        />
       </div>
 
       {/* Copy modal */}

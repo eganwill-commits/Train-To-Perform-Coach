@@ -80,9 +80,10 @@ export function SearchableSelect({ label, value, onChange, options, placeholder 
 export function Card({ children, style = {}, onClick }) { return <div onClick={onClick} style={{ background: "#fff", borderRadius: 12, border: "1px solid #E4E4E7", padding: 20, cursor: onClick ? "pointer" : "default", ...style }}>{children}</div>; }
 export function Modal({ open, onClose, title, children }) { if (!open) return null; return <div style={{ position: "fixed", inset: 0, zIndex: 1200, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,.45)", padding: 12 }} onClick={onClose}><div onClick={e => e.stopPropagation()} style={{ background: "#fff", borderRadius: 16, width: 480, maxWidth: "95vw", maxHeight: "85vh", overflow: "auto", padding: 24 }}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}><h2 style={{ margin: 0, fontSize: 20 }}>{title}</h2><button onClick={onClose} style={{ background: "none", border: "none", fontSize: 22, cursor: "pointer", color: "#71717A" }}>✕</button></div>{children}</div></div>; }
 export function EmptyState({ icon, title, sub, action, onAction }) { return <div style={{ textAlign: "center", padding: "60px 20px", color: "#71717A" }}><div style={{ fontSize: 48, marginBottom: 12 }}>{icon}</div><h3 style={{ margin: 0, color: "#18181B", fontSize: 18 }}>{title}</h3><p style={{ fontSize: 14, marginTop: 6 }}>{sub}</p>{action && <Btn onClick={onAction} style={{ marginTop: 16 }}>{action}</Btn>}</div>; }
-export function BlurInput({ value, onSave, ...props }) {
+export function BlurInput({ value, onSave, multiline, ...props }) {
   const [local, setLocal] = useState(value ?? "");
   const prev = useRef(value);
   useEffect(() => { if (value !== prev.current) { setLocal(value ?? ""); prev.current = value; } }, [value]);
-  return <input {...props} value={local} onChange={e => setLocal(e.target.value)} onBlur={() => { if (local !== (value ?? "")) onSave(local); }} />;
+  const shared = { ...props, value: local, onChange: e => setLocal(e.target.value), onBlur: () => { if (local !== (value ?? "")) onSave(local); } };
+  return multiline ? <textarea {...shared} /> : <input {...shared} />;
 }

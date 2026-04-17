@@ -63,9 +63,11 @@ function buildCoachContext(athletes, programs, logs, exercises, baselines, video
               const exName = b.exerciseName || (exercises || []).find(e => e.id === b.exerciseId)?.name || "?";
               return `${b.category} ${exName} ${b.sets || ""}×${b.reps || ""}${b.load ? ` @${b.load}` : ""}`;
             }).join(" | ");
+            if (d.coachNotes) ctx += ` [Coach: ${d.coachNotes}]`;
             ctx += "\n";
           }
         });
+        if (cw.coachRecap) ctx += `  Weekly Recap: ${cw.coachRecap}\n`;
       }
     });
     const recentLogs = (logs || []).filter(l => l.athlete_id === a.id && (new Date() - new Date(l.date)) / 86400000 < 14);

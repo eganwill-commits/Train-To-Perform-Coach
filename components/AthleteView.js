@@ -329,6 +329,14 @@ function MyProgram({ programs, exercises, colors, cats, isMobile, athlete, addLo
           </Card>
         );
       })}
+
+      {/* Weekly Recap from coach */}
+      {week.coachRecap && (
+        <div style={{ marginTop: 12, padding: "12px 14px", background: "#EFF6FF", borderRadius: 10, border: "1px solid #BFDBFE" }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "#1E40AF", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 4 }}>📋 Weekly Recap</div>
+          <div style={{ fontSize: 13, color: "#1E3A5F", whiteSpace: "pre-wrap", lineHeight: 1.5 }}>{week.coachRecap}</div>
+        </div>
+      )}
     </div>
   );
 }
