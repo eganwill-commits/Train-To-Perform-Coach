@@ -117,7 +117,7 @@ export default function AthleteView({ athlete, onLogout }) {
           </header>
         )}
         <main className="t2p-main" style={{ flex: 1, padding: isMobile ? "12px 10px" : 32, maxWidth: "100%", overflowX: "hidden" }}>
-          {page === "my-program" && <MyProgram programs={programs} exercises={exercises} colors={colors} cats={cats} isMobile={isMobile} athlete={athlete} addLog={addLog} logs={logs} groups={groups} />}
+          {page === "my-program" && <MyProgram programs={programs} exercises={exercises} colors={colors} cats={cats} isMobile={isMobile} athlete={athlete} addLog={addLog} logs={logs} groups={groups} addVideoSub={addVideoSub} />}
           {page === "my-logs" && <MyLogs logs={logs} colors={colors} cats={cats} isMobile={isMobile} deleteLog={deleteLog} deleteDayLogs={deleteDayLogs} />}
           {page === "my-videos" && <MyVideos videoSubs={videoSubs} addVideoSub={addVideoSub} athlete={athlete} exercises={exercises} cats={cats} colors={colors} isMobile={isMobile} />}
           {page === "ai-chat" && <AIChat isMobile={isMobile} athleteName={athlete.name} />}
@@ -128,13 +128,45 @@ export default function AthleteView({ athlete, onLogout }) {
 }
 
 
-function MyProgram({ programs, exercises, colors, cats, isMobile, athlete, addLog, logs, groups }) {
+function MyProgram({ programs, exercises, colors, cats, isMobile, athlete, addLog, logs, groups, addVideoSub }) {
   const [selectedProg, setSelectedProg] = useState(null);
   const [expandedBlock, setExpandedBlock] = useState(null);
   const [aw, setAw] = useState(0);
   const [blockResults, setBlockResults] = useState({});
   const [submitting, setSubmitting] = useState(null);
   const [saved, setSaved] = useState(false);
+  const [uploadingVideo, setUploadingVideo] = useState(null); // block.id being uploaded
+  const [videoSuccess, setVideoSuccess] = useState(null); // block.id that succeeded
+
+  const handleVideoUpload = async (file, block) => {
+    if (!file || !addVideoSub) return;
+    const maxSize = 100 * 1024 * 1024;
+    if (file.size > maxSize) { alert("Video must be under 100MB"); return; }
+    setUploadingVideo(block.id);
+    try {
+      const ext = file.name.split(".").pop() || "mp4";
+      const fileName = `${athlete.id}_${Date.now()}.${ext}`;
+      const { error: upErr } = await supabase.storage.from("videos").upload(fileName, file);
+      if (upErr) { alert("Upload failed: " + upErr.message); setUploadingVideo(null); return; }
+      const { data: urlData } = supabase.storage.from("videos").getPublicUrl(fileName);
+      const exName = getDisplayName(block);
+      await addVideoSub({
+        athlete_id: athlete.id,
+        athlete_name: athlete.name,
+        exercise_name: exName,
+        video_url: urlData.publicUrl,
+        notes: "",
+        date: new Date().toISOString().slice(0, 10),
+        status: "pending",
+      });
+      setUploadingVideo(null);
+      setVideoSuccess(block.id);
+      setTimeout(() => setVideoSuccess(null), 3000);
+    } catch (err) {
+      alert("Upload error: " + err.message);
+      setUploadingVideo(null);
+    }
+  };
 
   const prog = programs.find(p => p.id === selectedProg);
 
@@ -390,6 +422,23 @@ function MyProgram({ programs, exercises, colors, cats, isMobile, athlete, addLo
                         </div>
                         <label style={{ fontSize: 10, color: "#71717A", display: "block", marginTop: 6 }}>Notes<input value={result.notes ?? ""} onChange={e => updateResult(block.id, "notes", e.target.value)} placeholder="How did it feel?" style={inputStyle} /></label>
                       </div>
+
+                      {/* Submit Video */}
+                      {addVideoSub && (
+                        <div style={{ marginTop: 10, paddingTop: 8, borderTop: "1px dashed #D4D4D8" }}>
+                          <div style={{ fontSize: 10, fontWeight: 700, color: "#71717A", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 6 }}>Submit Form Video</div>
+                          {videoSuccess === block.id ? (
+                            <div style={{ background: "#F0FDF4", padding: "8px 10px", borderRadius: 6, fontSize: 12, color: "#16A34A", fontWeight: 600, textAlign: "center" }}>✓ Video submitted for review!</div>
+                          ) : uploadingVideo === block.id ? (
+                            <div style={{ background: "#EFF6FF", padding: "8px 10px", borderRadius: 6, fontSize: 12, color: "#2563EB", fontWeight: 600, textAlign: "center" }}>Uploading…</div>
+                          ) : (
+                            <label style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "10px", border: "1px dashed #BFDBFE", borderRadius: 8, background: "#F8FAFF", cursor: "pointer", fontSize: 13, fontWeight: 600, color: "#2563EB" }}>
+                              <span>🎥</span> Record or Choose Video
+                              <input type="file" accept="video/*" onChange={e => { const f = e.target.files?.[0]; if (f) handleVideoUpload(f, block); e.target.value = ""; }} style={{ display: "none" }} />
+                            </label>
+                          )}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -584,6 +633,9 @@ function AthleteLog({ addLog, athlete, exercises, cats, colors, isMobile, progra
 
 function MyLogs({ logs, colors, cats, isMobile, deleteLog, deleteDayLogs }) {
   const [expandedDay, setExpandedDay] = useState(null);
+  const [expandedExercise, setExpandedExercise] = useState(null);
+
+  const formatDate = (d) => new Date(d + "T12:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
 
   // Group logs by date + day_label
   const grouped = {};
@@ -605,12 +657,10 @@ function MyLogs({ logs, colors, cats, isMobile, deleteLog, deleteDayLogs }) {
             const catArray = Array.from(day.categories);
             return (
               <Card key={`${day.date}-${day.day_label}`} style={{ padding: 0, overflow: "hidden" }}>
-                <div onClick={() => setExpandedDay(isExpanded ? null : `${day.date}-${day.day_label}`)} style={{ padding: "12px 16px", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center", background: isExpanded ? "#F9FAFB" : "#fff", borderBottom: isExpanded ? "1px solid #E4E4E7" : "none" }}>
+                <div onClick={() => { setExpandedDay(isExpanded ? null : `${day.date}-${day.day_label}`); setExpandedExercise(null); }} style={{ padding: "12px 16px", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center", background: isExpanded ? "#F9FAFB" : "#fff", borderBottom: isExpanded ? "1px solid #E4E4E7" : "none" }}>
                   <div>
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <span style={{ fontWeight: 600, fontSize: 14 }}>
-                        {new Date(day.date + "T12:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}
-                      </span>
+                      <span style={{ fontWeight: 600, fontSize: 14 }}>{formatDate(day.date)}</span>
                       {(day.week_label || day.day_label) && (
                         <span style={{ fontSize: 11, fontWeight: 700, color: "#F97316", background: "#FFF7ED", padding: "1px 8px", borderRadius: 4 }}>
                           {day.week_label ? day.week_label.replace(/WEEK\s*/i, "W").split("—")[0].trim() : ""}{day.day_label ? ` ${day.day_label}` : ""}
@@ -634,18 +684,58 @@ function MyLogs({ logs, colors, cats, isMobile, deleteLog, deleteDayLogs }) {
                             <div style={{ width: 4, height: 14, borderRadius: 2, background: cc?.bg || "#999" }} />
                             <span style={{ fontSize: 11, fontWeight: 700, color: cc?.text || "#52525B", textTransform: "uppercase", letterSpacing: 0.5 }}>{cat}</span>
                           </div>
-                          {day.entries.filter(e => e.category === cat).map(l => (
-                            <div key={l.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "5px 0 5px 12px", borderBottom: "1px solid #F4F4F5", gap: 8 }}>
-                              <div style={{ flex: 1 }}>
-                                <div style={{ fontWeight: 600, fontSize: 13 }}>{l.exercise_name}</div>
-                                <div style={{ fontSize: 12, color: "#71717A" }}>
-                                  {[l.sets && l.reps ? `${l.sets}×${l.reps}` : l.reps || l.sets || null, l.load ? `@ ${l.load}` : null, l.rpe ? `RPE ${l.rpe}` : null].filter(Boolean).join(" · ") || "—"}
+                          {day.entries.filter(e => e.category === cat).map(l => {
+                            const isExOpen = expandedExercise === l.id;
+                            return (
+                              <div key={l.id} style={{ marginBottom: 2 }}>
+                                <div
+                                  onClick={(e) => { e.stopPropagation(); setExpandedExercise(isExOpen ? null : l.id); }}
+                                  style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0 6px 12px", borderBottom: "1px solid #F4F4F5", gap: 8, cursor: "pointer" }}
+                                >
+                                  <div style={{ flex: 1 }}>
+                                    <div style={{ fontWeight: 600, fontSize: 13 }}>{l.exercise_name}</div>
+                                    <div style={{ fontSize: 12, color: "#71717A" }}>
+                                      {[l.sets && l.reps ? `${l.sets}×${l.reps}` : l.reps || l.sets || null, l.load ? `@ ${l.load}` : null, l.rpe ? `RPE ${l.rpe}` : null].filter(Boolean).join(" · ") || "—"}
+                                    </div>
+                                    {l.notes && !isExOpen && <div style={{ fontSize: 11, color: "#A1A1AA", marginTop: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>📝 {l.notes}</div>}
+                                  </div>
+                                  <div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0 }}>
+                                    <span style={{ fontSize: 12, color: "#A1A1AA" }}>{isExOpen ? "▲" : "▸"}</span>
+                                    <button onClick={(e) => { e.stopPropagation(); if (confirm("Delete this exercise?")) deleteLog(l.id); }} style={{ background: "none", border: "none", cursor: "pointer", color: "#D4D4D8", fontSize: 14 }} title="Delete">✕</button>
+                                  </div>
                                 </div>
-                                {l.notes && <div style={{ fontSize: 11, color: "#A1A1AA", fontStyle: "italic", marginTop: 1 }}>{l.notes}</div>}
+                                {isExOpen && (
+                                  <div style={{ padding: "10px 12px", background: "#FAFAFA", borderRadius: "0 0 8px 8px", marginBottom: 4 }}>
+                                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 8, marginBottom: 10 }}>
+                                      <div style={{ background: "#fff", padding: "6px 8px", borderRadius: 6, border: "1px solid #E4E4E7" }}>
+                                        <div style={{ fontSize: 10, color: "#A1A1AA", textTransform: "uppercase" }}>Sets</div>
+                                        <div style={{ fontSize: 16, fontWeight: 700 }}>{l.sets || "—"}</div>
+                                      </div>
+                                      <div style={{ background: "#fff", padding: "6px 8px", borderRadius: 6, border: "1px solid #E4E4E7" }}>
+                                        <div style={{ fontSize: 10, color: "#A1A1AA", textTransform: "uppercase" }}>Reps</div>
+                                        <div style={{ fontSize: 16, fontWeight: 700 }}>{l.reps || "—"}</div>
+                                      </div>
+                                      <div style={{ background: "#fff", padding: "6px 8px", borderRadius: 6, border: "1px solid #E4E4E7" }}>
+                                        <div style={{ fontSize: 10, color: "#A1A1AA", textTransform: "uppercase" }}>Load</div>
+                                        <div style={{ fontSize: 16, fontWeight: 700 }}>{l.load || "—"}</div>
+                                      </div>
+                                      <div style={{ background: "#fff", padding: "6px 8px", borderRadius: 6, border: "1px solid #E4E4E7" }}>
+                                        <div style={{ fontSize: 10, color: "#A1A1AA", textTransform: "uppercase" }}>RPE</div>
+                                        <div style={{ fontSize: 16, fontWeight: 700 }}>{l.rpe || "—"}</div>
+                                      </div>
+                                    </div>
+                                    {l.notes && (
+                                      <div style={{ padding: "8px 10px", background: "#fff", borderRadius: 6, border: "1px solid #E4E4E7", marginBottom: 6 }}>
+                                        <div style={{ fontSize: 10, color: "#A1A1AA", textTransform: "uppercase", marginBottom: 2 }}>Notes</div>
+                                        <div style={{ fontSize: 13, color: "#18181B", whiteSpace: "pre-wrap", lineHeight: 1.4 }}>{l.notes}</div>
+                                      </div>
+                                    )}
+                                    <div style={{ fontSize: 11, color: "#A1A1AA" }}>{formatDate(l.date)} · {l.category}</div>
+                                  </div>
+                                )}
                               </div>
-                              <button onClick={(e) => { e.stopPropagation(); if (confirm("Delete this exercise?")) deleteLog(l.id); }} style={{ background: "none", border: "none", cursor: "pointer", color: "#D4D4D8", fontSize: 14, flexShrink: 0 }} title="Delete exercise">✕</button>
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       );
                     })}
