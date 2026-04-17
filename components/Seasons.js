@@ -78,18 +78,10 @@ export default function Seasons({ groups, athletes, programs, logs, colors, cats
         </div>
 
         {/* Stats */}
-        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(4, 1fr)", gap: 10, marginBottom: 24 }}>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(5, 1fr)", gap: 10, marginBottom: 24 }}>
           <Card style={{ padding: 14, textAlign: "center" }}>
             <div style={{ fontSize: 24, fontWeight: 700 }}>{groupAthletesList.length}</div>
             <div style={{ fontSize: 12, color: "#71717A" }}>Athletes</div>
-          </Card>
-          <Card style={{ padding: 14, textAlign: "center" }}>
-            <div style={{ display: "flex", justifyContent: "center", gap: 8 }}>
-              <span style={{ fontSize: 24, fontWeight: 700, color: "#16A34A" }}>{completedWeeks}</span>
-              <span style={{ fontSize: 24, fontWeight: 700, color: "#D4D4D8" }}>/</span>
-              <span style={{ fontSize: 24, fontWeight: 700, color: "#DC2626" }}>{missedWeeks}</span>
-            </div>
-            <div style={{ fontSize: 12, color: "#71717A" }}>Weeks: Done / Missed</div>
           </Card>
           <Card style={{ padding: 14, textAlign: "center" }}>
             <div style={{ display: "flex", justifyContent: "center", gap: 8 }}>
@@ -100,8 +92,20 @@ export default function Seasons({ groups, athletes, programs, logs, colors, cats
             <div style={{ fontSize: 12, color: "#71717A" }}>Sessions: Done / Missed</div>
           </Card>
           <Card style={{ padding: 14, textAlign: "center" }}>
+            <div style={{ fontSize: 24, fontWeight: 700, color: (completedSessions + missedSessions) > 0 && Math.round((completedSessions / (completedSessions + missedSessions)) * 100) >= 80 ? "#16A34A" : "#F97316" }}>{(completedSessions + missedSessions) > 0 ? Math.round((completedSessions / (completedSessions + missedSessions)) * 100) : 0}%</div>
+            <div style={{ fontSize: 12, color: "#71717A" }}>Attendance to Date</div>
+          </Card>
+          <Card style={{ padding: 14, textAlign: "center" }}>
             <div style={{ fontSize: 24, fontWeight: 700 }}>{totalSessions > 0 ? Math.round((completedSessions / totalSessions) * 100) : 0}%</div>
-            <div style={{ fontSize: 12, color: "#71717A" }}>Session Attendance</div>
+            <div style={{ fontSize: 12, color: "#71717A" }}>Program Completion</div>
+          </Card>
+          <Card style={{ padding: 14, textAlign: "center" }}>
+            <div style={{ display: "flex", justifyContent: "center", gap: 8 }}>
+              <span style={{ fontSize: 24, fontWeight: 700, color: "#16A34A" }}>{completedWeeks}</span>
+              <span style={{ fontSize: 24, fontWeight: 700, color: "#D4D4D8" }}>/</span>
+              <span style={{ fontSize: 24, fontWeight: 700, color: "#DC2626" }}>{missedWeeks}</span>
+            </div>
+            <div style={{ fontSize: 12, color: "#71717A" }}>Weeks: Done / Missed</div>
           </Card>
         </div>
 
@@ -141,8 +145,10 @@ export default function Seasons({ groups, athletes, programs, logs, colors, cats
                   });
                 });
               });
+              const aTrackedSessions = aCompSessions + aMissSessions;
               const aTotalEx = Object.values(aCats.completed).reduce((s, v) => s + v, 0) + Object.values(aCats.missed).reduce((s, v) => s + v, 0);
-              const attendancePct = aTotalSessions > 0 ? Math.round((aCompSessions / aTotalSessions) * 100) : 0;
+              const attendancePct = aTrackedSessions > 0 ? Math.round((aCompSessions / aTrackedSessions) * 100) : 0;
+              const completionPct = aTotalSessions > 0 ? Math.round((aCompSessions / aTotalSessions) * 100) : 0;
 
               return (
                 <Card key={a.id} style={{ padding: 16 }}>
@@ -151,9 +157,18 @@ export default function Seasons({ groups, athletes, programs, logs, colors, cats
                       <div style={{ fontWeight: 700, fontSize: 16 }}>{a.name}</div>
                       <div style={{ fontSize: 13, color: "#71717A", marginTop: 2 }}>{a.sport}{a.age ? ` · Age ${a.age}` : ""}</div>
                     </div>
-                    <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                      {(aCompSessions + aMissSessions) > 0 && (
-                        <span style={{ fontSize: 13, fontWeight: 700, color: attendancePct >= 80 ? "#16A34A" : attendancePct >= 50 ? "#F97316" : "#DC2626" }}>{attendancePct}%</span>
+                    <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                      {aTrackedSessions > 0 && (
+                        <div style={{ textAlign: "center" }}>
+                          <div style={{ fontSize: 14, fontWeight: 700, color: attendancePct >= 80 ? "#16A34A" : attendancePct >= 50 ? "#F97316" : "#DC2626" }}>{attendancePct}%</div>
+                          <div style={{ fontSize: 9, color: "#A1A1AA", textTransform: "uppercase", letterSpacing: 0.3 }}>Attendance</div>
+                        </div>
+                      )}
+                      {aTotalSessions > 0 && (
+                        <div style={{ textAlign: "center" }}>
+                          <div style={{ fontSize: 14, fontWeight: 700, color: "#52525B" }}>{completionPct}%</div>
+                          <div style={{ fontSize: 9, color: "#A1A1AA", textTransform: "uppercase", letterSpacing: 0.3 }}>Completed</div>
+                        </div>
                       )}
                       <button onClick={() => removeAthleteFromGroup(detail, a.id)} style={{ background: "none", border: "none", cursor: "pointer", color: "#A1A1AA", fontSize: 14 }} title="Remove from season">✕</button>
                     </div>

@@ -12,15 +12,17 @@ function formatLoggedAt(ts) {
 }
 
 export default function LogPage({ logs, addLog, deleteLog, unlogDay, athletes, exercises, cats, colors, isMobile }) {
+  const [selectedAthlete, setSelectedAthlete] = useState("all");
   const [tab, setTab] = useState("workouts");
   const [modal, setModal] = useState(false);
   const [expandedDay, setExpandedDay] = useState(null);
+  const [expandedExercise, setExpandedExercise] = useState(null);
   const [form, setForm] = useState({ athlete_id: "", exercise_id: "", category: "", sets: "", reps: "", load: "", rpe: "", notes: "", date: new Date().toISOString().slice(0, 10) });
 
   const openNew = () => {
     const c = cats[0];
     const fx = exercises.find(e => e.category === c);
-    setForm({ athlete_id: athletes[0]?.id || "", exercise_id: fx?.id || "", category: c, sets: "", reps: "", load: "", rpe: "", notes: "", date: new Date().toISOString().slice(0, 10) });
+    setForm({ athlete_id: selectedAthlete !== "all" ? selectedAthlete : (athletes[0]?.id || ""), exercise_id: fx?.id || "", category: c, sets: "", reps: "", load: "", rpe: "", notes: "", date: new Date().toISOString().slice(0, 10) });
     setModal(true);
   };
 
@@ -33,9 +35,15 @@ export default function LogPage({ logs, addLog, deleteLog, unlogDay, athletes, e
 
   const catEx = exercises.filter(e => e.category === form.category);
 
+  // Filter logs by selected athlete
+  const filteredLogs = selectedAthlete === "all" ? logs : logs.filter(l => l.athlete_id === selectedAthlete);
+
+  // Get athletes that have logs
+  const athletesWithLogs = athletes.filter(a => logs.some(l => l.athlete_id === a.id));
+
   // Group logs by athlete + date for Workouts view
   const grouped = {};
-  logs.forEach(l => {
+  filteredLogs.forEach(l => {
     const key = `${l.athlete_id || l.athlete_name}-${l.date}-${l.day_label || ""}`;
     if (!grouped[key]) {
       grouped[key] = { key, athlete_name: l.athlete_name, athlete_id: l.athlete_id, date: l.date, logged_at: l.logged_at, week_label: l.week_label || "", day_label: l.day_label || "", entries: [], categories: new Set() };
@@ -50,8 +58,8 @@ export default function LogPage({ logs, addLog, deleteLog, unlogDay, athletes, e
   });
   const sortedDays = Object.values(grouped).sort((a, b) => new Date(b.date) - new Date(a.date));
 
-  // Flat exercises list sorted by most recent
-  const sortedExercises = [...logs].sort((a, b) => {
+  // Exercises sorted by most recent
+  const sortedExercises = [...filteredLogs].sort((a, b) => {
     const da = a.logged_at || a.date;
     const db = b.logged_at || b.date;
     return new Date(db) - new Date(da);
@@ -59,9 +67,7 @@ export default function LogPage({ logs, addLog, deleteLog, unlogDay, athletes, e
 
   const datesAreDifferent = (workoutDate, loggedAt) => {
     if (!loggedAt) return false;
-    const wd = new Date(workoutDate + "T12:00:00").toDateString();
-    const ld = new Date(loggedAt).toDateString();
-    return wd !== ld;
+    return new Date(workoutDate + "T12:00:00").toDateString() !== new Date(loggedAt).toDateString();
   };
 
   const tabStyle = (active) => ({
@@ -71,6 +77,12 @@ export default function LogPage({ logs, addLog, deleteLog, unlogDay, athletes, e
     fontWeight: 600, fontSize: 14, cursor: "pointer", fontFamily: "inherit",
   });
 
+  const athletePillStyle = (active) => ({
+    padding: "6px 14px", borderRadius: 20, border: active ? "2px solid #18181B" : "1px solid #E4E4E7",
+    background: active ? "#18181B" : "#fff", color: active ? "#fff" : "#52525B",
+    fontWeight: 600, fontSize: 13, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap",
+  });
+
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, gap: 12 }}>
@@ -78,16 +90,27 @@ export default function LogPage({ logs, addLog, deleteLog, unlogDay, athletes, e
         <Btn onClick={openNew} small={isMobile}>+ Log</Btn>
       </div>
 
-      {/* Tabs */}
-      <div style={{ display: "flex", gap: 4, marginBottom: 20, background: "#F4F4F5", borderRadius: 10, padding: 4, width: "fit-content" }}>
-        <button onClick={() => setTab("workouts")} style={tabStyle(tab === "workouts")}>Workouts Logged</button>
-        <button onClick={() => setTab("exercises")} style={tabStyle(tab === "exercises")}>Exercises Logged</button>
+      {/* Athlete pills */}
+      <div style={{ display: "flex", gap: 6, marginBottom: 16, flexWrap: "wrap" }}>
+        <button onClick={() => { setSelectedAthlete("all"); setExpandedDay(null); setExpandedExercise(null); }} style={athletePillStyle(selectedAthlete === "all")}>All Athletes</button>
+        {athletesWithLogs.map(a => (
+          <button key={a.id} onClick={() => { setSelectedAthlete(a.id); setExpandedDay(null); setExpandedExercise(null); }} style={athletePillStyle(selectedAthlete === a.id)}>
+            {a.name}
+            <span style={{ marginLeft: 6, fontSize: 11, opacity: 0.7 }}>{logs.filter(l => l.athlete_id === a.id).length}</span>
+          </button>
+        ))}
       </div>
 
-      {/* Workouts Logged Tab */}
+      {/* Sub-tabs */}
+      <div style={{ display: "flex", gap: 4, marginBottom: 20, background: "#F4F4F5", borderRadius: 10, padding: 4, width: "fit-content" }}>
+        <button onClick={() => { setTab("workouts"); setExpandedExercise(null); }} style={tabStyle(tab === "workouts")}>Workouts Logged</button>
+        <button onClick={() => { setTab("exercises"); setExpandedDay(null); }} style={tabStyle(tab === "exercises")}>Exercises Logged</button>
+      </div>
+
+      {/* ===================== WORKOUTS TAB ===================== */}
       {tab === "workouts" && (
         <>
-          {sortedDays.length === 0 ? <EmptyState icon="◇" title="No workouts logged" sub="Start tracking." action="+ Log Workout" onAction={openNew} /> : (
+          {sortedDays.length === 0 ? <EmptyState icon="◇" title="No workouts logged" sub={selectedAthlete !== "all" ? "No workouts for this athlete yet." : "Start tracking."} action="+ Log Workout" onAction={openNew} /> : (
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               {sortedDays.map(day => {
                 const isExpanded = expandedDay === day.key;
@@ -101,8 +124,11 @@ export default function LogPage({ logs, addLog, deleteLog, unlogDay, athletes, e
                       style={{ padding: isMobile ? "12px 14px" : "14px 18px", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center", background: isExpanded ? "#F9FAFB" : "#fff", borderBottom: isExpanded ? "1px solid #E4E4E7" : "none" }}
                     >
                       <div>
-                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                          <span style={{ fontWeight: 700, fontSize: 15 }}>{day.athlete_name}</span>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                          {selectedAthlete === "all" && <span style={{ fontWeight: 700, fontSize: 15 }}>{day.athlete_name}</span>}
+                          <span style={{ fontWeight: selectedAthlete !== "all" ? 700 : 500, fontSize: selectedAthlete !== "all" ? 15 : 13, color: selectedAthlete !== "all" ? "#18181B" : "#52525B" }}>
+                            {formatDate(day.date)}
+                          </span>
                           {(day.week_label || day.day_label) && (
                             <span style={{ fontSize: 11, fontWeight: 700, color: "#F97316", background: "#FFF7ED", padding: "1px 8px", borderRadius: 4 }}>
                               {day.week_label ? day.week_label.replace(/WEEK\s*/i, "W").split("—")[0].trim() : ""}{day.day_label ? ` ${day.day_label}` : ""}
@@ -110,12 +136,10 @@ export default function LogPage({ logs, addLog, deleteLog, unlogDay, athletes, e
                           )}
                         </div>
                         <div style={{ fontSize: 12, color: "#71717A", marginTop: 2 }}>
-                          {formatDate(day.date)} · {day.entries.length} exercise{day.entries.length !== 1 ? "s" : ""}
+                          {day.entries.length} exercise{day.entries.length !== 1 ? "s" : ""}
                         </div>
                         {showLoggedDate && (
-                          <div style={{ fontSize: 11, color: "#A1A1AA", marginTop: 1 }}>
-                            Logged {formatLoggedAt(day.logged_at)}
-                          </div>
+                          <div style={{ fontSize: 11, color: "#A1A1AA", marginTop: 1 }}>Logged {formatLoggedAt(day.logged_at)}</div>
                         )}
                       </div>
                       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -138,19 +162,43 @@ export default function LogPage({ logs, addLog, deleteLog, unlogDay, athletes, e
                                 <span style={{ fontSize: 12, fontWeight: 700, color: cc?.text || "#52525B", textTransform: "uppercase", letterSpacing: 0.5 }}>{cat}</span>
                               </div>
                               {catEntries.map(l => (
-                                <div key={l.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0 6px 12px", borderBottom: "1px solid #F4F4F5", gap: 8 }}>
-                                  <div style={{ flex: 1, minWidth: 0 }}>
-                                    <div style={{ fontWeight: 600, fontSize: 13 }}>{l.exercise_name}</div>
-                                    <div style={{ fontSize: 12, color: "#71717A" }}>
-                                      {[
-                                        l.sets && l.reps ? `${l.sets}×${l.reps}` : l.reps || l.sets || null,
-                                        l.load ? `@ ${l.load}` : null,
-                                        l.rpe ? `RPE ${l.rpe}` : null,
-                                      ].filter(Boolean).join(" · ") || "—"}
+                                <div key={l.id} style={{ marginBottom: 2 }}>
+                                  <div
+                                    onClick={(e) => { e.stopPropagation(); setExpandedExercise(expandedExercise === l.id ? null : l.id); }}
+                                    style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0 6px 12px", borderBottom: "1px solid #F4F4F5", gap: 8, cursor: "pointer" }}
+                                  >
+                                    <div style={{ flex: 1, minWidth: 0 }}>
+                                      <div style={{ fontWeight: 600, fontSize: 13 }}>{l.exercise_name}</div>
+                                      <div style={{ fontSize: 12, color: "#71717A" }}>
+                                        {[l.sets && l.reps ? `${l.sets}×${l.reps}` : l.reps || l.sets || null, l.load ? `@ ${l.load}` : null, l.rpe ? `RPE ${l.rpe}` : null].filter(Boolean).join(" · ") || "—"}
+                                      </div>
                                     </div>
-                                    {l.notes && <div style={{ fontSize: 11, color: "#A1A1AA", marginTop: 2, fontStyle: "italic" }}>{l.notes}</div>}
+                                    <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                                      <span style={{ fontSize: 12, color: "#A1A1AA" }}>{expandedExercise === l.id ? "▲" : "▸"}</span>
+                                      <button onClick={(e) => { e.stopPropagation(); if (confirm("Delete this exercise?")) deleteLog(l.id); }} style={{ background: "none", border: "none", cursor: "pointer", color: "#D4D4D8", fontSize: 14, flexShrink: 0 }} title="Delete">✕</button>
+                                    </div>
                                   </div>
-                                  <button onClick={(e) => { e.stopPropagation(); if (confirm("Delete this exercise?")) deleteLog(l.id); }} style={{ background: "none", border: "none", cursor: "pointer", color: "#D4D4D8", fontSize: 14, flexShrink: 0 }} title="Delete exercise">✕</button>
+                                  {expandedExercise === l.id && (
+                                    <div style={{ padding: "8px 12px 10px", background: "#FAFAFA", borderRadius: "0 0 8px 8px", marginBottom: 4 }}>
+                                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 8 }}>
+                                        <div><div style={{ fontSize: 10, color: "#A1A1AA", textTransform: "uppercase" }}>Sets</div><div style={{ fontSize: 14, fontWeight: 600 }}>{l.sets || "—"}</div></div>
+                                        <div><div style={{ fontSize: 10, color: "#A1A1AA", textTransform: "uppercase" }}>Reps</div><div style={{ fontSize: 14, fontWeight: 600 }}>{l.reps || "—"}</div></div>
+                                        <div><div style={{ fontSize: 10, color: "#A1A1AA", textTransform: "uppercase" }}>Load</div><div style={{ fontSize: 14, fontWeight: 600 }}>{l.load || "—"}</div></div>
+                                        <div><div style={{ fontSize: 10, color: "#A1A1AA", textTransform: "uppercase" }}>RPE</div><div style={{ fontSize: 14, fontWeight: 600 }}>{l.rpe || "—"}</div></div>
+                                        <div><div style={{ fontSize: 10, color: "#A1A1AA", textTransform: "uppercase" }}>Category</div><div style={{ fontSize: 14, fontWeight: 600 }}>{l.category || "—"}</div></div>
+                                        <div><div style={{ fontSize: 10, color: "#A1A1AA", textTransform: "uppercase" }}>Date</div><div style={{ fontSize: 14, fontWeight: 600 }}>{formatDate(l.date)}</div></div>
+                                      </div>
+                                      {l.notes && (
+                                        <div style={{ padding: "6px 8px", background: "#F4F4F5", borderRadius: 6 }}>
+                                          <div style={{ fontSize: 10, color: "#A1A1AA", textTransform: "uppercase", marginBottom: 2 }}>Notes</div>
+                                          <div style={{ fontSize: 13, color: "#18181B", whiteSpace: "pre-wrap" }}>{l.notes}</div>
+                                        </div>
+                                      )}
+                                      {l.logged_at && (
+                                        <div style={{ fontSize: 11, color: "#A1A1AA", marginTop: 6 }}>Logged {formatLoggedAt(l.logged_at)}</div>
+                                      )}
+                                    </div>
+                                  )}
                                 </div>
                               ))}
                             </div>
@@ -183,68 +231,104 @@ export default function LogPage({ logs, addLog, deleteLog, unlogDay, athletes, e
         </>
       )}
 
-      {/* Exercises Logged Tab */}
+      {/* ===================== EXERCISES TAB ===================== */}
       {tab === "exercises" && (
         <>
-          {sortedExercises.length === 0 ? <EmptyState icon="◇" title="No exercises logged" sub="Start tracking." /> : (
+          {sortedExercises.length === 0 ? <EmptyState icon="◇" title="No exercises logged" sub={selectedAthlete !== "all" ? "No exercises for this athlete yet." : "Start tracking."} /> : (
             <div>
-              <div style={{ fontSize: 13, color: "#71717A", marginBottom: 12 }}>{sortedExercises.length} total exercises logged</div>
-              <Card style={{ padding: 0, overflow: "hidden" }}>
-                {/* Header */}
-                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr auto" : "1.5fr 1fr 1fr 0.8fr 0.5fr auto", gap: 0, padding: "10px 16px", background: "#F9FAFB", borderBottom: "1px solid #E4E4E7", fontSize: 11, fontWeight: 700, color: "#71717A", textTransform: "uppercase", letterSpacing: 0.5 }}>
-                  <div>Exercise</div>
-                  <div>Athlete</div>
-                  {!isMobile && <div>Date</div>}
-                  {!isMobile && <div>Performance</div>}
-                  {!isMobile && <div>Cat</div>}
-                  <div></div>
-                </div>
+              <div style={{ fontSize: 13, color: "#71717A", marginBottom: 12 }}>{sortedExercises.length} exercise{sortedExercises.length !== 1 ? "s" : ""} logged</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                 {sortedExercises.map(l => {
                   const cc = colors[l.category];
+                  const isExpanded = expandedExercise === l.id;
                   return (
-                    <div key={l.id} style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr auto" : "1.5fr 1fr 1fr 0.8fr 0.5fr auto", gap: 0, padding: "10px 16px", borderBottom: "1px solid #F4F4F5", alignItems: "center", fontSize: 13 }}>
-                      <div>
-                        <div style={{ fontWeight: 600 }}>{l.exercise_name}</div>
-                        {isMobile && (
-                          <div style={{ fontSize: 11, color: "#A1A1AA", marginTop: 1 }}>
-                            {formatDate(l.date)} · {[l.sets && l.reps ? `${l.sets}×${l.reps}` : null, l.load ? `@${l.load}` : null].filter(Boolean).join(" ")}
+                    <Card key={l.id} style={{ padding: 0, overflow: "hidden" }}>
+                      <div
+                        onClick={() => setExpandedExercise(isExpanded ? null : l.id)}
+                        style={{ padding: "10px 14px", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center", background: isExpanded ? "#F9FAFB" : "#fff", borderBottom: isExpanded ? "1px solid #E4E4E7" : "none" }}
+                      >
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                            <span style={{ fontWeight: 600, fontSize: 14 }}>{l.exercise_name}</span>
+                            {l.category && <Badge color={cc?.bg || "#71717A"}>{l.category}</Badge>}
                           </div>
-                        )}
-                        {l.notes && <div style={{ fontSize: 11, color: "#A1A1AA", fontStyle: "italic", marginTop: 1 }}>{l.notes}</div>}
+                          <div style={{ fontSize: 12, color: "#71717A", marginTop: 2 }}>
+                            {selectedAthlete === "all" && <><span style={{ fontWeight: 600, color: "#52525B" }}>{l.athlete_name}</span> · </>}
+                            {formatDate(l.date)}
+                            {(l.week_label || l.day_label) && <> · <span style={{ color: "#F97316" }}>{l.week_label ? l.week_label.replace(/WEEK\s*/i, "W").split("—")[0].trim() : ""} {l.day_label || ""}</span></>}
+                            {" · "}{[l.sets && l.reps ? `${l.sets}×${l.reps}` : null, l.load ? `@${l.load}` : null].filter(Boolean).join(" ") || "—"}
+                          </div>
+                          {l.notes && !isExpanded && <div style={{ fontSize: 11, color: "#A1A1AA", marginTop: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>📝 {l.notes}</div>}
+                        </div>
+                        <div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0 }}>
+                          <span style={{ fontSize: 14, color: "#A1A1AA", transition: "transform .2s", transform: isExpanded ? "rotate(180deg)" : "none" }}>▼</span>
+                        </div>
                       </div>
-                      <div style={{ color: "#52525B" }}>{l.athlete_name}</div>
-                      {!isMobile && (
-                        <div style={{ color: "#71717A", fontSize: 12 }}>
-                          {formatDate(l.date)}
-                          {(l.week_label || l.day_label) && (
-                            <div style={{ fontSize: 10, color: "#A1A1AA" }}>
-                              {l.week_label ? l.week_label.replace(/WEEK\s*/i, "W").split("—")[0].trim() : ""} {l.day_label || ""}
+
+                      {isExpanded && (
+                        <div style={{ padding: "12px 14px 14px", background: "#FAFAFA" }}>
+                          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "1fr 1fr 1fr 1fr", gap: 10, marginBottom: 10 }}>
+                            <div style={{ background: "#fff", padding: "8px 10px", borderRadius: 8, border: "1px solid #E4E4E7" }}>
+                              <div style={{ fontSize: 10, color: "#A1A1AA", textTransform: "uppercase", letterSpacing: 0.5 }}>Sets</div>
+                              <div style={{ fontSize: 18, fontWeight: 700 }}>{l.sets || "—"}</div>
+                            </div>
+                            <div style={{ background: "#fff", padding: "8px 10px", borderRadius: 8, border: "1px solid #E4E4E7" }}>
+                              <div style={{ fontSize: 10, color: "#A1A1AA", textTransform: "uppercase", letterSpacing: 0.5 }}>Reps</div>
+                              <div style={{ fontSize: 18, fontWeight: 700 }}>{l.reps || "—"}</div>
+                            </div>
+                            <div style={{ background: "#fff", padding: "8px 10px", borderRadius: 8, border: "1px solid #E4E4E7" }}>
+                              <div style={{ fontSize: 10, color: "#A1A1AA", textTransform: "uppercase", letterSpacing: 0.5 }}>Load</div>
+                              <div style={{ fontSize: 18, fontWeight: 700 }}>{l.load || "—"}</div>
+                            </div>
+                            <div style={{ background: "#fff", padding: "8px 10px", borderRadius: 8, border: "1px solid #E4E4E7" }}>
+                              <div style={{ fontSize: 10, color: "#A1A1AA", textTransform: "uppercase", letterSpacing: 0.5 }}>RPE</div>
+                              <div style={{ fontSize: 18, fontWeight: 700 }}>{l.rpe || "—"}</div>
+                            </div>
+                          </div>
+
+                          {selectedAthlete === "all" && (
+                            <div style={{ fontSize: 13, color: "#52525B", marginBottom: 8 }}>
+                              <span style={{ fontWeight: 600 }}>Athlete:</span> {l.athlete_name}
                             </div>
                           )}
+
+                          <div style={{ display: "flex", gap: 12, fontSize: 12, color: "#71717A", marginBottom: 8 }}>
+                            <span><span style={{ fontWeight: 600 }}>Date:</span> {formatDate(l.date)}</span>
+                            {l.category && <span><span style={{ fontWeight: 600 }}>Category:</span> {l.category}</span>}
+                            {(l.week_label || l.day_label) && <span><span style={{ fontWeight: 600 }}>Program:</span> {l.week_label} {l.day_label}</span>}
+                          </div>
+
+                          {l.notes && (
+                            <div style={{ padding: "8px 10px", background: "#fff", borderRadius: 8, border: "1px solid #E4E4E7", marginBottom: 8 }}>
+                              <div style={{ fontSize: 10, color: "#A1A1AA", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 3 }}>Notes</div>
+                              <div style={{ fontSize: 13, color: "#18181B", whiteSpace: "pre-wrap", lineHeight: 1.4 }}>{l.notes}</div>
+                            </div>
+                          )}
+
+                          {l.logged_at && (
+                            <div style={{ fontSize: 11, color: "#A1A1AA" }}>Logged {formatLoggedAt(l.logged_at)}</div>
+                          )}
+
+                          <div style={{ marginTop: 10, paddingTop: 8, borderTop: "1px solid #E4E4E7" }}>
+                            <button
+                              onClick={() => { if (confirm(`Delete ${l.exercise_name}?`)) deleteLog(l.id); }}
+                              style={{ padding: "6px 14px", background: "#FEE2E2", color: "#DC2626", border: "none", borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}
+                            >
+                              Delete Exercise
+                            </button>
+                          </div>
                         </div>
                       )}
-                      {!isMobile && (
-                        <div style={{ color: "#52525B", fontSize: 12 }}>
-                          {[l.sets && l.reps ? `${l.sets}×${l.reps}` : l.reps || l.sets || null, l.load ? `@ ${l.load}` : null, l.rpe ? `RPE ${l.rpe}` : null].filter(Boolean).join(" · ") || "—"}
-                        </div>
-                      )}
-                      {!isMobile && (
-                        <div>
-                          {l.category && <Badge color={cc?.bg || "#71717A"}>{l.category}</Badge>}
-                        </div>
-                      )}
-                      <div>
-                        <button onClick={() => { if (confirm(`Delete ${l.exercise_name} for ${l.athlete_name}?`)) deleteLog(l.id); }} style={{ background: "none", border: "none", cursor: "pointer", color: "#D4D4D8", fontSize: 14 }} title="Delete exercise">✕</button>
-                      </div>
-                    </div>
+                    </Card>
                   );
                 })}
-              </Card>
+              </div>
             </div>
           )}
         </>
       )}
 
+      {/* ===================== LOG MODAL ===================== */}
       <Modal open={modal} onClose={() => setModal(false)} title="Log Workout">
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           <Input label="Date" type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} />

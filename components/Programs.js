@@ -5,12 +5,12 @@ import { printDay } from "./printHelper";
 
 const uid = () => Math.random().toString(36).slice(2, 10);
 
-export default function Programs({ programs, addProgram, updateProgram, deleteProgram, athletes, exercises, cats, colors, isMobile, submitDay, unlogDay, logs }) {
+export default function Programs({ programs, addProgram, updateProgram, deleteProgram, athletes, exercises, cats, colors, isMobile, submitDay, unlogDay, logs, groups }) {
   const [modal, setModal] = useState(false);
-  const [form, setForm] = useState({ name: "", selectedAthletes: [], weeks: 4, description: "" });
+  const [form, setForm] = useState({ name: "", selectedAthletes: [], weeks: 4, description: "", group_id: "" });
   const [detail, setDetail] = useState(null);
 
-  const openNew = () => { setForm({ name: "", selectedAthletes: [], weeks: 4, description: "" }); setModal(true); };
+  const openNew = () => { setForm({ name: "", selectedAthletes: [], weeks: 4, description: "", group_id: groups?.[0]?.id || "" }); setModal(true); };
 
   const toggleAthlete = (id) => {
     setForm(prev => ({
@@ -35,7 +35,7 @@ export default function Programs({ programs, addProgram, updateProgram, deletePr
     const targets = form.selectedAthletes.length > 0 ? form.selectedAthletes : [""];
     let lastProg = null;
     for (const athId of targets) {
-      const prog = await addProgram({ name: form.name, athlete_id: athId, description: form.description, weeks: makeWeeks() });
+      const prog = await addProgram({ name: form.name, athlete_id: athId, description: form.description, weeks: makeWeeks(), group_id: form.group_id || "" });
       if (prog) lastProg = prog;
     }
     setModal(false);
@@ -163,7 +163,7 @@ export default function Programs({ programs, addProgram, updateProgram, deletePr
     await updateProgram(ap.id, { weeks });
   };
 
-  if (detail && ap) return <ProgramDetail program={ap} exercises={exercises} cats={cats} colors={colors} addBlock={addBlock} updateBlock={updateBlock} removeBlock={removeBlock} moveBlock={moveBlock} onBack={() => setDetail(null)} athletes={athletes} isMobile={isMobile} submitDay={submitDay} unlogDay={unlogDay} logs={logs || []} copyToAthletes={copyToAthletes} updateProgram={updateProgram} />;
+  if (detail && ap) return <ProgramDetail program={ap} exercises={exercises} cats={cats} colors={colors} addBlock={addBlock} updateBlock={updateBlock} removeBlock={removeBlock} moveBlock={moveBlock} onBack={() => setDetail(null)} athletes={athletes} isMobile={isMobile} submitDay={submitDay} unlogDay={unlogDay} logs={logs || []} copyToAthletes={copyToAthletes} updateProgram={updateProgram} groups={groups} />;
 
   return (
     <div>
@@ -175,13 +175,18 @@ export default function Programs({ programs, addProgram, updateProgram, deletePr
         <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill, minmax(280px, 1fr))", gap: 12 }}>
           {programs.map(p => {
             const ath = athletes.find(a => a.id === p.athlete_id);
+            const grp = (groups || []).find(g => g.id === p.group_id);
             const wks = p.weeks || [];
             const completed = wks.filter(w => w.status === "completed").length;
             const missed = wks.filter(w => w.status === "missed").length;
             return (
               <Card key={p.id} onClick={() => setDetail(p.id)} style={{ cursor: "pointer", padding: isMobile ? 14 : 20 }}>
                 <div style={{ display: "flex", justifyContent: "space-between" }}>
-                  <div><div style={{ fontWeight: 700, fontSize: 16 }}>{p.name}</div><div style={{ fontSize: 13, color: "#71717A", marginTop: 2 }}>{ath?.name || "Unassigned"} · {wks.length}wk</div></div>
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: 16 }}>{p.name}</div>
+                    <div style={{ fontSize: 13, color: "#71717A", marginTop: 2 }}>{ath?.name || "Unassigned"} · {wks.length}wk</div>
+                    {grp && <div style={{ marginTop: 4 }}><Badge color="#2563EB">{grp.name}</Badge></div>}
+                  </div>
                   <Btn variant="danger" small onClick={(e) => { e.stopPropagation(); deleteProgram(p.id); if (detail === p.id) setDetail(null); }}>✕</Btn>
                 </div>
                 {p.description && <p style={{ fontSize: 13, color: "#52525B", marginTop: 8 }}>{p.description}</p>}
@@ -229,6 +234,19 @@ export default function Programs({ programs, addProgram, updateProgram, deletePr
             </div>
           )}
           <Input label="Weeks" type="number" value={form.weeks} onChange={e => setForm({ ...form, weeks: e.target.value })} min={1} max={52} />
+          {(groups || []).length > 0 && (
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6, color: "#18181B" }}>Link to Season</div>
+              <select
+                value={form.group_id}
+                onChange={e => setForm({ ...form, group_id: e.target.value })}
+                style={{ width: "100%", padding: "8px 10px", border: "1px solid #E4E4E7", borderRadius: 8, fontSize: 14, fontFamily: "inherit", background: "#fff", cursor: "pointer" }}
+              >
+                <option value="">No season</option>
+                {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+              </select>
+            </div>
+          )}
           <Input label="Description" value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} />
           <Btn onClick={createProgram} style={{ marginTop: 8 }}>
             {form.selectedAthletes.length > 1 ? `Create for ${form.selectedAthletes.length} Athletes` : "Create Program"}
@@ -239,7 +257,7 @@ export default function Programs({ programs, addProgram, updateProgram, deletePr
   );
 }
 
-function ProgramDetail({ program, exercises, cats, colors, addBlock, updateBlock, removeBlock, moveBlock, onBack, athletes, isMobile, submitDay, unlogDay, logs, copyToAthletes, updateProgram }) {
+function ProgramDetail({ program, exercises, cats, colors, addBlock, updateBlock, removeBlock, moveBlock, onBack, athletes, isMobile, submitDay, unlogDay, logs, copyToAthletes, updateProgram, groups }) {
   // Keep a ref to latest program to prevent stale closures in async handlers
   const programRef = useRef(program);
   programRef.current = program;
@@ -349,7 +367,21 @@ function ProgramDetail({ program, exercises, cats, colors, addBlock, updateBlock
           <button onClick={() => { setCopyOpen(true); setCopyMode("program"); setCopyTargets([]); }} style={{ background: "none", border: "1px solid #E4E4E7", borderRadius: 6, padding: "5px 12px", fontSize: 12, cursor: "pointer", fontFamily: "inherit", color: "#52525B", fontWeight: 600 }}>⧉ Copy</button>
         </div>
       </div>
-      {program.description && <p style={{ color: "#71717A", fontSize: 14, margin: "0 0 16px" }}>{program.description}</p>}
+      {program.description && <p style={{ color: "#71717A", fontSize: 14, margin: "0 0 12px" }}>{program.description}</p>}
+
+      {/* Season link */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
+        <span style={{ fontSize: 12, fontWeight: 600, color: "#71717A" }}>Season:</span>
+        <select
+          value={program.group_id || ""}
+          onChange={e => updateProgram(program.id, { group_id: e.target.value })}
+          style={{ padding: "4px 8px", border: "1px solid #E4E4E7", borderRadius: 6, fontSize: 13, fontFamily: "inherit", background: "#fff", cursor: "pointer", color: program.group_id ? "#2563EB" : "#A1A1AA", fontWeight: program.group_id ? 600 : 400 }}
+        >
+          <option value="">No season</option>
+          {(groups || []).map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+        </select>
+      </div>
+
       <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap" }}>
         {weeks.map((w, i) => {
           const st = w.status || "";
