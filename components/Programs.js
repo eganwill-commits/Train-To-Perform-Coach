@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Badge, Btn, Card, Input, Select, Modal, EmptyState, SearchableSelect, BlurInput } from "./ui";
 import { printDay } from "./printHelper";
 
@@ -153,12 +153,6 @@ export default function Programs({ programs, addProgram, updateProgram, deletePr
     await updateProgram(ap.id, { weeks });
   };
 
-  const updateDayField = async (wi, di, field, value) => {
-    const weeks = JSON.parse(JSON.stringify(ap.weeks));
-    weeks[wi].days[di][field] = value;
-    await updateProgram(ap.id, { weeks });
-  };
-
   const moveBlock = async (wi, di, bi, direction) => {
     const weeks = JSON.parse(JSON.stringify(ap.weeks));
     const blocks = weeks[wi].days[di].blocks;
@@ -246,6 +240,10 @@ export default function Programs({ programs, addProgram, updateProgram, deletePr
 }
 
 function ProgramDetail({ program, exercises, cats, colors, addBlock, updateBlock, removeBlock, moveBlock, onBack, athletes, isMobile, submitDay, unlogDay, logs, copyToAthletes, updateProgram }) {
+  // Keep a ref to latest program to prevent stale closures in async handlers
+  const programRef = useRef(program);
+  programRef.current = program;
+
   const [aw, setAw] = useState(() => {
     const weeks = program.weeks || [];
     const firstOpen = weeks.findIndex(w => w.status !== "completed" && w.status !== "missed");
@@ -272,22 +270,28 @@ function ProgramDetail({ program, exercises, cats, colors, addBlock, updateBlock
   }, [program.weeks]);
 
   const setWeekStatus = async (weekIndex, status) => {
-    const weeks = JSON.parse(JSON.stringify(program.weeks));
+    const weeks = JSON.parse(JSON.stringify(programRef.current.weeks));
     weeks[weekIndex].status = weeks[weekIndex].status === status ? "" : status;
-    await updateProgram(program.id, { weeks });
+    await updateProgram(programRef.current.id, { weeks });
   };
 
   const setDayStatus = async (weekIndex, dayIndex, status) => {
-    const weeks = JSON.parse(JSON.stringify(program.weeks));
+    const weeks = JSON.parse(JSON.stringify(programRef.current.weeks));
     const day = weeks[weekIndex].days[dayIndex];
     day.status = day.status === status ? "" : status;
-    await updateProgram(program.id, { weeks });
+    await updateProgram(programRef.current.id, { weeks });
   };
 
   const updateWeekField = async (weekIndex, field, value) => {
-    const weeks = JSON.parse(JSON.stringify(program.weeks));
+    const weeks = JSON.parse(JSON.stringify(programRef.current.weeks));
     weeks[weekIndex][field] = value;
-    await updateProgram(program.id, { weeks });
+    await updateProgram(programRef.current.id, { weeks });
+  };
+
+  const updateDayField = async (wi, di, field, value) => {
+    const weeks = JSON.parse(JSON.stringify(programRef.current.weeks));
+    weeks[wi].days[di][field] = value;
+    await updateProgram(programRef.current.id, { weeks });
   };
 
   const ath = athletes.find(a => a.id === program.athlete_id);
@@ -572,6 +576,7 @@ function ProgramDetail({ program, exercises, cats, colors, addBlock, updateBlock
                   onSave={v => updateDayField(aw, di, "coachNotes", v)}
                   placeholder="Notes for the day — warm-up reminders, focus areas, recovery tips…"
                   multiline
+                  debounceMs={1500}
                   style={{ width: "100%", padding: "6px 8px", border: "1px solid #FDE68A", borderRadius: 6, fontSize: 13, fontFamily: "inherit", boxSizing: "border-box", background: "#fff", minHeight: 48, resize: "vertical" }}
                 />
               </div>
@@ -598,6 +603,7 @@ function ProgramDetail({ program, exercises, cats, colors, addBlock, updateBlock
           onSave={v => updateWeekField(aw, "coachRecap", v)}
           placeholder="Summarize the week — what went well, areas to improve, notes for the athlete…"
           multiline
+          debounceMs={1500}
           style={{ width: "100%", padding: "8px 10px", border: "1px solid #BFDBFE", borderRadius: 8, fontSize: 13, fontFamily: "inherit", boxSizing: "border-box", background: "#fff", minHeight: 64, resize: "vertical", lineHeight: 1.5 }}
         />
       </div>
