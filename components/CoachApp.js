@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "../lib/supabase";
 import { PILLAR_COLORS, GENERIC_COLORS, NAV_ITEMS } from "../lib/constants";
 import Dashboard from "./Dashboard";
@@ -42,6 +42,12 @@ export default function CoachApp({ onLogout }) {
 
   const cats = usePillars ? Object.keys(PILLAR_COLORS) : Object.keys(GENERIC_COLORS);
   const colors = usePillars ? PILLAR_COLORS : GENERIC_COLORS;
+
+  // Refs for latest state (used in callbacks to avoid stale closures)
+  const programsRef = useRef(programs);
+  programsRef.current = programs;
+  const athletesRef = useRef(athletes);
+  athletesRef.current = athletes;
 
   // Load all data from Supabase
   useEffect(() => {
@@ -219,6 +225,45 @@ export default function CoachApp({ onLogout }) {
   const addAthleteToGroup = useCallback(async (groupId, athleteId) => {
     const { data, error } = await supabase.from("group_athletes").insert({ group_id: groupId, athlete_id: athleteId }).select().single();
     if (!error && data) setGroupAthletes(prev => [...prev, data]);
+
+    // Auto-copy programs from this season to the new athlete
+    const uid = () => Math.random().toString(36).slice(2, 10);
+    const seasonPrograms = programsRef.current.filter(p => p.group_id === groupId);
+    // Find a "template" — use the first program from another athlete in this season
+    const existingAthleteIds = seasonPrograms.map(p => p.athlete_id).filter(id => id && id !== athleteId);
+    if (existingAthleteIds.length === 0) return; // No existing programs to copy
+    const templateAthleteId = existingAthleteIds[0];
+    const templatePrograms = seasonPrograms.filter(p => p.athlete_id === templateAthleteId);
+    // Check if this athlete already has programs in this season
+    const alreadyHas = seasonPrograms.some(p => p.athlete_id === athleteId);
+    if (alreadyHas) return;
+
+    const athlete = athletesRef.current.find(a => a.id === athleteId);
+    const athName = athlete?.name || "Athlete";
+
+    for (const tp of templatePrograms) {
+      // Deep clone and re-ID all weeks/days/blocks
+      const newWeeks = JSON.parse(JSON.stringify(tp.weeks || [])).map(w => ({
+        ...w, id: uid(),
+        days: (w.days || []).map(d => ({
+          ...d, id: uid(), status: "", coachNotes: "", coachNotesShared: false,
+          blocks: (d.blocks || []).map(b => ({ ...b, id: uid() })),
+        })),
+        status: "", coachRecap: "",
+      }));
+      // Create program name with athlete's name
+      const baseName = tp.name.includes("—") ? tp.name.split("—").slice(1).join("—").trim() : tp.name;
+      const newProg = await supabase.from("programs").insert({
+        name: `${athName} — ${baseName}`,
+        athlete_id: athleteId,
+        description: tp.description || "",
+        weeks: newWeeks,
+        group_id: groupId,
+      }).select().single();
+      if (!newProg.error && newProg.data) {
+        setPrograms(prev => [...prev, newProg.data]);
+      }
+    }
   }, []);
 
   const removeAthleteFromGroup = useCallback(async (groupId, athleteId) => {

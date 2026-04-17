@@ -185,7 +185,7 @@ export default function Programs({ programs, addProgram, updateProgram, deletePr
                   <div>
                     <div style={{ fontWeight: 700, fontSize: 16 }}>{p.name}</div>
                     <div style={{ fontSize: 13, color: "#71717A", marginTop: 2 }}>{ath?.name || "Unassigned"} · {wks.length}wk</div>
-                    {grp && <div style={{ marginTop: 4 }}><Badge color="#2563EB">{grp.name}</Badge></div>}
+                    {grp && <div style={{ marginTop: 4 }}><Badge color="#16A34A">{grp.name}</Badge></div>}
                   </div>
                   <Btn variant="danger" small onClick={(e) => { e.stopPropagation(); deleteProgram(p.id); if (detail === p.id) setDetail(null); }}>✕</Btn>
                 </div>
@@ -375,7 +375,7 @@ function ProgramDetail({ program, exercises, cats, colors, addBlock, updateBlock
         <select
           value={program.group_id || ""}
           onChange={e => updateProgram(program.id, { group_id: e.target.value })}
-          style={{ padding: "4px 8px", border: "1px solid #E4E4E7", borderRadius: 6, fontSize: 13, fontFamily: "inherit", background: "#fff", cursor: "pointer", color: program.group_id ? "#2563EB" : "#A1A1AA", fontWeight: program.group_id ? 600 : 400 }}
+          style={{ padding: "4px 8px", border: "1px solid #E4E4E7", borderRadius: 6, fontSize: 13, fontFamily: "inherit", background: "#fff", cursor: "pointer", color: program.group_id ? "#16A34A" : "#A1A1AA", fontWeight: program.group_id ? 600 : 400 }}
         >
           <option value="">No season</option>
           {(groups || []).map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
