@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
 import { Badge, Btn, Card, Input, Select, Modal, EmptyState, SearchableSelect, BlurInput } from "./ui";
+import { supabase } from "../lib/supabase";
 import { printDay } from "./printHelper";
 
 const uid = () => Math.random().toString(36).slice(2, 10);
@@ -309,15 +310,23 @@ function ProgramDetail({ program, programs, exercises, cats, colors, addBlock, u
     // Propagate coachRecap to all programs in the same season
     if (field === "coachRecap" && programRef.current.group_id) {
       const weekLabel = weeks[weekIndex].label;
-      const siblingPrograms = (programs || []).filter(p =>
-        p.id !== programRef.current.id && p.group_id === programRef.current.group_id
-      );
-      for (const sib of siblingPrograms) {
-        const sibWeeks = JSON.parse(JSON.stringify(sib.weeks || []));
-        const matchWi = sibWeeks.findIndex(w => w.label === weekLabel);
-        if (matchWi >= 0) {
-          sibWeeks[matchWi].coachRecap = value;
-          await updateProgram(sib.id, { weeks: sibWeeks });
+      const groupId = programRef.current.group_id;
+      
+      // Fetch sibling programs fresh from Supabase to avoid stale data
+      const { data: siblings } = await supabase.from("programs")
+        .select("id, weeks")
+        .eq("group_id", groupId)
+        .neq("id", programRef.current.id);
+      
+      if (siblings && siblings.length > 0) {
+        for (const sib of siblings) {
+          const sibWeeks = JSON.parse(JSON.stringify(sib.weeks || []));
+          const matchWi = sibWeeks.findIndex(w => w.label === weekLabel);
+          if (matchWi >= 0) {
+            sibWeeks[matchWi].coachRecap = value;
+            // Update Supabase + local state for each sibling
+            await updateProgram(sib.id, { weeks: sibWeeks });
+          }
         }
       }
       setRecapSaved(true);
