@@ -81,12 +81,14 @@ export default function CoachApp({ onLogout }) {
   useEffect(() => {
     if (!loaded) return;
     const poll = setInterval(async () => {
-      const [lRes, vRes] = await Promise.all([
+      const [lRes, vRes, pRes] = await Promise.all([
         supabase.from("logs").select("*").order("date", { ascending: false }),
         supabase.from("video_submissions").select("*").order("created_at", { ascending: false }),
+        supabase.from("programs").select("*"),
       ]);
       if (lRes.data) setLogs(lRes.data);
       if (vRes.data) setVideoSubs(vRes.data);
+      if (pRes.data) setPrograms(pRes.data);
     }, 30000);
     return () => clearInterval(poll);
   }, [loaded]);
@@ -150,6 +152,18 @@ export default function CoachApp({ onLogout }) {
   const submitDay = useCallback(async (program, day, date, weekLabel) => {
     const athlete = athletes.find(a => a.id === program.athlete_id);
     const athleteName = athlete?.name || "Unknown";
+
+    // Delete existing logs for this athlete+week+day to prevent duplicates
+    const existing = logs.filter(l =>
+      l.athlete_id === program.athlete_id && l.day_label === (day.label || "") && l.week_label === (weekLabel || "")
+    );
+    if (existing.length > 0) {
+      for (const old of existing) {
+        await supabase.from("logs").delete().eq("id", old.id);
+      }
+      setLogs(prev => prev.filter(l => !existing.some(e => e.id === l.id)));
+    }
+
     const logEntries = day.blocks.map(block => {
       const exName = block.exerciseName || exercises.find(e => e.id === block.exerciseId)?.name || "Unknown";
       return {
@@ -171,7 +185,7 @@ export default function CoachApp({ onLogout }) {
     const { data, error } = await supabase.from("logs").insert(logEntries).select();
     if (!error && data) setLogs(prev => [...data.reverse(), ...prev]);
     return !error;
-  }, [athletes, exercises]);
+  }, [athletes, exercises, logs]);
 
   const deleteLog = useCallback(async (id) => {
     await supabase.from("logs").delete().eq("id", id);

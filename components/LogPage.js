@@ -41,10 +41,10 @@ export default function LogPage({ logs, addLog, deleteLog, unlogDay, athletes, e
   // Get athletes that have logs
   const athletesWithLogs = athletes.filter(a => logs.some(l => l.athlete_id === a.id));
 
-  // Group logs by athlete + date for Workouts view
+  // Group logs by athlete + date + day + week for Workouts view
   const grouped = {};
   filteredLogs.forEach(l => {
-    const key = `${l.athlete_id || l.athlete_name}-${l.date}-${l.day_label || ""}`;
+    const key = `${l.athlete_id || l.athlete_name}-${l.date}-${l.day_label || ""}-${l.week_label || ""}`;
     if (!grouped[key]) {
       grouped[key] = { key, athlete_name: l.athlete_name, athlete_id: l.athlete_id, date: l.date, logged_at: l.logged_at, week_label: l.week_label || "", day_label: l.day_label || "", entries: [], categories: new Set() };
     }
@@ -56,14 +56,30 @@ export default function LogPage({ logs, addLog, deleteLog, unlogDay, athletes, e
     if (l.week_label && !grouped[key].week_label) grouped[key].week_label = l.week_label;
     if (l.day_label && !grouped[key].day_label) grouped[key].day_label = l.day_label;
   });
+  // Deduplicate: keep most recent log per exercise within each day
+  Object.values(grouped).forEach(day => {
+    const seen = {};
+    const deduped = [];
+    day.entries.sort((a, b) => new Date(b.logged_at || b.date) - new Date(a.logged_at || a.date));
+    day.entries.forEach(l => {
+      const norm = (l.exercise_name || "").toLowerCase().replace(/[-–—]/g, " ").replace(/\s+/g, " ").trim();
+      if (!seen[norm]) { seen[norm] = true; deduped.push(l); }
+    });
+    day.entries = deduped;
+  });
   const sortedDays = Object.values(grouped).sort((a, b) => new Date(b.date) - new Date(a.date));
 
-  // Exercises sorted by most recent
-  const sortedExercises = [...filteredLogs].sort((a, b) => {
-    const da = a.logged_at || a.date;
-    const db = b.logged_at || b.date;
-    return new Date(db) - new Date(da);
-  });
+  // Exercises sorted by most recent, deduped by exercise name per athlete
+  const exerciseDeduped = (() => {
+    const sorted = [...filteredLogs].sort((a, b) => new Date(b.logged_at || b.date) - new Date(a.logged_at || a.date));
+    const seen = {};
+    return sorted.filter(l => {
+      const key = `${l.athlete_id}-${(l.exercise_name || "").toLowerCase().replace(/[-–—]/g, " ").replace(/\s+/g, " ").trim()}`;
+      if (seen[key]) return false;
+      seen[key] = true;
+      return true;
+    });
+  })();
 
   const datesAreDifferent = (workoutDate, loggedAt) => {
     if (!loggedAt) return false;
@@ -234,11 +250,11 @@ export default function LogPage({ logs, addLog, deleteLog, unlogDay, athletes, e
       {/* ===================== EXERCISES TAB ===================== */}
       {tab === "exercises" && (
         <>
-          {sortedExercises.length === 0 ? <EmptyState icon="◇" title="No exercises logged" sub={selectedAthlete !== "all" ? "No exercises for this athlete yet." : "Start tracking."} /> : (
+          {exerciseDeduped.length === 0 ? <EmptyState icon="◇" title="No exercises logged" sub={selectedAthlete !== "all" ? "No exercises for this athlete yet." : "Start tracking."} /> : (
             <div>
-              <div style={{ fontSize: 13, color: "#71717A", marginBottom: 12 }}>{sortedExercises.length} exercise{sortedExercises.length !== 1 ? "s" : ""} logged</div>
+              <div style={{ fontSize: 13, color: "#71717A", marginBottom: 12 }}>{exerciseDeduped.length} exercise{exerciseDeduped.length !== 1 ? "s" : ""} logged</div>
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                {sortedExercises.map(l => {
+                {exerciseDeduped.map(l => {
                   const cc = colors[l.category];
                   const isExpanded = expandedExercise === l.id;
                   return (

@@ -48,6 +48,24 @@ export default function AthleteView({ athlete, onLogout }) {
     load();
   }, [athlete.id]);
 
+  // Poll for updates every 30 seconds
+  useEffect(() => {
+    if (!loaded) return;
+    const poll = setInterval(async () => {
+      const [pRes, lRes, vRes, bRes] = await Promise.all([
+        supabase.from("programs").select("*").eq("athlete_id", athlete.id),
+        supabase.from("logs").select("*").eq("athlete_id", athlete.id).order("date", { ascending: false }),
+        supabase.from("video_submissions").select("*").eq("athlete_id", athlete.id).order("created_at", { ascending: false }),
+        supabase.from("baselines").select("*").eq("athlete_id", athlete.id).order("sort_order", { ascending: true }),
+      ]);
+      if (pRes.data) setPrograms(pRes.data);
+      if (lRes.data) setLogs(lRes.data);
+      if (vRes.data) setVideoSubs(vRes.data);
+      if (bRes.data) setBaselines(bRes.data);
+    }, 30000);
+    return () => clearInterval(poll);
+  }, [loaded, athlete.id]);
+
   const addLog = useCallback(async (log) => {
     const { data, error } = await supabase.from("logs").insert(log).select().single();
     if (!error && data) setLogs(prev => [data, ...prev]);
@@ -213,15 +231,40 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
     if (!addLog || !athlete) return;
     const date = new Date().toISOString().slice(0, 10);
     setSubmitting(day.id);
+
+    // Delete existing logs for this week+day to prevent duplicates
+    const existing = (logs || []).filter(l =>
+      l.athlete_id === athlete.id && l.day_label === day.label && l.week_label === weekLabel
+    );
+    for (const old of existing) {
+      await supabase.from("logs").delete().eq("id", old.id);
+    }
+    if (existing.length > 0) {
+      setLogs(prev => prev.filter(l => !existing.some(e => e.id === l.id)));
+    }
+
+    // Insert fresh logs with effective values (user edits > existing logged > programmed)
+    const weekLabel2 = weekLabel;
+    const normalize = (s) => (s || "").toLowerCase().replace(/[-–—]/g, " ").replace(/\s+/g, " ").trim();
+    const remainingLogs = (logs || []).filter(l => l.athlete_id === athlete.id && l.day_label === day.label && l.week_label === weekLabel2);
     for (const block of day.blocks) {
       const result = blockResults[block.id] || {};
+      const dn = getDisplayName(block);
+      const existingLog = remainingLogs.find(l =>
+        (l.exercise_id && block.exerciseId && l.exercise_id === block.exerciseId) ||
+        l.exercise_name === dn || (block.exerciseName && l.exercise_name === block.exerciseName) ||
+        normalize(l.exercise_name) === normalize(dn)
+      );
       await addLog({
         athlete_id: athlete.id, athlete_name: athlete.name,
-        exercise_id: block.exerciseId || "", exercise_name: getDisplayName(block),
+        exercise_id: block.exerciseId || "", exercise_name: dn,
         category: block.category || "",
-        sets: result.sets || block.sets || "", reps: result.reps || block.reps || "",
-        load: result.load || block.load || "", rpe: result.rpe || "",
-        notes: result.notes || "", date, week_label: weekLabel, day_label: day.label,
+        sets: result.sets ?? existingLog?.sets ?? block.sets ?? "",
+        reps: result.reps ?? existingLog?.reps ?? block.reps ?? "",
+        load: result.load ?? existingLog?.load ?? block.load ?? "",
+        rpe: result.rpe ?? existingLog?.rpe ?? "",
+        notes: result.notes ?? existingLog?.notes ?? "",
+        date, week_label: weekLabel, day_label: day.label,
       });
     }
     // Auto-mark day as completed in the program
@@ -434,6 +477,12 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
               const result = blockResults[block.id] || {};
               const hasInput = result.sets || result.reps || result.load || result.rpe;
               const loggedResult = blockLogMap[block.id] || null;
+              // Effective values: user input > logged result > programmed value
+              const effSets = result.sets ?? loggedResult?.sets ?? "";
+              const effReps = result.reps ?? loggedResult?.reps ?? "";
+              const effLoad = result.load ?? loggedResult?.load ?? "";
+              const effRpe = result.rpe ?? loggedResult?.rpe ?? "";
+              const effNotes = result.notes ?? loggedResult?.notes ?? "";
 
               return (
                 <div key={block.id} style={{ background: cc?.light || "#F9FAFB", border: `1px solid ${cc?.border || "#E5E7EB"}`, borderRadius: 8, marginBottom: 6, borderLeft: `3px solid ${cc?.bg || "#999"}`, overflow: "hidden" }}>
@@ -470,36 +519,19 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
                       )}
                       {videoUrl && <a href={videoUrl} target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, color: "#fff", background: "#2563EB", textDecoration: "none", fontWeight: 700, padding: "5px 12px", borderRadius: 999, marginTop: 6 }}>▶ Watch Video</a>}
 
-                      {/* Previously logged results */}
-                      {loggedResult && (
-                        <div style={{ marginTop: 10, padding: "8px 10px", background: "#F0FDF4", borderRadius: 8, border: "1px solid #BBF7D0" }}>
-                          <div style={{ fontSize: 10, fontWeight: 700, color: "#16A34A", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 4 }}>Your Logged Results</div>
-                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 6 }}>
-                            <div><div style={{ fontSize: 9, color: "#71717A" }}>Sets</div><div style={{ fontSize: 16, fontWeight: 700 }}>{loggedResult.sets || "—"}</div></div>
-                            <div><div style={{ fontSize: 9, color: "#71717A" }}>Reps</div><div style={{ fontSize: 16, fontWeight: 700 }}>{loggedResult.reps || "—"}</div></div>
-                            <div><div style={{ fontSize: 9, color: "#71717A" }}>Load</div><div style={{ fontSize: 16, fontWeight: 700 }}>{loggedResult.load || "—"}</div></div>
-                            <div><div style={{ fontSize: 9, color: "#71717A" }}>RPE</div><div style={{ fontSize: 16, fontWeight: 700 }}>{loggedResult.rpe || "—"}</div></div>
-                          </div>
-                          {loggedResult.notes && (
-                            <div style={{ marginTop: 6, padding: "4px 6px", background: "#fff", borderRadius: 4, border: "1px solid #BBF7D0" }}>
-                              <div style={{ fontSize: 9, color: "#71717A" }}>Your Notes</div>
-                              <div style={{ fontSize: 12, color: "#18181B", whiteSpace: "pre-wrap" }}>{loggedResult.notes}</div>
-                            </div>
-                          )}
-                          <div style={{ fontSize: 10, color: "#A1A1AA", marginTop: 4 }}>Logged {new Date(loggedResult.date + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}</div>
-                        </div>
-                      )}
-
-                      {/* Log inputs */}
+                      {/* Log / Edit inputs */}
                       <div style={{ marginTop: 10, paddingTop: 8, borderTop: "1px dashed #D4D4D8" }}>
-                        <div style={{ fontSize: 10, fontWeight: 700, color: "#71717A", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 6 }}>Log Your Results</div>
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
-                          <label style={{ fontSize: 10, color: "#71717A" }}>Sets<input type="number" value={result.sets ?? ""} onChange={e => updateResult(block.id, "sets", e.target.value)} placeholder={block.sets || ""} style={inputStyle} /></label>
-                          <label style={{ fontSize: 10, color: "#71717A" }}>Reps<input value={result.reps ?? ""} onChange={e => updateResult(block.id, "reps", e.target.value)} placeholder={block.reps || ""} style={inputStyle} /></label>
-                          <label style={{ fontSize: 10, color: "#71717A" }}>Load<input value={result.load ?? ""} onChange={e => updateResult(block.id, "load", e.target.value)} placeholder={block.load || "lbs"} style={inputStyle} /></label>
-                          <label style={{ fontSize: 10, color: "#71717A" }}>RPE<input value={result.rpe ?? ""} onChange={e => updateResult(block.id, "rpe", e.target.value)} placeholder="1-10" style={inputStyle} /></label>
+                        <div style={{ fontSize: 10, fontWeight: 700, color: loggedResult ? "#16A34A" : "#71717A", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 6 }}>
+                          {loggedResult ? "Your Results (edit & re-submit)" : "Log Your Results"}
                         </div>
-                        <label style={{ fontSize: 10, color: "#71717A", display: "block", marginTop: 6 }}>Notes<input value={result.notes ?? ""} onChange={e => updateResult(block.id, "notes", e.target.value)} placeholder="How did it feel?" style={inputStyle} /></label>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+                          <label style={{ fontSize: 10, color: "#71717A" }}>Sets<input type="number" value={effSets} onChange={e => updateResult(block.id, "sets", e.target.value)} placeholder={block.sets || ""} style={inputStyle} /></label>
+                          <label style={{ fontSize: 10, color: "#71717A" }}>Reps<input value={effReps} onChange={e => updateResult(block.id, "reps", e.target.value)} placeholder={block.reps || ""} style={inputStyle} /></label>
+                          <label style={{ fontSize: 10, color: "#71717A" }}>Load<input value={effLoad} onChange={e => updateResult(block.id, "load", e.target.value)} placeholder={block.load || "lbs"} style={inputStyle} /></label>
+                          <label style={{ fontSize: 10, color: "#71717A" }}>RPE<input value={effRpe} onChange={e => updateResult(block.id, "rpe", e.target.value)} placeholder="1-10" style={inputStyle} /></label>
+                        </div>
+                        <label style={{ fontSize: 10, color: "#71717A", display: "block", marginTop: 6 }}>Notes<input value={effNotes} onChange={e => updateResult(block.id, "notes", e.target.value)} placeholder="How did it feel?" style={inputStyle} /></label>
+                        {loggedResult && <div style={{ fontSize: 10, color: "#A1A1AA", marginTop: 4 }}>Logged {new Date(loggedResult.date + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}</div>}
                       </div>
 
                       {/* Submit Video */}
@@ -573,11 +605,9 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
               <div style={{ marginTop: 6 }}>
                 {dayStatus === "missed" ? (
                   <div style={{ background: "#FEF2F2", padding: "8px", borderRadius: 6, fontSize: 13, color: "#DC2626", fontWeight: 600, textAlign: "center" }}>✗ Session missed</div>
-                ) : dayLogged || dayStatus === "completed" ? (
-                  <div style={{ background: "#F0FDF4", padding: "8px", borderRadius: 6, fontSize: 13, color: "#16A34A", fontWeight: 600, textAlign: "center" }}>✓ {dayLogged ? "Logged today" : "Completed"}</div>
                 ) : (
-                  <button onClick={() => submitDay(day, week.label)} disabled={submitting === day.id} style={{ width: "100%", padding: "10px", background: "#18181B", color: "#fff", border: "none", borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: submitting === day.id ? "default" : "pointer", fontFamily: "inherit", opacity: submitting === day.id ? 0.5 : 1 }}>
-                    {submitting === day.id ? "Logging…" : `Log ${day.label}`}
+                  <button onClick={() => submitDay(day, week.label)} disabled={submitting === day.id} style={{ width: "100%", padding: "10px", background: dayLogged ? "#16A34A" : "#18181B", color: "#fff", border: "none", borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: submitting === day.id ? "default" : "pointer", fontFamily: "inherit", opacity: submitting === day.id ? 0.5 : 1 }}>
+                    {submitting === day.id ? "Saving…" : dayLogged ? `✓ Update ${day.label}` : `Log ${day.label}`}
                   </button>
                 )}
               </div>
@@ -752,13 +782,24 @@ function MyLogs({ logs, colors, cats, isMobile, deleteLog, deleteDayLogs }) {
 
   const formatDate = (d) => new Date(d + "T12:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
 
-  // Group logs by date + day_label
+  // Group logs by date + day_label + week_label
   const grouped = {};
   logs.forEach(l => {
-    const key = `${l.date}-${l.day_label || ""}`;
+    const key = `${l.date}-${l.day_label || ""}-${l.week_label || ""}`;
     if (!grouped[key]) { grouped[key] = { date: l.date, week_label: l.week_label || "", day_label: l.day_label || "", entries: [], categories: new Set() }; }
     grouped[key].entries.push(l);
     if (l.category) grouped[key].categories.add(l.category);
+  });
+  // Deduplicate: keep most recent per exercise within each day
+  Object.values(grouped).forEach(day => {
+    const seen = {};
+    const deduped = [];
+    day.entries.sort((a, b) => new Date(b.logged_at || b.date) - new Date(a.logged_at || a.date));
+    day.entries.forEach(l => {
+      const norm = (l.exercise_name || "").toLowerCase().replace(/[-–—]/g, " ").replace(/\s+/g, " ").trim();
+      if (!seen[norm]) { seen[norm] = true; deduped.push(l); }
+    });
+    day.entries = deduped;
   });
   const sortedDays = Object.values(grouped).sort((a, b) => new Date(b.date) - new Date(a.date));
 

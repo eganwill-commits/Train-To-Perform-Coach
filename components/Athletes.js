@@ -42,16 +42,28 @@ export default function Athletes({ athletes, addAthlete, updateAthlete, deleteAt
   if (detail && activeAthlete) {
     const athleteLogs = (logs || []).filter(l => l.athlete_id === activeAthlete.id);
 
-    // Group by date
+    // Group by date + day_label + week_label
     const grouped = {};
     athleteLogs.forEach(l => {
-      const key = `${l.date}-${l.day_label || ""}`;
+      const key = `${l.date}-${l.day_label || ""}-${l.week_label || ""}`;
       if (!grouped[key]) { grouped[key] = { date: l.date, logged_at: l.logged_at, week_label: l.week_label || "", day_label: l.day_label || "", entries: [], categories: new Set() }; }
       grouped[key].entries.push(l);
       if (l.category) grouped[key].categories.add(l.category);
       if (l.logged_at && (!grouped[key].logged_at || new Date(l.logged_at) > new Date(grouped[key].logged_at))) grouped[key].logged_at = l.logged_at;
       if (l.week_label && !grouped[key].week_label) grouped[key].week_label = l.week_label;
       if (l.day_label && !grouped[key].day_label) grouped[key].day_label = l.day_label;
+    });
+    // Deduplicate: keep most recent log per exercise name within each day
+    Object.values(grouped).forEach(day => {
+      const seen = {};
+      const deduped = [];
+      // Sort entries by logged_at desc so newest comes first
+      day.entries.sort((a, b) => new Date(b.logged_at || b.date) - new Date(a.logged_at || a.date));
+      day.entries.forEach(l => {
+        const norm = (l.exercise_name || "").toLowerCase().replace(/[-–—]/g, " ").replace(/\s+/g, " ").trim();
+        if (!seen[norm]) { seen[norm] = true; deduped.push(l); }
+      });
+      day.entries = deduped;
     });
     const sortedDays = Object.values(grouped).sort((a, b) => new Date(b.date) - new Date(a.date));
 
@@ -346,11 +358,12 @@ export default function Athletes({ athletes, addAthlete, updateAthlete, deleteAt
                               <span style={{ fontSize: 11, fontWeight: 700, color: cc?.text || "#52525B", textTransform: "uppercase", letterSpacing: 0.5 }}>{cat}</span>
                             </div>
                             {day.entries.filter(e => e.category === cat).map(l => (
-                              <div key={l.id} style={{ padding: "4px 0 4px 12px", borderBottom: "1px solid #F4F4F5" }}>
+                              <div key={l.id} style={{ padding: "6px 0 6px 12px", borderBottom: "1px solid #F4F4F5" }}>
                                 <div style={{ fontWeight: 600, fontSize: 13 }}>{l.exercise_name}</div>
                                 <div style={{ fontSize: 12, color: "#71717A" }}>
                                   {[l.sets && l.reps ? `${l.sets}×${l.reps}` : l.reps || l.sets || null, l.load ? `@ ${l.load}` : null, l.rpe ? `RPE ${l.rpe}` : null].filter(Boolean).join(" · ") || "—"}
                                 </div>
+                                {l.notes && <div style={{ fontSize: 12, color: "#52525B", fontStyle: "italic", marginTop: 2 }}>📝 {l.notes}</div>}
                               </div>
                             ))}
                           </div>
