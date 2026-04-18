@@ -322,13 +322,17 @@ function ProgramDetail({ program, exercises, cats, colors, addBlock, updateBlock
 
   const getDayLogs = (date, dayLabel) => {
     if (!program.athlete_id) return [];
-    // Match by date + day_label, OR by week_label + day_label (in case date differs)
     const weekLabel = week?.label || "";
-    return logs.filter(l =>
+    // Try week_label + day_label first, then date + day_label, then just day_label
+    let results = logs.filter(l =>
       l.athlete_id === program.athlete_id &&
       l.day_label === dayLabel &&
-      (l.date === date || l.week_label === weekLabel)
+      (l.week_label === weekLabel || l.date === date)
     );
+    if (results.length === 0) {
+      results = logs.filter(l => l.athlete_id === program.athlete_id && l.day_label === dayLabel);
+    }
+    return results;
   };
 
   const resolveExerciseId = (block) => {
@@ -487,6 +491,18 @@ function ProgramDetail({ program, exercises, cats, colors, addBlock, updateBlock
                   const dn = normalize(getDisplayName(block));
                   const match = dayLogs.find(l => !usedLogIds.has(l.id) && normalize(l.exercise_name) === dn);
                   if (match) { blockLogMap[block.id] = match; usedLogIds.add(match.id); }
+                });
+                // Pass 4: fallback - search ALL athlete logs by exercise name
+                const allAthLogs = program.athlete_id ? logs.filter(l => l.athlete_id === program.athlete_id) : [];
+                day.blocks.forEach((block, bi) => {
+                  if (blockLogMap[block.id]) return;
+                  const dn = getDisplayName(block);
+                  const dnNorm = normalize(dn);
+                  const m = allAthLogs.find(l =>
+                    !usedLogIds.has(l.id) &&
+                    (l.exercise_name === dn || (block.exerciseName && l.exercise_name === block.exerciseName) || normalize(l.exercise_name) === dnNorm)
+                  );
+                  if (m) { blockLogMap[block.id] = m; usedLogIds.add(m.id); }
                 });
 
                 return day.blocks.map((block, bi) => {
