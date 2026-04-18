@@ -370,9 +370,9 @@ function ProgramDetail({ program, exercises, cats, colors, addBlock, updateBlock
     setSubmitting(null);
   };
 
-  const handleUnlog = async (day) => {
+  const handleUnlog = async (day, skipConfirm) => {
     const date = getDateForDay(day.id);
-    if (!confirm(`Remove logged workout for ${ath?.name || "this athlete"} — ${day.label} on ${date}?`)) return;
+    if (!skipConfirm && !confirm(`⚠️ This will permanently delete ${ath?.name || "this athlete"}'s logged workout for ${day.label} on ${date}, including their notes, RPE, and load data.\n\nAre you sure?`)) return;
     setUnlogging(day.id);
     await unlogDay(program.athlete_id, date, day.label, week.label);
     setUnlogging(null);
@@ -502,7 +502,11 @@ function ProgramDetail({ program, exercises, cats, colors, addBlock, updateBlock
                 const isLast = bi === day.blocks.length - 1;
                 const resolvedEx = resolvedId !== "__custom__" ? exercises.find(e => e.id === resolvedId) : null;
                 const videoUrl = resolvedEx?.video_url || (block.exerciseName ? exercises.find(e => e.name === block.exerciseName)?.video_url : "") || "";
-                const blockLogged = !!blockLogMap[block.id];
+                const blockLogged = program.athlete_id && logs.some(l => {
+                  const norm = (s) => (s || "").toLowerCase().replace(/[-–—]/g, " ").replace(/\s+/g, " ").trim();
+                  return l.athlete_id === program.athlete_id &&
+                    (l.exercise_name === displayName || l.exercise_id === block.exerciseId || norm(l.exercise_name) === norm(displayName) || (block.exerciseName && (l.exercise_name === block.exerciseName || norm(l.exercise_name) === norm(block.exerciseName))));
+                });
 
                 return (
                   <div key={block.id} style={{ background: cc?.light || "#F9FAFB", border: `1px solid ${cc?.border || "#E5E7EB"}`, borderRadius: 10, marginBottom: 8, borderLeft: `4px solid ${cc?.bg || "#999"}`, overflow: "hidden" }}>
@@ -555,7 +559,13 @@ function ProgramDetail({ program, exercises, cats, colors, addBlock, updateBlock
 
                               {/* Athlete's logged results */}
                               {(() => {
-                                const ml = blockLogMap[block.id];
+                                if (!program.athlete_id) return null;
+                                const dn = getDisplayName(block);
+                                const norm = (s) => (s || "").toLowerCase().replace(/[-–—]/g, " ").replace(/\s+/g, " ").trim();
+                                const ml = logs.find(l =>
+                                  l.athlete_id === program.athlete_id &&
+                                  (l.exercise_name === dn || l.exercise_id === block.exerciseId || norm(l.exercise_name) === norm(dn) || (block.exerciseName && (l.exercise_name === block.exerciseName || norm(l.exercise_name) === norm(block.exerciseName))))
+                                );
                                 if (!ml) return null;
                                 return (
                                   <div style={{ marginTop: 8, padding: "8px 10px", background: "#F0FDF4", borderRadius: 8, border: "1px solid #BBF7D0" }}>
@@ -619,7 +629,13 @@ function ProgramDetail({ program, exercises, cats, colors, addBlock, updateBlock
 
                         {/* Athlete's logged results */}
                         {(() => {
-                          const ml = blockLogMap[block.id];
+                          if (!program.athlete_id) return null;
+                          const dn = getDisplayName(block);
+                          const norm = (s) => (s || "").toLowerCase().replace(/[-–—]/g, " ").replace(/\s+/g, " ").trim();
+                          const ml = logs.find(l =>
+                            l.athlete_id === program.athlete_id &&
+                            (l.exercise_name === dn || l.exercise_id === block.exerciseId || norm(l.exercise_name) === norm(dn) || (block.exerciseName && (l.exercise_name === block.exerciseName || norm(l.exercise_name) === norm(block.exerciseName))))
+                          );
                           if (!ml) return null;
                           return (
                             <div style={{ marginTop: 8, padding: "8px 10px", background: "#F0FDF4", borderRadius: 8, border: "1px solid #BBF7D0" }}>
@@ -667,7 +683,10 @@ function ProgramDetail({ program, exercises, cats, colors, addBlock, updateBlock
                           {unlogging === day.id ? "Removing…" : "Unlog Day"}
                         </button>
                         <button
-                          onClick={() => { handleUnlog(day).then(() => setTimeout(() => handleSubmit(day), 300)); }}
+                          onClick={() => {
+                            if (!confirm(`⚠️ Re-submit will DELETE the athlete's logged data (their notes, RPE, load) and replace it with your programmed values.\n\nThis cannot be undone. Continue?`)) return;
+                            handleUnlog(day, true).then(() => setTimeout(() => handleSubmit(day), 300));
+                          }}
                           style={{ flex: 1, padding: "7px", background: "#18181B", color: "#fff", border: "none", borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}
                         >
                           Re-submit

@@ -432,7 +432,14 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
               const isOpen = expandedBlock === block.id;
               const result = blockResults[block.id] || {};
               const hasInput = result.sets || result.reps || result.load || result.rpe;
-              const loggedResult = blockLogMap[block.id];
+              const loggedResult = (() => {
+                const dn = getDisplayName(block);
+                const norm = (s) => (s || "").toLowerCase().replace(/[-–—]/g, " ").replace(/\s+/g, " ").trim();
+                return (logs || []).find(l =>
+                  l.athlete_id === athlete.id &&
+                  (l.exercise_name === dn || l.exercise_id === block.exerciseId || norm(l.exercise_name) === norm(dn) || (block.exerciseName && (l.exercise_name === block.exerciseName || norm(l.exercise_name) === norm(block.exerciseName))))
+                );
+              })();
 
               return (
                 <div key={block.id} style={{ background: cc?.light || "#F9FAFB", border: `1px solid ${cc?.border || "#E5E7EB"}`, borderRadius: 8, marginBottom: 6, borderLeft: `3px solid ${cc?.bg || "#999"}`, overflow: "hidden" }}>
