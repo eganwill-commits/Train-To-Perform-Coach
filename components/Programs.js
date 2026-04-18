@@ -163,7 +163,7 @@ export default function Programs({ programs, addProgram, updateProgram, deletePr
     await updateProgram(ap.id, { weeks });
   };
 
-  if (detail && ap) return <ProgramDetail program={ap} exercises={exercises} cats={cats} colors={colors} addBlock={addBlock} updateBlock={updateBlock} removeBlock={removeBlock} moveBlock={moveBlock} onBack={() => setDetail(null)} athletes={athletes} isMobile={isMobile} submitDay={submitDay} unlogDay={unlogDay} logs={logs || []} copyToAthletes={copyToAthletes} updateProgram={updateProgram} groups={groups} />;
+  if (detail && ap) return <ProgramDetail program={ap} programs={programs} exercises={exercises} cats={cats} colors={colors} addBlock={addBlock} updateBlock={updateBlock} removeBlock={removeBlock} moveBlock={moveBlock} onBack={() => setDetail(null)} athletes={athletes} isMobile={isMobile} submitDay={submitDay} unlogDay={unlogDay} logs={logs || []} copyToAthletes={copyToAthletes} updateProgram={updateProgram} groups={groups} />;
 
   return (
     <div>
@@ -257,7 +257,7 @@ export default function Programs({ programs, addProgram, updateProgram, deletePr
   );
 }
 
-function ProgramDetail({ program, exercises, cats, colors, addBlock, updateBlock, removeBlock, moveBlock, onBack, athletes, isMobile, submitDay, unlogDay, logs, copyToAthletes, updateProgram, groups }) {
+function ProgramDetail({ program, programs, exercises, cats, colors, addBlock, updateBlock, removeBlock, moveBlock, onBack, athletes, isMobile, submitDay, unlogDay, logs, copyToAthletes, updateProgram, groups }) {
   // Keep a ref to latest program to prevent stale closures in async handlers
   const programRef = useRef(program);
   programRef.current = program;
@@ -276,6 +276,7 @@ function ProgramDetail({ program, exercises, cats, colors, addBlock, updateBlock
   const [copyDayIndex, setCopyDayIndex] = useState(0);
   const [copyTargets, setCopyTargets] = useState([]);
   const [expandedBlock, setExpandedBlock] = useState(null);
+  const [recapSaved, setRecapSaved] = useState(false);
 
   // Auto-advance to next open week when status changes
   useEffect(() => {
@@ -304,6 +305,24 @@ function ProgramDetail({ program, exercises, cats, colors, addBlock, updateBlock
     const weeks = JSON.parse(JSON.stringify(programRef.current.weeks));
     weeks[weekIndex][field] = value;
     await updateProgram(programRef.current.id, { weeks });
+
+    // Propagate coachRecap to all programs in the same season
+    if (field === "coachRecap" && programRef.current.group_id) {
+      const weekLabel = weeks[weekIndex].label;
+      const siblingPrograms = (programs || []).filter(p =>
+        p.id !== programRef.current.id && p.group_id === programRef.current.group_id
+      );
+      for (const sib of siblingPrograms) {
+        const sibWeeks = JSON.parse(JSON.stringify(sib.weeks || []));
+        const matchWi = sibWeeks.findIndex(w => w.label === weekLabel);
+        if (matchWi >= 0) {
+          sibWeeks[matchWi].coachRecap = value;
+          await updateProgram(sib.id, { weeks: sibWeeks });
+        }
+      }
+      setRecapSaved(true);
+      setTimeout(() => setRecapSaved(false), 2000);
+    }
   };
 
   const updateDayField = async (wi, di, field, value) => {
@@ -474,13 +493,17 @@ function ProgramDetail({ program, exercises, cats, colors, addBlock, updateBlock
                   l.athlete_id === athId && l.day_label === dayLabel && l.week_label === weekLabel
                 );
 
-                // One-to-one matching within scoped logs
+                // Also try broader scope: just day_label matching
+                const dayOnlyLogs = scopedLogs.length > 0 ? scopedLogs : logs.filter(l =>
+                  l.athlete_id === athId && l.day_label === dayLabel
+                );
+
+                // One-to-one matching - name only (no exercise_id to prevent Sled-type bugs)
                 const blockLogMap = {};
                 const usedIds = new Set();
 
-                const matchName = (log, block) => {
+                const matchByName = (log, block) => {
                   const dn = getDisplayName(block);
-                  if (log.exercise_id && block.exerciseId && log.exercise_id === block.exerciseId) return true;
                   if (log.exercise_name === dn) return true;
                   if (block.exerciseName && log.exercise_name === block.exerciseName) return true;
                   if (normalize(log.exercise_name) === normalize(dn)) return true;
@@ -488,10 +511,21 @@ function ProgramDetail({ program, exercises, cats, colors, addBlock, updateBlock
                   return false;
                 };
 
+                // Pass 1: scoped logs
                 day.blocks.forEach(block => {
-                  const m = scopedLogs.find(l => !usedIds.has(l.id) && matchName(l, block));
+                  const m = dayOnlyLogs.find(l => !usedIds.has(l.id) && matchByName(l, block));
                   if (m) { blockLogMap[block.id] = m; usedIds.add(m.id); }
                 });
+
+                // Pass 2: fallback to ALL athlete logs by name for any unmatched blocks
+                if (Object.keys(blockLogMap).length < day.blocks.length) {
+                  const allAthLogs = logs.filter(l => l.athlete_id === athId);
+                  day.blocks.forEach(block => {
+                    if (blockLogMap[block.id]) return;
+                    const m = allAthLogs.find(l => !usedIds.has(l.id) && matchByName(l, block));
+                    if (m) { blockLogMap[block.id] = m; usedIds.add(m.id); }
+                  });
+                }
 
                 return day.blocks.map((block, bi) => {
                 const cc = colors[block.category];
@@ -735,7 +769,13 @@ function ProgramDetail({ program, exercises, cats, colors, addBlock, updateBlock
 
       {/* Weekly Recap */}
       <div style={{ marginTop: 16, padding: "14px 16px", background: "#EFF6FF", borderRadius: 10, border: "1px solid #BFDBFE" }}>
-        <label style={{ fontSize: 12, fontWeight: 700, color: "#1E40AF", textTransform: "uppercase", letterSpacing: 0.5, display: "block", marginBottom: 6 }}>📋 Weekly Recap — {week.label}</label>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+          <label style={{ fontSize: 12, fontWeight: 700, color: "#1E40AF", textTransform: "uppercase", letterSpacing: 0.5 }}>📋 Weekly Recap — {week.label}</label>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            {recapSaved && <span style={{ fontSize: 11, fontWeight: 600, color: "#16A34A" }}>✓ Saved to all athletes</span>}
+            {program.group_id && <span style={{ fontSize: 10, color: "#93C5FD" }}>Shared across season</span>}
+          </div>
+        </div>
         <BlurInput
           value={week.coachRecap || ""}
           onSave={v => updateWeekField(aw, "coachRecap", v)}

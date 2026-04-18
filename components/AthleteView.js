@@ -436,24 +436,40 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
         const scopedLogs = (logs || []).filter(l =>
           l.athlete_id === athlete.id && l.day_label === dayLabel && l.week_label === weekLabel
         );
-        const dayLogged = scopedLogs.length > 0;
 
-        // One-to-one matching within scoped logs
+        // Broader scope: just day_label
+        const dayOnlyLogs = scopedLogs.length > 0 ? scopedLogs : (logs || []).filter(l =>
+          l.athlete_id === athlete.id && l.day_label === dayLabel
+        );
+        const dayLogged = dayOnlyLogs.length > 0;
+
+        // Name-only matching (no exercise_id to prevent cross-matching bugs)
         const blockLogMap = {};
         const usedIds = new Set();
-        const matchName = (log, block) => {
+        const matchByName = (log, block) => {
           const dn = getDisplayName(block);
-          if (log.exercise_id && block.exerciseId && log.exercise_id === block.exerciseId) return true;
           if (log.exercise_name === dn) return true;
           if (block.exerciseName && log.exercise_name === block.exerciseName) return true;
           if (normalize(log.exercise_name) === normalize(dn)) return true;
           if (block.exerciseName && normalize(log.exercise_name) === normalize(block.exerciseName)) return true;
           return false;
         };
+
+        // Pass 1: scoped logs
         day.blocks.forEach(block => {
-          const m = scopedLogs.find(l => !usedIds.has(l.id) && matchName(l, block));
+          const m = dayOnlyLogs.find(l => !usedIds.has(l.id) && matchByName(l, block));
           if (m) { blockLogMap[block.id] = m; usedIds.add(m.id); }
         });
+
+        // Pass 2: fallback to ALL athlete logs for unmatched blocks
+        if (Object.keys(blockLogMap).length < day.blocks.length) {
+          const allAthLogs = (logs || []).filter(l => l.athlete_id === athlete.id);
+          day.blocks.forEach(block => {
+            if (blockLogMap[block.id]) return;
+            const m = allAthLogs.find(l => !usedIds.has(l.id) && matchByName(l, block));
+            if (m) { blockLogMap[block.id] = m; usedIds.add(m.id); }
+          });
+        }
 
         return (
           <Card key={day.id} style={{ padding: isMobile ? 10 : 14, marginBottom: 10, overflow: "hidden", border: dayStatus === "completed" ? "2px solid #16A34A" : dayStatus === "missed" ? "2px solid #DC2626" : "1px solid #E4E4E7", background: dayStatus === "missed" ? "#FEF2F218" : "#fff" }}>
