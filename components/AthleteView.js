@@ -369,7 +369,35 @@ function MyProgram({ programs, exercises, colors, cats, isMobile, athlete, addLo
 
       {week && week.days.map(day => {
         const dayStatus = day.status || week.status || "";
-        const dayLogged = (logs || []).some(l => l.athlete_id === athlete.id && l.date === new Date().toISOString().slice(0, 10) && l.day_label === day.label && l.week_label === week.label);
+        const weekLabel = week.label || "";
+        const dayLogged = (logs || []).some(l => l.athlete_id === athlete.id && l.day_label === day.label && l.week_label === weekLabel);
+
+        // One-to-one log matching for this day
+        const dayLogs = (logs || []).filter(l => l.athlete_id === athlete.id && l.day_label === day.label && l.week_label === weekLabel);
+        const blockLogMap = {};
+        const usedLogIds = new Set();
+        const normalize = (s) => (s || "").toLowerCase().replace(/[-–—]/g, " ").replace(/\s+/g, " ").trim();
+        // Pass 1: exercise_id
+        day.blocks.forEach(block => {
+          if (blockLogMap[block.id] || !block.exerciseId) return;
+          const m = dayLogs.find(l => !usedLogIds.has(l.id) && l.exercise_id && l.exercise_id === block.exerciseId);
+          if (m) { blockLogMap[block.id] = m; usedLogIds.add(m.id); }
+        });
+        // Pass 2: exact name
+        day.blocks.forEach(block => {
+          if (blockLogMap[block.id]) return;
+          const dn = getDisplayName(block);
+          const m = dayLogs.find(l => !usedLogIds.has(l.id) && (l.exercise_name === dn || (block.exerciseName && l.exercise_name === block.exerciseName)));
+          if (m) { blockLogMap[block.id] = m; usedLogIds.add(m.id); }
+        });
+        // Pass 3: normalized name
+        day.blocks.forEach(block => {
+          if (blockLogMap[block.id]) return;
+          const dn = normalize(getDisplayName(block));
+          const m = dayLogs.find(l => !usedLogIds.has(l.id) && normalize(l.exercise_name) === dn);
+          if (m) { blockLogMap[block.id] = m; usedLogIds.add(m.id); }
+        });
+
         return (
           <Card key={day.id} style={{ padding: isMobile ? 10 : 14, marginBottom: 10, overflow: "hidden", border: dayStatus === "completed" ? "2px solid #16A34A" : dayStatus === "missed" ? "2px solid #DC2626" : "1px solid #E4E4E7", background: dayStatus === "missed" ? "#FEF2F218" : "#fff" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
@@ -391,6 +419,7 @@ function MyProgram({ programs, exercises, colors, cats, isMobile, athlete, addLo
               const isOpen = expandedBlock === block.id;
               const result = blockResults[block.id] || {};
               const hasInput = result.sets || result.reps || result.load || result.rpe;
+              const loggedResult = blockLogMap[block.id];
 
               return (
                 <div key={block.id} style={{ background: cc?.light || "#F9FAFB", border: `1px solid ${cc?.border || "#E5E7EB"}`, borderRadius: 8, marginBottom: 6, borderLeft: `3px solid ${cc?.bg || "#999"}`, overflow: "hidden" }}>
@@ -402,6 +431,7 @@ function MyProgram({ programs, exercises, colors, cats, isMobile, athlete, addLo
                       {!isOpen && <div style={{ fontSize: 11, color: "#71717A" }}>{[block.sets && block.reps ? `${block.sets}×${block.reps}` : null, block.load ? `@ ${block.load}` : null].filter(Boolean).join(" ") || ""}</div>}
                     </div>
                     {hasInput && <span style={{ width: 7, height: 7, borderRadius: 4, background: "#16A34A", flexShrink: 0 }} />}
+                    {!hasInput && loggedResult && <span style={{ width: 7, height: 7, borderRadius: 4, background: "#16A34A", flexShrink: 0 }} />}
                     {videoUrl && <a href={videoUrl} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} style={{ fontSize: 10, color: "#fff", background: "#2563EB", textDecoration: "none", fontWeight: 700, padding: "2px 6px", borderRadius: 999, flexShrink: 0 }}>▶</a>}
                     <span style={{ fontSize: 10, color: "#A1A1AA", transform: isOpen ? "rotate(180deg)" : "none", transition: "transform .15s", flexShrink: 0 }}>▼</span>
                   </div>
@@ -425,6 +455,26 @@ function MyProgram({ programs, exercises, colors, cats, isMobile, athlete, addLo
                         <div style={{ marginTop: 6, padding: "6px 8px", background: "#fff", borderRadius: 6, border: "1px solid #E4E4E7", fontSize: 12, color: "#52525B", fontStyle: "italic" }}>{block.notes}</div>
                       )}
                       {videoUrl && <a href={videoUrl} target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, color: "#fff", background: "#2563EB", textDecoration: "none", fontWeight: 700, padding: "5px 12px", borderRadius: 999, marginTop: 6 }}>▶ Watch Video</a>}
+
+                      {/* Previously logged results */}
+                      {loggedResult && (
+                        <div style={{ marginTop: 10, padding: "8px 10px", background: "#F0FDF4", borderRadius: 8, border: "1px solid #BBF7D0" }}>
+                          <div style={{ fontSize: 10, fontWeight: 700, color: "#16A34A", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 4 }}>Your Logged Results</div>
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 6 }}>
+                            <div><div style={{ fontSize: 9, color: "#71717A" }}>Sets</div><div style={{ fontSize: 16, fontWeight: 700 }}>{loggedResult.sets || "—"}</div></div>
+                            <div><div style={{ fontSize: 9, color: "#71717A" }}>Reps</div><div style={{ fontSize: 16, fontWeight: 700 }}>{loggedResult.reps || "—"}</div></div>
+                            <div><div style={{ fontSize: 9, color: "#71717A" }}>Load</div><div style={{ fontSize: 16, fontWeight: 700 }}>{loggedResult.load || "—"}</div></div>
+                            <div><div style={{ fontSize: 9, color: "#71717A" }}>RPE</div><div style={{ fontSize: 16, fontWeight: 700 }}>{loggedResult.rpe || "—"}</div></div>
+                          </div>
+                          {loggedResult.notes && (
+                            <div style={{ marginTop: 6, padding: "4px 6px", background: "#fff", borderRadius: 4, border: "1px solid #BBF7D0" }}>
+                              <div style={{ fontSize: 9, color: "#71717A" }}>Your Notes</div>
+                              <div style={{ fontSize: 12, color: "#18181B", whiteSpace: "pre-wrap" }}>{loggedResult.notes}</div>
+                            </div>
+                          )}
+                          <div style={{ fontSize: 10, color: "#A1A1AA", marginTop: 4 }}>Logged {new Date(loggedResult.date + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}</div>
+                        </div>
+                      )}
 
                       {/* Log inputs */}
                       <div style={{ marginTop: 10, paddingTop: 8, borderTop: "1px dashed #D4D4D8" }}>
