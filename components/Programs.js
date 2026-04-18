@@ -462,29 +462,35 @@ function ProgramDetail({ program, exercises, cats, colors, addBlock, updateBlock
               </div>
               {day.blocks.length === 0 && <p style={{ color: "#A1A1AA", fontSize: 13, textAlign: "center", padding: 12 }}>Empty</p>}
               {(() => {
-                // Match each block to athlete's most recent log for that exercise
-                const blockLogMap = {};
-                const usedLogIds = new Set();
+                // Scope logs to this specific week+day for this athlete
                 const normalize = (s) => (s || "").toLowerCase().replace(/[-–—]/g, " ").replace(/\s+/g, " ").trim();
-                const athLogs = program.athlete_id ? logs.filter(l => l.athlete_id === program.athlete_id) : [];
+                const weekLabel = week.label || "";
+                const dayLabel = day.label || "";
+                const athId = program.athlete_id;
+                if (!athId) return day.blocks.map(() => null);
 
-                // For each block, find best matching log (most recent first since logs are sorted desc)
-                day.blocks.forEach(block => {
+                // Get logs scoped to this week+day
+                const scopedLogs = logs.filter(l =>
+                  l.athlete_id === athId && l.day_label === dayLabel && l.week_label === weekLabel
+                );
+
+                // One-to-one matching within scoped logs
+                const blockLogMap = {};
+                const usedIds = new Set();
+
+                const matchName = (log, block) => {
                   const dn = getDisplayName(block);
-                  const dnNorm = normalize(dn);
-                  const bnNorm = block.exerciseName ? normalize(block.exerciseName) : "";
+                  if (log.exercise_id && block.exerciseId && log.exercise_id === block.exerciseId) return true;
+                  if (log.exercise_name === dn) return true;
+                  if (block.exerciseName && log.exercise_name === block.exerciseName) return true;
+                  if (normalize(log.exercise_name) === normalize(dn)) return true;
+                  if (block.exerciseName && normalize(log.exercise_name) === normalize(block.exerciseName)) return true;
+                  return false;
+                };
 
-                  // Try exercise_id match first
-                  if (block.exerciseId) {
-                    const m = athLogs.find(l => !usedLogIds.has(l.id) && l.exercise_id && l.exercise_id && block.exerciseId && l.exercise_id === block.exerciseId);
-                    if (m) { blockLogMap[block.id] = m; usedLogIds.add(m.id); return; }
-                  }
-                  // Try exact name match
-                  const m2 = athLogs.find(l => !usedLogIds.has(l.id) && (l.exercise_name === dn || (block.exerciseName && l.exercise_name === block.exerciseName)));
-                  if (m2) { blockLogMap[block.id] = m2; usedLogIds.add(m2.id); return; }
-                  // Try normalized name match
-                  const m3 = athLogs.find(l => !usedLogIds.has(l.id) && (normalize(l.exercise_name) === dnNorm || (bnNorm && normalize(l.exercise_name) === bnNorm)));
-                  if (m3) { blockLogMap[block.id] = m3; usedLogIds.add(m3.id); }
+                day.blocks.forEach(block => {
+                  const m = scopedLogs.find(l => !usedIds.has(l.id) && matchName(l, block));
+                  if (m) { blockLogMap[block.id] = m; usedIds.add(m.id); }
                 });
 
                 return day.blocks.map((block, bi) => {
@@ -502,11 +508,7 @@ function ProgramDetail({ program, exercises, cats, colors, addBlock, updateBlock
                 const isLast = bi === day.blocks.length - 1;
                 const resolvedEx = resolvedId !== "__custom__" ? exercises.find(e => e.id === resolvedId) : null;
                 const videoUrl = resolvedEx?.video_url || (block.exerciseName ? exercises.find(e => e.name === block.exerciseName)?.video_url : "") || "";
-                const blockLogged = program.athlete_id && logs.some(l => {
-                  const norm = (s) => (s || "").toLowerCase().replace(/[-–—]/g, " ").replace(/\s+/g, " ").trim();
-                  return l.athlete_id === program.athlete_id &&
-                    (l.exercise_name === displayName || l.exercise_id && block.exerciseId && l.exercise_id === block.exerciseId || norm(l.exercise_name) === norm(displayName) || (block.exerciseName && (l.exercise_name === block.exerciseName || norm(l.exercise_name) === norm(block.exerciseName))));
-                });
+                const blockLogged = !!blockLogMap[block.id];
 
                 return (
                   <div key={block.id} style={{ background: cc?.light || "#F9FAFB", border: `1px solid ${cc?.border || "#E5E7EB"}`, borderRadius: 10, marginBottom: 8, borderLeft: `4px solid ${cc?.bg || "#999"}`, overflow: "hidden" }}>
@@ -559,13 +561,7 @@ function ProgramDetail({ program, exercises, cats, colors, addBlock, updateBlock
 
                               {/* Athlete's logged results */}
                               {(() => {
-                                if (!program.athlete_id) return null;
-                                const dn = getDisplayName(block);
-                                const norm = (s) => (s || "").toLowerCase().replace(/[-–—]/g, " ").replace(/\s+/g, " ").trim();
-                                const ml = logs.find(l =>
-                                  l.athlete_id === program.athlete_id &&
-                                  (l.exercise_name === dn || l.exercise_id && block.exerciseId && l.exercise_id === block.exerciseId || norm(l.exercise_name) === norm(dn) || (block.exerciseName && (l.exercise_name === block.exerciseName || norm(l.exercise_name) === norm(block.exerciseName))))
-                                );
+                                const ml = blockLogMap[block.id];
                                 if (!ml) return null;
                                 return (
                                   <div style={{ marginTop: 8, padding: "8px 10px", background: "#F0FDF4", borderRadius: 8, border: "1px solid #BBF7D0" }}>
@@ -629,13 +625,7 @@ function ProgramDetail({ program, exercises, cats, colors, addBlock, updateBlock
 
                         {/* Athlete's logged results */}
                         {(() => {
-                          if (!program.athlete_id) return null;
-                          const dn = getDisplayName(block);
-                          const norm = (s) => (s || "").toLowerCase().replace(/[-–—]/g, " ").replace(/\s+/g, " ").trim();
-                          const ml = logs.find(l =>
-                            l.athlete_id === program.athlete_id &&
-                            (l.exercise_name === dn || l.exercise_id && block.exerciseId && l.exercise_id === block.exerciseId || norm(l.exercise_name) === norm(dn) || (block.exerciseName && (l.exercise_name === block.exerciseName || norm(l.exercise_name) === norm(block.exerciseName))))
-                          );
+                          const ml = blockLogMap[block.id];
                           if (!ml) return null;
                           return (
                             <div style={{ marginTop: 8, padding: "8px 10px", background: "#F0FDF4", borderRadius: 8, border: "1px solid #BBF7D0" }}>

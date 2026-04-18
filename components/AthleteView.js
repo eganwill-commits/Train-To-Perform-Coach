@@ -386,29 +386,30 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
       {week && week.days.map(day => {
         const dayStatus = day.status || week.status || "";
         const weekLabel = week.label || "";
-        const dayLogged = (logs || []).some(l => l.athlete_id === athlete.id && l.day_label === day.label && (l.week_label === weekLabel || !l.week_label));
-
-        // Match each block to athlete's most recent log for that exercise
-        const blockLogMap = {};
-        const usedLogIds = new Set();
+        const dayLabel = day.label || "";
         const normalize = (s) => (s || "").toLowerCase().replace(/[-–—]/g, " ").replace(/\s+/g, " ").trim();
-        const athLogs = (logs || []).filter(l => l.athlete_id === athlete.id);
 
-        day.blocks.forEach(block => {
+        // Scope logs to this week+day
+        const scopedLogs = (logs || []).filter(l =>
+          l.athlete_id === athlete.id && l.day_label === dayLabel && l.week_label === weekLabel
+        );
+        const dayLogged = scopedLogs.length > 0;
+
+        // One-to-one matching within scoped logs
+        const blockLogMap = {};
+        const usedIds = new Set();
+        const matchName = (log, block) => {
           const dn = getDisplayName(block);
-          const dnNorm = normalize(dn);
-          const bnNorm = block.exerciseName ? normalize(block.exerciseName) : "";
-          // Try exercise_id first
-          if (block.exerciseId) {
-            const m = athLogs.find(l => !usedLogIds.has(l.id) && l.exercise_id && l.exercise_id && block.exerciseId && l.exercise_id === block.exerciseId);
-            if (m) { blockLogMap[block.id] = m; usedLogIds.add(m.id); return; }
-          }
-          // Try exact name
-          const m2 = athLogs.find(l => !usedLogIds.has(l.id) && (l.exercise_name === dn || (block.exerciseName && l.exercise_name === block.exerciseName)));
-          if (m2) { blockLogMap[block.id] = m2; usedLogIds.add(m2.id); return; }
-          // Try normalized name
-          const m3 = athLogs.find(l => !usedLogIds.has(l.id) && (normalize(l.exercise_name) === dnNorm || (bnNorm && normalize(l.exercise_name) === bnNorm)));
-          if (m3) { blockLogMap[block.id] = m3; usedLogIds.add(m3.id); }
+          if (log.exercise_id && block.exerciseId && log.exercise_id === block.exerciseId) return true;
+          if (log.exercise_name === dn) return true;
+          if (block.exerciseName && log.exercise_name === block.exerciseName) return true;
+          if (normalize(log.exercise_name) === normalize(dn)) return true;
+          if (block.exerciseName && normalize(log.exercise_name) === normalize(block.exerciseName)) return true;
+          return false;
+        };
+        day.blocks.forEach(block => {
+          const m = scopedLogs.find(l => !usedIds.has(l.id) && matchName(l, block));
+          if (m) { blockLogMap[block.id] = m; usedIds.add(m.id); }
         });
 
         return (
@@ -432,14 +433,7 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
               const isOpen = expandedBlock === block.id;
               const result = blockResults[block.id] || {};
               const hasInput = result.sets || result.reps || result.load || result.rpe;
-              const loggedResult = (() => {
-                const dn = getDisplayName(block);
-                const norm = (s) => (s || "").toLowerCase().replace(/[-–—]/g, " ").replace(/\s+/g, " ").trim();
-                return (logs || []).find(l =>
-                  l.athlete_id === athlete.id &&
-                  (l.exercise_name === dn || l.exercise_id && block.exerciseId && l.exercise_id === block.exerciseId || norm(l.exercise_name) === norm(dn) || (block.exerciseName && (l.exercise_name === block.exerciseName || norm(l.exercise_name) === norm(block.exerciseName))))
-                );
-              })();
+              const loggedResult = blockLogMap[block.id] || null;
 
               return (
                 <div key={block.id} style={{ background: cc?.light || "#F9FAFB", border: `1px solid ${cc?.border || "#E5E7EB"}`, borderRadius: 8, marginBottom: 6, borderLeft: `3px solid ${cc?.bg || "#999"}`, overflow: "hidden" }}>
