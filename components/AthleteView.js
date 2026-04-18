@@ -20,6 +20,7 @@ export default function AthleteView({ athlete, onLogout }) {
   const [logs, setLogs] = useState([]);
   const [videoSubs, setVideoSubs] = useState([]);
   const [groups, setGroups] = useState([]);
+  const [baselines, setBaselines] = useState([]);
   const [loaded, setLoaded] = useState(false);
   const [navOpen, setNavOpen] = useState(false);
   const isMobile = useIsMobile();
@@ -28,18 +29,20 @@ export default function AthleteView({ athlete, onLogout }) {
 
   useEffect(() => {
     async function load() {
-      const [pRes, eRes, lRes, vRes, gRes] = await Promise.all([
+      const [pRes, eRes, lRes, vRes, gRes, bRes] = await Promise.all([
         supabase.from("programs").select("*").eq("athlete_id", athlete.id),
         supabase.from("exercises").select("*"),
         supabase.from("logs").select("*").eq("athlete_id", athlete.id).order("date", { ascending: false }),
         supabase.from("video_submissions").select("*").eq("athlete_id", athlete.id).order("created_at", { ascending: false }),
         supabase.from("program_groups").select("*"),
+        supabase.from("baselines").select("*").eq("athlete_id", athlete.id).order("sort_order", { ascending: true }),
       ]);
       setPrograms(pRes.data || []);
       setExercises(eRes.data || []);
       setLogs(lRes.data || []);
       setVideoSubs(vRes.data || []);
       setGroups(gRes.data || []);
+      setBaselines(bRes.data || []);
       setLoaded(true);
     }
     load();
@@ -73,6 +76,11 @@ export default function AthleteView({ athlete, onLogout }) {
     if (!confirm("Delete this video submission?")) return;
     await supabase.from("video_submissions").delete().eq("id", id);
     setVideoSubs(prev => prev.filter(v => v.id !== id));
+  }, []);
+
+  const updateBaseline = useCallback(async (id, updates) => {
+    const { error } = await supabase.from("baselines").update(updates).eq("id", id);
+    if (!error) setBaselines(prev => prev.map(b => b.id === id ? { ...b, ...updates } : b));
   }, []);
 
   const nav = (id) => { setPage(id); if (isMobile) setNavOpen(false); };
@@ -124,6 +132,7 @@ export default function AthleteView({ athlete, onLogout }) {
         )}
         <main className="t2p-main" style={{ flex: 1, padding: isMobile ? "12px 10px" : 32, maxWidth: "100%", overflowX: "hidden" }}>
           {page === "my-program" && <MyProgram programs={programs} exercises={exercises} colors={colors} cats={cats} isMobile={isMobile} athlete={athlete} addLog={addLog} logs={logs} groups={groups} addVideoSub={addVideoSub} videoSubs={videoSubs} deleteVideoSub={deleteVideoSub} />}
+          {page === "my-baselines" && <MyBaselines baselines={baselines} updateBaseline={updateBaseline} isMobile={isMobile} />}
           {page === "my-logs" && <MyLogs logs={logs} colors={colors} cats={cats} isMobile={isMobile} deleteLog={deleteLog} deleteDayLogs={deleteDayLogs} />}
           {page === "my-videos" && <MyVideos videoSubs={videoSubs} addVideoSub={addVideoSub} deleteVideoSub={deleteVideoSub} athlete={athlete} exercises={exercises} cats={cats} colors={colors} isMobile={isMobile} />}
           {page === "ai-chat" && <AIChat isMobile={isMobile} athleteName={athlete.name} />}
@@ -965,6 +974,97 @@ function MyVideos({ videoSubs, addVideoSub, deleteVideoSub, athlete, exercises, 
           )}
         </div>
       </Modal>
+    </div>
+  );
+}
+
+function MyBaselines({ baselines, updateBaseline, isMobile }) {
+  const [editing, setEditing] = useState(null);
+  const [form, setForm] = useState({});
+
+  const startEdit = (b) => {
+    setEditing(b.id);
+    setForm({ week1_result: b.week1_result || "", week1_notes: b.week1_notes || "", week12_result: b.week12_result || "", week12_notes: b.week12_notes || "" });
+  };
+
+  const save = async (id) => {
+    await updateBaseline(id, form);
+    setEditing(null);
+  };
+
+  return (
+    <div>
+      <h2 style={{ margin: "0 0 6px", fontSize: isMobile ? 22 : 28, fontFamily: "'Space Mono', monospace" }}>My Baselines</h2>
+      <p style={{ fontSize: 13, color: "#71717A", margin: "0 0 20px" }}>Enter your results for Week 1 and Week 12 testing.</p>
+
+      {baselines.length === 0 ? (
+        <EmptyState icon="◎" title="No baselines set up yet" sub="Your coach will set up your baseline movements." />
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {baselines.map(b => {
+            const isEditing = editing === b.id;
+            const hasW1 = b.week1_result;
+            const hasW12 = b.week12_result;
+            return (
+              <Card key={b.id} style={{ padding: 16 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", marginBottom: 8 }}>
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: 16 }}>{b.movement}</div>
+                    <div style={{ fontSize: 12, color: "#71717A", marginTop: 2 }}>Target: <strong>{b.target}</strong> <span style={{ color: "#A1A1AA" }}>({b.units})</span></div>
+                  </div>
+                  {!isEditing && (
+                    <button onClick={() => startEdit(b)} style={{ background: "none", border: "1px solid #E4E4E7", borderRadius: 6, padding: "4px 12px", fontSize: 12, cursor: "pointer", fontFamily: "inherit", color: "#52525B", fontWeight: 600 }}>
+                      {hasW1 || hasW12 ? "Edit" : "Add Results"}
+                    </button>
+                  )}
+                </div>
+
+                {isEditing ? (
+                  <div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
+                      <div style={{ padding: "10px", background: "#FFF7ED", borderRadius: 8, border: "1px solid #FED7AA" }}>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: "#F97316", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 6 }}>Week 1</div>
+                        <label style={{ fontSize: 11, color: "#71717A", display: "block", marginBottom: 6 }}>Result
+                          <input value={form.week1_result} onChange={e => setForm({ ...form, week1_result: e.target.value })} placeholder={`e.g. ${b.target}`} style={{ width: "100%", padding: "8px", border: "1px solid #FED7AA", borderRadius: 6, fontSize: 16, fontFamily: "inherit", marginTop: 2, boxSizing: "border-box" }} />
+                        </label>
+                        <label style={{ fontSize: 11, color: "#71717A", display: "block" }}>Notes
+                          <input value={form.week1_notes} onChange={e => setForm({ ...form, week1_notes: e.target.value })} placeholder="How did it feel?" style={{ width: "100%", padding: "8px", border: "1px solid #FED7AA", borderRadius: 6, fontSize: 14, fontFamily: "inherit", marginTop: 2, boxSizing: "border-box" }} />
+                        </label>
+                      </div>
+                      <div style={{ padding: "10px", background: "#F0FDF4", borderRadius: 8, border: "1px solid #BBF7D0" }}>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: "#16A34A", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 6 }}>Week 12</div>
+                        <label style={{ fontSize: 11, color: "#71717A", display: "block", marginBottom: 6 }}>Result
+                          <input value={form.week12_result} onChange={e => setForm({ ...form, week12_result: e.target.value })} placeholder={`e.g. ${b.target}`} style={{ width: "100%", padding: "8px", border: "1px solid #BBF7D0", borderRadius: 6, fontSize: 16, fontFamily: "inherit", marginTop: 2, boxSizing: "border-box" }} />
+                        </label>
+                        <label style={{ fontSize: 11, color: "#71717A", display: "block" }}>Notes
+                          <input value={form.week12_notes} onChange={e => setForm({ ...form, week12_notes: e.target.value })} placeholder="How did it feel?" style={{ width: "100%", padding: "8px", border: "1px solid #BBF7D0", borderRadius: 6, fontSize: 14, fontFamily: "inherit", marginTop: 2, boxSizing: "border-box" }} />
+                        </label>
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <Btn onClick={() => save(b.id)} small>Save</Btn>
+                      <button onClick={() => setEditing(null)} style={{ padding: "6px 14px", background: "none", border: "1px solid #E4E4E7", borderRadius: 6, fontSize: 13, cursor: "pointer", fontFamily: "inherit", color: "#71717A", fontWeight: 600 }}>Cancel</button>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                    <div style={{ padding: "10px", background: "#FFF7ED", borderRadius: 8, border: "1px solid #FED7AA" }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: "#F97316", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 4 }}>Week 1</div>
+                      <div style={{ fontSize: 20, fontWeight: 700, color: hasW1 ? "#18181B" : "#D4D4D8" }}>{hasW1 || "—"}</div>
+                      {b.week1_notes && <div style={{ fontSize: 12, color: "#71717A", fontStyle: "italic", marginTop: 4 }}>{b.week1_notes}</div>}
+                    </div>
+                    <div style={{ padding: "10px", background: "#F0FDF4", borderRadius: 8, border: "1px solid #BBF7D0" }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: "#16A34A", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 4 }}>Week 12</div>
+                      <div style={{ fontSize: 20, fontWeight: 700, color: hasW12 ? "#18181B" : "#D4D4D8" }}>{hasW12 || "—"}</div>
+                      {b.week12_notes && <div style={{ fontSize: 12, color: "#71717A", fontStyle: "italic", marginTop: 4 }}>{b.week12_notes}</div>}
+                    </div>
+                  </div>
+                )}
+              </Card>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
