@@ -385,49 +385,30 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
 
       {week && week.days.map(day => {
         const dayStatus = day.status || week.status || "";
-        // Get all logs for this day - try week_label+day_label first, then just day_label
         const weekLabel = week.label || "";
-        let dayLogs = (logs || []).filter(l => l.athlete_id === athlete.id && l.day_label === day.label && l.week_label === weekLabel);
-        // If no logs found with week_label, try matching by day_label alone (in case week_label was empty or different)
-        if (dayLogs.length === 0) {
-          dayLogs = (logs || []).filter(l => l.athlete_id === athlete.id && l.day_label === day.label);
-        }
-        const dayLogged = dayLogs.length > 0;
+        const dayLogged = (logs || []).some(l => l.athlete_id === athlete.id && l.day_label === day.label && (l.week_label === weekLabel || !l.week_label));
+
+        // Match each block to athlete's most recent log for that exercise
         const blockLogMap = {};
         const usedLogIds = new Set();
         const normalize = (s) => (s || "").toLowerCase().replace(/[-–—]/g, " ").replace(/\s+/g, " ").trim();
-        // Pass 1: exercise_id
+        const athLogs = (logs || []).filter(l => l.athlete_id === athlete.id);
+
         day.blocks.forEach(block => {
-          if (blockLogMap[block.id] || !block.exerciseId) return;
-          const m = dayLogs.find(l => !usedLogIds.has(l.id) && l.exercise_id && l.exercise_id === block.exerciseId);
-          if (m) { blockLogMap[block.id] = m; usedLogIds.add(m.id); }
-        });
-        // Pass 2: exact name
-        day.blocks.forEach(block => {
-          if (blockLogMap[block.id]) return;
-          const dn = getDisplayName(block);
-          const m = dayLogs.find(l => !usedLogIds.has(l.id) && (l.exercise_name === dn || (block.exerciseName && l.exercise_name === block.exerciseName)));
-          if (m) { blockLogMap[block.id] = m; usedLogIds.add(m.id); }
-        });
-        // Pass 3: normalized name
-        day.blocks.forEach(block => {
-          if (blockLogMap[block.id]) return;
-          const dn = normalize(getDisplayName(block));
-          const m = dayLogs.find(l => !usedLogIds.has(l.id) && normalize(l.exercise_name) === dn);
-          if (m) { blockLogMap[block.id] = m; usedLogIds.add(m.id); }
-        });
-        // Pass 4: fallback - search ALL athlete logs by exercise name (most recent first)
-        const allLogs = (logs || []).filter(l => l.athlete_id === athlete.id);
-        day.blocks.forEach(block => {
-          if (blockLogMap[block.id]) return;
           const dn = getDisplayName(block);
           const dnNorm = normalize(dn);
-          const m = allLogs.find(l =>
-            !usedLogIds.has(l.id) &&
-            (l.exercise_name === dn || (block.exerciseName && l.exercise_name === block.exerciseName) || normalize(l.exercise_name) === dnNorm) &&
-            (block.exerciseId ? (l.exercise_id === block.exerciseId || !l.exercise_id) : true)
-          );
-          if (m) { blockLogMap[block.id] = m; usedLogIds.add(m.id); }
+          const bnNorm = block.exerciseName ? normalize(block.exerciseName) : "";
+          // Try exercise_id first
+          if (block.exerciseId) {
+            const m = athLogs.find(l => !usedLogIds.has(l.id) && l.exercise_id && l.exercise_id === block.exerciseId);
+            if (m) { blockLogMap[block.id] = m; usedLogIds.add(m.id); return; }
+          }
+          // Try exact name
+          const m2 = athLogs.find(l => !usedLogIds.has(l.id) && (l.exercise_name === dn || (block.exerciseName && l.exercise_name === block.exerciseName)));
+          if (m2) { blockLogMap[block.id] = m2; usedLogIds.add(m2.id); return; }
+          // Try normalized name
+          const m3 = athLogs.find(l => !usedLogIds.has(l.id) && (normalize(l.exercise_name) === dnNorm || (bnNorm && normalize(l.exercise_name) === bnNorm)));
+          if (m3) { blockLogMap[block.id] = m3; usedLogIds.add(m3.id); }
         });
 
         return (
