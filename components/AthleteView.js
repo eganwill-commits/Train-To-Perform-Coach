@@ -131,7 +131,7 @@ export default function AthleteView({ athlete, onLogout }) {
           </header>
         )}
         <main className="t2p-main" style={{ flex: 1, padding: isMobile ? "12px 10px" : 32, maxWidth: "100%", overflowX: "hidden" }}>
-          {page === "my-program" && <MyProgram programs={programs} exercises={exercises} colors={colors} cats={cats} isMobile={isMobile} athlete={athlete} addLog={addLog} logs={logs} groups={groups} addVideoSub={addVideoSub} videoSubs={videoSubs} deleteVideoSub={deleteVideoSub} />}
+          {page === "my-program" && <MyProgram programs={programs} setPrograms={setPrograms} exercises={exercises} colors={colors} cats={cats} isMobile={isMobile} athlete={athlete} addLog={addLog} logs={logs} groups={groups} addVideoSub={addVideoSub} videoSubs={videoSubs} deleteVideoSub={deleteVideoSub} />}
           {page === "my-baselines" && <MyBaselines baselines={baselines} updateBaseline={updateBaseline} isMobile={isMobile} />}
           {page === "my-logs" && <MyLogs logs={logs} colors={colors} cats={cats} isMobile={isMobile} deleteLog={deleteLog} deleteDayLogs={deleteDayLogs} />}
           {page === "my-videos" && <MyVideos videoSubs={videoSubs} addVideoSub={addVideoSub} deleteVideoSub={deleteVideoSub} athlete={athlete} exercises={exercises} cats={cats} colors={colors} isMobile={isMobile} />}
@@ -143,7 +143,7 @@ export default function AthleteView({ athlete, onLogout }) {
 }
 
 
-function MyProgram({ programs, exercises, colors, cats, isMobile, athlete, addLog, logs, groups, addVideoSub, videoSubs, deleteVideoSub }) {
+function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, athlete, addLog, logs, groups, addVideoSub, videoSubs, deleteVideoSub }) {
   const [selectedProg, setSelectedProg] = useState(null);
   const [expandedBlock, setExpandedBlock] = useState(null);
   const [aw, setAw] = useState(0);
@@ -224,6 +224,22 @@ function MyProgram({ programs, exercises, colors, cats, isMobile, athlete, addLo
         notes: result.notes || "", date, week_label: weekLabel, day_label: day.label,
       });
     }
+    // Auto-mark day as completed in the program
+    try {
+      const freshProg = programs.find(p => p.id === prog.id);
+      if (freshProg) {
+        const updatedWeeks = JSON.parse(JSON.stringify(freshProg.weeks || []));
+        const wi = updatedWeeks.findIndex(w => w.label === weekLabel);
+        if (wi >= 0) {
+          const di = updatedWeeks[wi].days.findIndex(d => d.id === day.id);
+          if (di >= 0) {
+            updatedWeeks[wi].days[di].status = "completed";
+            await supabase.from("programs").update({ weeks: updatedWeeks }).eq("id", freshProg.id);
+            setPrograms(prev => prev.map(p => p.id === freshProg.id ? { ...p, weeks: updatedWeeks } : p));
+          }
+        }
+      }
+    } catch (e) { /* silent — logging succeeded even if status update fails */ }
     setSubmitting(null);
     setSaved(true);
     setBlockResults({});
