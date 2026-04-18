@@ -400,7 +400,7 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
           const bnNorm = block.exerciseName ? normalize(block.exerciseName) : "";
           // Try exercise_id first
           if (block.exerciseId) {
-            const m = athLogs.find(l => !usedLogIds.has(l.id) && l.exercise_id && l.exercise_id === block.exerciseId);
+            const m = athLogs.find(l => !usedLogIds.has(l.id) && l.exercise_id && l.exercise_id && block.exerciseId && l.exercise_id === block.exerciseId);
             if (m) { blockLogMap[block.id] = m; usedLogIds.add(m.id); return; }
           }
           // Try exact name
@@ -437,7 +437,7 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
                 const norm = (s) => (s || "").toLowerCase().replace(/[-–—]/g, " ").replace(/\s+/g, " ").trim();
                 return (logs || []).find(l =>
                   l.athlete_id === athlete.id &&
-                  (l.exercise_name === dn || l.exercise_id === block.exerciseId || norm(l.exercise_name) === norm(dn) || (block.exerciseName && (l.exercise_name === block.exerciseName || norm(l.exercise_name) === norm(block.exerciseName))))
+                  (l.exercise_name === dn || l.exercise_id && block.exerciseId && l.exercise_id === block.exerciseId || norm(l.exercise_name) === norm(dn) || (block.exerciseName && (l.exercise_name === block.exerciseName || norm(l.exercise_name) === norm(block.exerciseName))))
                 );
               })();
 

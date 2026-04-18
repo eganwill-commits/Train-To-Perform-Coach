@@ -6,7 +6,7 @@ function formatDate(d) {
   return new Date(d + "T12:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
 }
 
-export default function Athletes({ athletes, addAthlete, updateAthlete, deleteAthlete, logs, colors, cats, isMobile, groups, groupAthletes, addAthleteToGroup, removeAthleteFromGroup, baselines, updateBaseline, videoSubs, updateVideoSub, deleteVideoSub, focusAthleteId, onFocusClear }) {
+export default function Athletes({ athletes, addAthlete, updateAthlete, deleteAthlete, logs, colors, cats, isMobile, groups, groupAthletes, addAthleteToGroup, removeAthleteFromGroup, baselines, updateBaseline, addBaseline, deleteBaseline, videoSubs, updateVideoSub, deleteVideoSub, focusAthleteId, onFocusClear }) {
   const [modal, setModal] = useState(false);
   const [edit, setEdit] = useState(null);
   const [form, setForm] = useState({ name: "", age: "", sport: "", notes: "" });
@@ -15,6 +15,8 @@ export default function Athletes({ athletes, addAthlete, updateAthlete, deleteAt
   const [expandedDay, setExpandedDay] = useState(null);
   const [editingBaseline, setEditingBaseline] = useState(null);
   const [baselineForm, setBaselineForm] = useState({});
+  const [addingBaseline, setAddingBaseline] = useState(false);
+  const [newBaselineForm, setNewBaselineForm] = useState({ movement: "", target: "", units: "lbs" });
 
   // Open athlete from external navigation (alerts)
   useEffect(() => {
@@ -148,62 +150,105 @@ export default function Athletes({ athletes, addAthlete, updateAthlete, deleteAt
         {/* Baseline Testing */}
         {(() => {
           const athleteBaselines = (baselines || []).filter(b => b.athlete_id === activeAthlete.id);
-          if (athleteBaselines.length === 0) return null;
           return (
             <Card style={{ marginBottom: 20 }}>
-              <h3 style={{ margin: "0 0 16px", fontSize: 16 }}>Baseline Testing: Pre & Post</h3>
-              <div style={{ overflowX: "auto" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-                  <thead>
-                    <tr style={{ borderBottom: "2px solid #E4E4E7" }}>
-                      <th style={{ textAlign: "left", padding: "8px 10px", fontWeight: 700, fontSize: 12, color: "#71717A", textTransform: "uppercase", letterSpacing: 0.5 }}>Movement</th>
-                      <th style={{ textAlign: "left", padding: "8px 10px", fontWeight: 700, fontSize: 12, color: "#71717A", textTransform: "uppercase", letterSpacing: 0.5 }}>Target</th>
-                      <th style={{ textAlign: "left", padding: "8px 10px", fontWeight: 700, fontSize: 12, color: "#F97316", textTransform: "uppercase", letterSpacing: 0.5 }}>Week 1</th>
-                      <th style={{ textAlign: "left", padding: "8px 10px", fontWeight: 700, fontSize: 12, color: "#16A34A", textTransform: "uppercase", letterSpacing: 0.5 }}>Week 12</th>
-                      <th style={{ textAlign: "left", padding: "8px 10px", fontWeight: 700, fontSize: 12, color: "#71717A", textTransform: "uppercase", letterSpacing: 0.5 }}>Notes</th>
-                      <th style={{ width: 40 }} />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {athleteBaselines.map(b => {
-                      const isEditing = editingBaseline === b.id;
-                      if (isEditing) {
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+                <h3 style={{ margin: 0, fontSize: 16 }}>Baseline Testing: Pre & Post</h3>
+                <button onClick={() => { setAddingBaseline(true); setNewBaselineForm({ movement: "", target: "", units: "lbs" }); }} style={{ background: "#18181B", color: "#fff", border: "none", borderRadius: 6, padding: "6px 14px", fontSize: 12, cursor: "pointer", fontFamily: "inherit", fontWeight: 600 }}>+ Add</button>
+              </div>
+
+              {/* Add new baseline form */}
+              {addingBaseline && (
+                <div style={{ padding: 12, background: "#F9FAFB", borderRadius: 8, border: "1px solid #E4E4E7", marginBottom: 12 }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr", gap: 8, marginBottom: 8 }}>
+                    <label style={{ fontSize: 11, color: "#71717A" }}>Movement
+                      <input value={newBaselineForm.movement} onChange={e => setNewBaselineForm({ ...newBaselineForm, movement: e.target.value })} placeholder="e.g. Back Squat 1RM" style={{ width: "100%", padding: "6px 8px", border: "1px solid #E4E4E7", borderRadius: 6, fontSize: 13, fontFamily: "inherit", marginTop: 2, boxSizing: "border-box" }} />
+                    </label>
+                    <label style={{ fontSize: 11, color: "#71717A" }}>Target
+                      <input value={newBaselineForm.target} onChange={e => setNewBaselineForm({ ...newBaselineForm, target: e.target.value })} placeholder="e.g. 185" style={{ width: "100%", padding: "6px 8px", border: "1px solid #E4E4E7", borderRadius: 6, fontSize: 13, fontFamily: "inherit", marginTop: 2, boxSizing: "border-box" }} />
+                    </label>
+                    <label style={{ fontSize: 11, color: "#71717A" }}>Units
+                      <select value={newBaselineForm.units} onChange={e => setNewBaselineForm({ ...newBaselineForm, units: e.target.value })} style={{ width: "100%", padding: "6px 8px", border: "1px solid #E4E4E7", borderRadius: 6, fontSize: 13, fontFamily: "inherit", marginTop: 2, boxSizing: "border-box", background: "#fff" }}>
+                        <option>lbs</option><option>kg</option><option>inches</option><option>cm</option><option>seconds</option><option>minutes</option><option>reps</option><option>meters</option><option>feet</option>
+                      </select>
+                    </label>
+                  </div>
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <button disabled={!newBaselineForm.movement.trim()} onClick={async () => {
+                      await addBaseline({ athlete_id: activeAthlete.id, ...newBaselineForm, sort_order: athleteBaselines.length });
+                      setAddingBaseline(false);
+                    }} style={{ background: "#18181B", color: "#fff", border: "none", borderRadius: 6, padding: "6px 14px", fontSize: 12, cursor: "pointer", fontFamily: "inherit", fontWeight: 600, opacity: newBaselineForm.movement.trim() ? 1 : 0.5 }}>Add Baseline</button>
+                    <button onClick={() => setAddingBaseline(false)} style={{ background: "none", border: "1px solid #D4D4D8", borderRadius: 6, padding: "6px 12px", fontSize: 12, cursor: "pointer", fontFamily: "inherit", color: "#71717A" }}>Cancel</button>
+                  </div>
+                </div>
+              )}
+
+              {athleteBaselines.length === 0 && !addingBaseline ? (
+                <p style={{ color: "#A1A1AA", fontSize: 13, textAlign: "center", padding: 16 }}>No baselines yet. Click "+ Add" to create one.</p>
+              ) : (
+                <div style={{ overflowX: "auto" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                    <thead>
+                      <tr style={{ borderBottom: "2px solid #E4E4E7" }}>
+                        <th style={{ textAlign: "left", padding: "8px 10px", fontWeight: 700, fontSize: 12, color: "#71717A", textTransform: "uppercase", letterSpacing: 0.5 }}>Movement</th>
+                        <th style={{ textAlign: "left", padding: "8px 10px", fontWeight: 700, fontSize: 12, color: "#71717A", textTransform: "uppercase", letterSpacing: 0.5 }}>Target</th>
+                        <th style={{ textAlign: "left", padding: "8px 10px", fontWeight: 700, fontSize: 12, color: "#F97316", textTransform: "uppercase", letterSpacing: 0.5 }}>Week 1</th>
+                        <th style={{ textAlign: "left", padding: "8px 10px", fontWeight: 700, fontSize: 12, color: "#16A34A", textTransform: "uppercase", letterSpacing: 0.5 }}>Week 12</th>
+                        <th style={{ textAlign: "left", padding: "8px 10px", fontWeight: 700, fontSize: 12, color: "#71717A", textTransform: "uppercase", letterSpacing: 0.5 }}>Notes</th>
+                        <th style={{ width: 60 }} />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {athleteBaselines.map(b => {
+                        const isEditing = editingBaseline === b.id;
+                        if (isEditing) {
+                          return (
+                            <tr key={b.id} style={{ borderBottom: "1px solid #F4F4F5", background: "#FAFAFA" }}>
+                              <td style={{ padding: "6px 8px" }}>
+                                <input value={baselineForm.movement || ""} onChange={e => setBaselineForm({ ...baselineForm, movement: e.target.value })} style={{ width: "100%", padding: "4px 6px", border: "1px solid #E4E4E7", borderRadius: 4, fontSize: 13, fontFamily: "inherit", boxSizing: "border-box", fontWeight: 600 }} />
+                              </td>
+                              <td style={{ padding: "6px 8px" }}>
+                                <div style={{ display: "flex", gap: 4 }}>
+                                  <input value={baselineForm.target || ""} onChange={e => setBaselineForm({ ...baselineForm, target: e.target.value })} style={{ width: "60%", padding: "4px 6px", border: "1px solid #E4E4E7", borderRadius: 4, fontSize: 13, fontFamily: "inherit", boxSizing: "border-box" }} />
+                                  <select value={baselineForm.units || "lbs"} onChange={e => setBaselineForm({ ...baselineForm, units: e.target.value })} style={{ width: "40%", padding: "4px 4px", border: "1px solid #E4E4E7", borderRadius: 4, fontSize: 11, fontFamily: "inherit", boxSizing: "border-box", background: "#fff" }}>
+                                    <option>lbs</option><option>kg</option><option>inches</option><option>cm</option><option>seconds</option><option>minutes</option><option>reps</option><option>meters</option><option>feet</option>
+                                  </select>
+                                </div>
+                              </td>
+                              <td style={{ padding: "6px 8px" }}>
+                                <input value={baselineForm.week1_result || ""} onChange={e => setBaselineForm({ ...baselineForm, week1_result: e.target.value })} style={{ width: "100%", padding: "4px 6px", border: "1px solid #E4E4E7", borderRadius: 4, fontSize: 13, fontFamily: "inherit", boxSizing: "border-box" }} />
+                              </td>
+                              <td style={{ padding: "6px 8px" }}>
+                                <input value={baselineForm.week12_result || ""} onChange={e => setBaselineForm({ ...baselineForm, week12_result: e.target.value })} style={{ width: "100%", padding: "4px 6px", border: "1px solid #E4E4E7", borderRadius: 4, fontSize: 13, fontFamily: "inherit", boxSizing: "border-box" }} />
+                              </td>
+                              <td style={{ padding: "6px 8px" }}>
+                                <input value={baselineForm.week1_notes || ""} onChange={e => setBaselineForm({ ...baselineForm, week1_notes: e.target.value })} style={{ width: "100%", padding: "4px 6px", border: "1px solid #E4E4E7", borderRadius: 4, fontSize: 13, fontFamily: "inherit", boxSizing: "border-box" }} />
+                              </td>
+                              <td style={{ padding: "6px 8px", display: "flex", gap: 4 }}>
+                                <button onClick={async () => { await updateBaseline(b.id, baselineForm); setEditingBaseline(null); }} style={{ background: "#18181B", color: "#fff", border: "none", borderRadius: 4, padding: "4px 10px", fontSize: 12, cursor: "pointer", fontFamily: "inherit", fontWeight: 600 }}>Save</button>
+                                <button onClick={() => setEditingBaseline(null)} style={{ background: "none", border: "1px solid #D4D4D8", borderRadius: 4, padding: "4px 8px", fontSize: 12, cursor: "pointer", fontFamily: "inherit", color: "#71717A" }}>✕</button>
+                              </td>
+                            </tr>
+                          );
+                        }
                         return (
-                          <tr key={b.id} style={{ borderBottom: "1px solid #F4F4F5", background: "#FAFAFA" }}>
+                          <tr key={b.id} style={{ borderBottom: "1px solid #F4F4F5" }}>
                             <td style={{ padding: "8px 10px", fontWeight: 600 }}>{b.movement}</td>
-                            <td style={{ padding: "8px 10px", color: "#71717A", fontSize: 12 }}>{b.target}</td>
-                            <td style={{ padding: "6px 8px" }}>
-                              <input value={baselineForm.week1_result || ""} onChange={e => setBaselineForm({ ...baselineForm, week1_result: e.target.value })} style={{ width: "100%", padding: "4px 6px", border: "1px solid #E4E4E7", borderRadius: 4, fontSize: 13, fontFamily: "inherit", boxSizing: "border-box" }} />
-                            </td>
-                            <td style={{ padding: "6px 8px" }}>
-                              <input value={baselineForm.week12_result || ""} onChange={e => setBaselineForm({ ...baselineForm, week12_result: e.target.value })} style={{ width: "100%", padding: "4px 6px", border: "1px solid #E4E4E7", borderRadius: 4, fontSize: 13, fontFamily: "inherit", boxSizing: "border-box" }} />
-                            </td>
-                            <td style={{ padding: "6px 8px" }}>
-                              <input value={baselineForm.week1_notes || ""} onChange={e => setBaselineForm({ ...baselineForm, week1_notes: e.target.value })} style={{ width: "100%", padding: "4px 6px", border: "1px solid #E4E4E7", borderRadius: 4, fontSize: 13, fontFamily: "inherit", boxSizing: "border-box" }} />
-                            </td>
-                            <td style={{ padding: "6px 8px", display: "flex", gap: 4 }}>
-                              <button onClick={async () => { await updateBaseline(b.id, baselineForm); setEditingBaseline(null); }} style={{ background: "#18181B", color: "#fff", border: "none", borderRadius: 4, padding: "4px 10px", fontSize: 12, cursor: "pointer", fontFamily: "inherit", fontWeight: 600 }}>Save</button>
-                              <button onClick={() => setEditingBaseline(null)} style={{ background: "none", border: "1px solid #D4D4D8", borderRadius: 4, padding: "4px 8px", fontSize: 12, cursor: "pointer", fontFamily: "inherit", color: "#71717A" }}>✕</button>
+                            <td style={{ padding: "8px 10px", color: "#71717A", fontSize: 12 }}>{b.target} <span style={{ color: "#A1A1AA" }}>({b.units})</span></td>
+                            <td style={{ padding: "8px 10px", color: b.week1_result ? "#F97316" : "#D4D4D8", fontWeight: b.week1_result ? 600 : 400 }}>{b.week1_result || "—"}</td>
+                            <td style={{ padding: "8px 10px", color: b.week12_result ? "#16A34A" : "#D4D4D8", fontWeight: b.week12_result ? 600 : 400 }}>{b.week12_result || "—"}</td>
+                            <td style={{ padding: "8px 10px", color: "#A1A1AA", fontSize: 12, fontStyle: "italic" }}>{b.week1_notes || ""}</td>
+                            <td style={{ padding: "8px 10px", display: "flex", gap: 4 }}>
+                              <button onClick={() => { setEditingBaseline(b.id); setBaselineForm({ movement: b.movement || "", target: b.target || "", units: b.units || "lbs", week1_result: b.week1_result || "", week12_result: b.week12_result || "", week1_notes: b.week1_notes || "" }); }} style={{ background: "none", border: "none", cursor: "pointer", color: "#A1A1AA", fontSize: 13 }}>✎</button>
+                              <button onClick={() => { if (confirm(`Delete baseline "${b.movement}"?`)) deleteBaseline(b.id); }} style={{ background: "none", border: "none", cursor: "pointer", color: "#D4D4D8", fontSize: 13 }}>✕</button>
                             </td>
                           </tr>
                         );
-                      }
-                      return (
-                        <tr key={b.id} style={{ borderBottom: "1px solid #F4F4F5" }}>
-                          <td style={{ padding: "8px 10px", fontWeight: 600 }}>{b.movement}</td>
-                          <td style={{ padding: "8px 10px", color: "#71717A", fontSize: 12 }}>{b.target} <span style={{ color: "#A1A1AA" }}>({b.units})</span></td>
-                          <td style={{ padding: "8px 10px", color: b.week1_result ? "#F97316" : "#D4D4D8", fontWeight: b.week1_result ? 600 : 400 }}>{b.week1_result || "—"}</td>
-                          <td style={{ padding: "8px 10px", color: b.week12_result ? "#16A34A" : "#D4D4D8", fontWeight: b.week12_result ? 600 : 400 }}>{b.week12_result || "—"}</td>
-                          <td style={{ padding: "8px 10px", color: "#A1A1AA", fontSize: 12, fontStyle: "italic" }}>{b.week1_notes || ""}</td>
-                          <td style={{ padding: "8px 10px" }}>
-                            <button onClick={() => { setEditingBaseline(b.id); setBaselineForm({ week1_result: b.week1_result || "", week12_result: b.week12_result || "", week1_notes: b.week1_notes || "" }); }} style={{ background: "none", border: "none", cursor: "pointer", color: "#A1A1AA", fontSize: 13 }}>✎</button>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </Card>
           );
         })()}

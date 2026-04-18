@@ -276,6 +276,17 @@ export default function CoachApp({ onLogout }) {
     if (!error) setBaselines(prev => prev.map(b => b.id === id ? { ...b, ...updates } : b));
   }, []);
 
+  const addBaseline = useCallback(async (baseline) => {
+    const { data, error } = await supabase.from("baselines").insert(baseline).select().single();
+    if (!error && data) setBaselines(prev => [...prev, data]);
+    return data;
+  }, []);
+
+  const deleteBaseline = useCallback(async (id) => {
+    await supabase.from("baselines").delete().eq("id", id);
+    setBaselines(prev => prev.filter(b => b.id !== id));
+  }, []);
+
   const addVideoSub = useCallback(async (sub) => {
     const { data, error } = await supabase.from("video_submissions").insert(sub).select().single();
     if (!error && data) setVideoSubs(prev => [data, ...prev]);
@@ -310,7 +321,7 @@ export default function CoachApp({ onLogout }) {
     addLog, deleteLog, submitDay, unlogDay,
     addGroup, updateGroup, deleteGroup,
     addAthleteToGroup, removeAthleteFromGroup,
-    updateBaseline,
+    updateBaseline, addBaseline, deleteBaseline,
     addVideoSub, updateVideoSub, deleteVideoSub,
     saveSettings, resetAll,
   };
