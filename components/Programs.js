@@ -322,7 +322,13 @@ function ProgramDetail({ program, exercises, cats, colors, addBlock, updateBlock
 
   const getDayLogs = (date, dayLabel) => {
     if (!program.athlete_id) return [];
-    return logs.filter(l => l.athlete_id === program.athlete_id && l.date === date && l.day_label === dayLabel);
+    // Match by date + day_label, OR by week_label + day_label (in case date differs)
+    const weekLabel = week?.label || "";
+    return logs.filter(l =>
+      l.athlete_id === program.athlete_id &&
+      l.day_label === dayLabel &&
+      (l.date === date || l.week_label === weekLabel)
+    );
   };
 
   const resolveExerciseId = (block) => {
@@ -455,6 +461,7 @@ function ProgramDetail({ program, exercises, cats, colors, addBlock, updateBlock
                 const isLast = bi === day.blocks.length - 1;
                 const resolvedEx = resolvedId !== "__custom__" ? exercises.find(e => e.id === resolvedId) : null;
                 const videoUrl = resolvedEx?.video_url || (block.exerciseName ? exercises.find(e => e.name === block.exerciseName)?.video_url : "") || "";
+                const blockLogged = dayLogs.some(l => l.exercise_name === displayName || l.exercise_id === block.exerciseId);
 
                 return (
                   <div key={block.id} style={{ background: cc?.light || "#F9FAFB", border: `1px solid ${cc?.border || "#E5E7EB"}`, borderRadius: 10, marginBottom: 8, borderLeft: `4px solid ${cc?.bg || "#999"}`, overflow: "hidden" }}>
@@ -471,6 +478,7 @@ function ProgramDetail({ program, exercises, cats, colors, addBlock, updateBlock
                               </div>
                             </div>
                             <div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0 }}>
+                              {blockLogged && <span style={{ width: 8, height: 8, borderRadius: 4, background: "#16A34A", flexShrink: 0 }} title="Athlete logged" />}
                               {videoUrl && <a href={videoUrl} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 11, color: "#fff", background: "#2563EB", textDecoration: "none", fontWeight: 700, padding: "2px 8px", borderRadius: 999 }}>▶</a>}
                               <span style={{ fontSize: 12, color: "#A1A1AA", transform: isOpen ? "rotate(180deg)" : "none", transition: "transform .2s" }}>▼</span>
                             </div>
@@ -503,6 +511,31 @@ function ProgramDetail({ program, exercises, cats, colors, addBlock, updateBlock
                                 <BlurInput value={block.notes || ""} onSave={v => updateBlock(aw, di, bi, "notes", v)} placeholder="Coaching cues, modifications…" style={{ width: "100%", padding: "6px 5px", border: "1px solid #E4E4E7", borderRadius: 6, fontSize: 14, fontFamily: "inherit", marginTop: 1, boxSizing: "border-box" }} />
                               </label>
                               {block.notes && !expandedBlock && <div style={{ fontSize: 11, color: "#71717A", marginTop: 4, fontStyle: "italic" }}>{block.notes}</div>}
+
+                              {/* Athlete's logged results */}
+                              {(() => {
+                                const exName = getDisplayName(block);
+                                const matchedLogs = dayLogs.filter(l => l.exercise_name === exName || l.exercise_id === block.exerciseId);
+                                if (matchedLogs.length === 0) return null;
+                                const ml = matchedLogs[0];
+                                return (
+                                  <div style={{ marginTop: 8, padding: "8px 10px", background: "#F0FDF4", borderRadius: 8, border: "1px solid #BBF7D0" }}>
+                                    <div style={{ fontSize: 10, fontWeight: 700, color: "#16A34A", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 4 }}>Athlete's Results</div>
+                                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 6 }}>
+                                      <div><div style={{ fontSize: 9, color: "#71717A" }}>Sets</div><div style={{ fontSize: 14, fontWeight: 700 }}>{ml.sets || "—"}</div></div>
+                                      <div><div style={{ fontSize: 9, color: "#71717A" }}>Reps</div><div style={{ fontSize: 14, fontWeight: 700 }}>{ml.reps || "—"}</div></div>
+                                      <div><div style={{ fontSize: 9, color: "#71717A" }}>Load</div><div style={{ fontSize: 14, fontWeight: 700 }}>{ml.load || "—"}</div></div>
+                                      <div><div style={{ fontSize: 9, color: "#71717A" }}>RPE</div><div style={{ fontSize: 14, fontWeight: 700 }}>{ml.rpe || "—"}</div></div>
+                                    </div>
+                                    {ml.notes && (
+                                      <div style={{ marginTop: 6, padding: "4px 6px", background: "#fff", borderRadius: 4, border: "1px solid #BBF7D0" }}>
+                                        <div style={{ fontSize: 9, color: "#71717A" }}>Athlete Notes</div>
+                                        <div style={{ fontSize: 12, color: "#18181B", whiteSpace: "pre-wrap" }}>{ml.notes}</div>
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })()}
                             </div>
                           )}
                         </>
@@ -513,6 +546,7 @@ function ProgramDetail({ program, exercises, cats, colors, addBlock, updateBlock
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
                           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                             <Badge color={cc?.bg || "#999"}>{block.category}</Badge>
+                            {blockLogged && <span style={{ width: 8, height: 8, borderRadius: 4, background: "#16A34A", flexShrink: 0 }} title="Athlete logged" />}
                             <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
                               <button onClick={() => !isFirst && moveBlock(aw, di, bi, -1)} style={arrowStyle(isFirst)} disabled={isFirst}>▲</button>
                               <button onClick={() => !isLast && moveBlock(aw, di, bi, 1)} style={arrowStyle(isLast)} disabled={isLast}>▼</button>
@@ -543,6 +577,31 @@ function ProgramDetail({ program, exercises, cats, colors, addBlock, updateBlock
                         <label style={{ fontSize: 10, color: "#71717A", display: "block", marginTop: 4 }}>Notes
                           <BlurInput value={block.notes || ""} onSave={v => updateBlock(aw, di, bi, "notes", v)} placeholder="Coaching cues, modifications…" style={{ width: "100%", padding: "4px 5px", border: "1px solid #E4E4E7", borderRadius: 6, fontSize: 13, fontFamily: "inherit", marginTop: 1, boxSizing: "border-box" }} />
                         </label>
+
+                        {/* Athlete's logged results */}
+                        {(() => {
+                          const exName = getDisplayName(block);
+                          const matchedLogs = dayLogs.filter(l => l.exercise_name === exName || l.exercise_id === block.exerciseId);
+                          if (matchedLogs.length === 0) return null;
+                          const ml = matchedLogs[0];
+                          return (
+                            <div style={{ marginTop: 8, padding: "8px 10px", background: "#F0FDF4", borderRadius: 8, border: "1px solid #BBF7D0" }}>
+                              <div style={{ fontSize: 10, fontWeight: 700, color: "#16A34A", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 4 }}>Athlete's Results</div>
+                              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 6 }}>
+                                <div><div style={{ fontSize: 9, color: "#71717A" }}>Sets</div><div style={{ fontSize: 14, fontWeight: 700 }}>{ml.sets || "—"}</div></div>
+                                <div><div style={{ fontSize: 9, color: "#71717A" }}>Reps</div><div style={{ fontSize: 14, fontWeight: 700 }}>{ml.reps || "—"}</div></div>
+                                <div><div style={{ fontSize: 9, color: "#71717A" }}>Load</div><div style={{ fontSize: 14, fontWeight: 700 }}>{ml.load || "—"}</div></div>
+                                <div><div style={{ fontSize: 9, color: "#71717A" }}>RPE</div><div style={{ fontSize: 14, fontWeight: 700 }}>{ml.rpe || "—"}</div></div>
+                              </div>
+                              {ml.notes && (
+                                <div style={{ marginTop: 6, padding: "4px 6px", background: "#fff", borderRadius: 4, border: "1px solid #BBF7D0" }}>
+                                  <div style={{ fontSize: 9, color: "#71717A" }}>Athlete Notes</div>
+                                  <div style={{ fontSize: 12, color: "#18181B", whiteSpace: "pre-wrap" }}>{ml.notes}</div>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })()}
                       </div>
                     )}
                   </div>
