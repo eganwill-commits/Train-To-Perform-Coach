@@ -351,16 +351,11 @@ function ProgramDetail({ program, programs, exercises, cats, colors, addBlock, u
   const getDayLogs = (date, dayLabel) => {
     if (!program.athlete_id) return [];
     const weekLabel = week?.label || "";
-    // Try week_label + day_label first, then date + day_label, then just day_label
-    let results = logs.filter(l =>
+    return logs.filter(l =>
       l.athlete_id === program.athlete_id &&
       l.day_label === dayLabel &&
-      (l.week_label === weekLabel || l.date === date)
+      l.week_label === weekLabel
     );
-    if (results.length === 0) {
-      results = logs.filter(l => l.athlete_id === program.athlete_id && l.day_label === dayLabel);
-    }
-    return results;
   };
 
   const resolveExerciseId = (block) => {
@@ -490,29 +485,23 @@ function ProgramDetail({ program, programs, exercises, cats, colors, addBlock, u
               </div>
               {day.blocks.length === 0 && <p style={{ color: "#A1A1AA", fontSize: 13, textAlign: "center", padding: 12 }}>Empty</p>}
               {(() => {
-                // Scope logs to this specific week+day for this athlete
+                // STRICT: Only match logs for this exact week+day
                 const normalize = (s) => (s || "").toLowerCase().replace(/[-–—]/g, " ").replace(/\s+/g, " ").trim();
                 const weekLabel = week.label || "";
                 const dayLabel = day.label || "";
                 const athId = program.athlete_id;
                 if (!athId) return day.blocks.map(() => null);
 
-                // Get logs scoped to this week+day
                 const scopedLogs = logs.filter(l =>
                   l.athlete_id === athId && l.day_label === dayLabel && l.week_label === weekLabel
                 );
 
-                // Also try broader scope: just day_label matching
-                const dayOnlyLogs = scopedLogs.length > 0 ? scopedLogs : logs.filter(l =>
-                  l.athlete_id === athId && l.day_label === dayLabel
-                );
-
-                // One-to-one matching - name only (no exercise_id to prevent Sled-type bugs)
                 const blockLogMap = {};
                 const usedIds = new Set();
 
                 const matchByName = (log, block) => {
                   const dn = getDisplayName(block);
+                  if (log.exercise_id && block.exerciseId && log.exercise_id === block.exerciseId) return true;
                   if (log.exercise_name === dn) return true;
                   if (block.exerciseName && log.exercise_name === block.exerciseName) return true;
                   if (normalize(log.exercise_name) === normalize(dn)) return true;
@@ -520,21 +509,10 @@ function ProgramDetail({ program, programs, exercises, cats, colors, addBlock, u
                   return false;
                 };
 
-                // Pass 1: scoped logs
                 day.blocks.forEach(block => {
-                  const m = dayOnlyLogs.find(l => !usedIds.has(l.id) && matchByName(l, block));
+                  const m = scopedLogs.find(l => !usedIds.has(l.id) && matchByName(l, block));
                   if (m) { blockLogMap[block.id] = m; usedIds.add(m.id); }
                 });
-
-                // Pass 2: fallback to ALL athlete logs by name for any unmatched blocks
-                if (Object.keys(blockLogMap).length < day.blocks.length) {
-                  const allAthLogs = logs.filter(l => l.athlete_id === athId);
-                  day.blocks.forEach(block => {
-                    if (blockLogMap[block.id]) return;
-                    const m = allAthLogs.find(l => !usedIds.has(l.id) && matchByName(l, block));
-                    if (m) { blockLogMap[block.id] = m; usedIds.add(m.id); }
-                  });
-                }
 
                 return day.blocks.map((block, bi) => {
                 const cc = colors[block.category];
