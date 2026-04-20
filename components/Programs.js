@@ -265,8 +265,16 @@ function ProgramDetail({ program, programs, exercises, cats, colors, addBlock, u
 
   const [aw, setAw] = useState(() => {
     const weeks = program.weeks || [];
-    const firstOpen = weeks.findIndex(w => w.status !== "completed" && w.status !== "missed");
-    return firstOpen >= 0 ? firstOpen : 0;
+    // Find current week: first week that has any day not yet completed/missed
+    const currentWi = weeks.findIndex(w => {
+      if (w.status === "completed" || w.status === "missed") return false;
+      const days = w.days || [];
+      if (days.length === 0) return true;
+      // If all days have a status, this week is done — move to next
+      const allDaysDone = days.every(d => d.status === "completed" || d.status === "missed");
+      return !allDaysDone;
+    });
+    return currentWi >= 0 ? currentWi : weeks.length - 1;
   });
   const [submitting, setSubmitting] = useState(null);
   const [unlogging, setUnlogging] = useState(null);
@@ -282,9 +290,19 @@ function ProgramDetail({ program, programs, exercises, cats, colors, addBlock, u
   // Auto-advance to next open week when status changes
   useEffect(() => {
     const weeks = program.weeks || [];
-    const currentStatus = weeks[aw]?.status;
-    if (currentStatus === "completed" || currentStatus === "missed") {
-      const nextOpen = weeks.findIndex((w, i) => i > aw && w.status !== "completed" && w.status !== "missed");
+    const currentWeek = weeks[aw];
+    if (!currentWeek) return;
+    // Check if current week is fully done (week-level or all days done)
+    const weekDone = currentWeek.status === "completed" || currentWeek.status === "missed";
+    const allDaysDone = (currentWeek.days || []).length > 0 && (currentWeek.days || []).every(d => d.status === "completed" || d.status === "missed");
+    if (weekDone || allDaysDone) {
+      const nextOpen = weeks.findIndex((w, i) => {
+        if (i <= aw) return false;
+        if (w.status === "completed" || w.status === "missed") return false;
+        const days = w.days || [];
+        if (days.length === 0) return true;
+        return !days.every(d => d.status === "completed" || d.status === "missed");
+      });
       if (nextOpen >= 0) setAw(nextOpen);
     }
   }, [program.weeks]);

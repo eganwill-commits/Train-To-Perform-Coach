@@ -206,8 +206,15 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
   useEffect(() => {
     if (prog) {
       const weeks = prog.weeks || [];
-      const firstOpen = weeks.findIndex(w => w.status !== "completed" && w.status !== "missed");
-      setAw(firstOpen >= 0 ? firstOpen : 0);
+      // Find current week: first week with any day not yet completed/missed
+      const currentWi = weeks.findIndex(w => {
+        if (w.status === "completed" || w.status === "missed") return false;
+        const days = w.days || [];
+        if (days.length === 0) return true;
+        const allDaysDone = days.every(d => d.status === "completed" || d.status === "missed");
+        return !allDaysDone;
+      });
+      setAw(currentWi >= 0 ? currentWi : weeks.length - 1);
       setExpandedBlock(null);
       setBlockResults({});
     }
@@ -405,7 +412,12 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
 
       {/* Week tabs — current and past only */}
       {(() => {
-        const currentWi = weeks.findIndex(w => w.status !== "completed" && w.status !== "missed");
+        const currentWi = weeks.findIndex(w => {
+          if (w.status === "completed" || w.status === "missed") return false;
+          const days = w.days || [];
+          if (days.length === 0) return true;
+          return !days.every(d => d.status === "completed" || d.status === "missed");
+        });
         const maxVisible = currentWi >= 0 ? currentWi : weeks.length - 1;
         return (
           <div style={{ display: "flex", gap: 4, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
