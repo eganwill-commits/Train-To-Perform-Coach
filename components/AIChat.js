@@ -3,12 +3,12 @@ import { useState, useRef, useEffect, useMemo } from "react";
 import { Btn } from "./ui";
 
 const ATHLETE_PROMPTS = [
-  "How should I warm up before heavy squats?",
-  "What's a good substitute for pull-ups?",
-  "Explain tempo 3-1-2-0",
-  "How do I know if my load is right?",
-  "What does RPE 7 mean?",
-  "How to scale a workout if I'm sore?",
+  "What's my workout for this week?",
+  "How has my back squat progressed?",
+  "What's coming up next week?",
+  "Summarize my training so far",
+  "What should I focus on improving?",
+  "What does my coach want me to work on?",
 ];
 
 const COACH_PROMPTS = [
@@ -19,6 +19,126 @@ const COACH_PROMPTS = [
   "What are the biggest strength gaps across my athletes?",
   "How should I modify workouts for an athlete with knee issues?",
 ];
+
+function buildAthleteContext(athlete, programs, logs, baselines, videoSubs) {
+  if (!athlete) return "";
+  let ctx = "\n\n--- YOUR TRAINING DATA ---\n";
+  ctx += `Athlete: ${athlete.name} | Age: ${athlete.age || "?"} | Sport: ${athlete.sport || "?"}\n`;
+  if (athlete.notes) ctx += `Coach notes on you: ${athlete.notes}\n`;
+
+  // Baselines
+  const ab = (baselines || []).filter(b => b.athlete_id === athlete.id);
+  if (ab.length > 0) {
+    ctx += "\n## Your Baselines\n";
+    ab.forEach(b => {
+      ctx += `  ${b.movement}: Week 1 = ${b.week1_result || "—"}, Week 12 = ${b.week12_result || "—"} (Target: ${b.target} ${b.units})`;
+      if (b.week1_notes) ctx += ` [${b.week1_notes}]`;
+      if (b.week12_notes) ctx += ` [${b.week12_notes}]`;
+      ctx += "\n";
+    });
+  }
+
+  // Programs — ALL weeks with full exercise detail
+  const ap = (programs || []).filter(p => p.athlete_id === athlete.id);
+  ap.forEach(p => {
+    const weeks = p.weeks || [];
+    // Find current week
+    const currentWi = weeks.findIndex(w => {
+      if (w.status === "completed" || w.status === "missed") return false;
+      const days = w.days || [];
+      if (days.length === 0) return true;
+      return !days.every(d => d.status === "completed" || d.status === "missed");
+    });
+    ctx += `\n## Program: ${p.name} (${weeks.length} weeks total, currently on Week ${currentWi >= 0 ? currentWi + 1 : "?"})\n`;
+    weeks.forEach((w, wi) => {
+      const wStatus = w.status || "";
+      const isCurrent = wi === currentWi;
+      const isUpcoming = currentWi >= 0 && wi > currentWi;
+      const tag = isCurrent ? " ← CURRENT WEEK" : isUpcoming ? " [UPCOMING]" : wStatus ? ` [${wStatus}]` : "";
+      ctx += `\n### ${w.label || `Week ${wi + 1}`}${tag}\n`;
+      if (w.coachRecap) ctx += `Coach Recap: ${w.coachRecap}\n`;
+      (w.days || []).forEach(d => {
+        if (!d.blocks || d.blocks.length === 0) return;
+        const ds = d.status || wStatus || "";
+        const dayTag = ds === "completed" ? " ✓" : ds === "missed" ? " ✗" : isUpcoming || isCurrent ? " [PLANNED]" : "";
+        ctx += `  ${d.label}${dayTag}: `;
+        ctx += d.blocks.map(b => {
+          const name = b.exerciseName || "?";
+          let detail = `${b.category} ${name}`;
+          if (b.sets || b.reps) detail += ` ${b.sets || ""}×${b.reps || ""}`;
+          if (b.load) detail += ` @${b.load}`;
+          if (b.tempo) detail += ` tempo:${b.tempo}`;
+          if (b.notes) detail += ` (${b.notes.slice(0, 80)})`;
+          return detail;
+        }).join(" | ");
+        if (d.coachNotes && d.coachNotesShared) ctx += ` [Coach: ${d.coachNotes}]`;
+        ctx += "\n";
+      });
+    });
+  });
+
+  // ALL logs — grouped by week and day for progression tracking
+  const athleteLogs = (logs || []).filter(l => l.athlete_id === athlete.id);
+  if (athleteLogs.length > 0) {
+    ctx += "\n## Your Workout Log (ALL logged results)\n";
+    // Group by week_label then day_label
+    const byWeek = {};
+    athleteLogs.forEach(l => {
+      const wk = l.week_label || "Unknown Week";
+      if (!byWeek[wk]) byWeek[wk] = {};
+      const dy = l.day_label || l.date;
+      if (!byWeek[wk][dy]) byWeek[wk][dy] = [];
+      byWeek[wk][dy].push(l);
+    });
+    Object.entries(byWeek).forEach(([weekLabel, days]) => {
+      ctx += `\n  ${weekLabel}:\n`;
+      Object.entries(days).forEach(([dayLabel, entries]) => {
+        const date = entries[0]?.date || "";
+        ctx += `    ${dayLabel} (${date}): `;
+        // Dedup
+        const seen = {};
+        const deduped = [];
+        entries.sort((a, b) => new Date(b.logged_at || b.date) - new Date(a.logged_at || a.date));
+        entries.forEach(l => {
+          const n = (l.exercise_name || "").toLowerCase().trim();
+          if (!seen[n]) { seen[n] = true; deduped.push(l); }
+        });
+        ctx += deduped.map(l =>
+          `${l.exercise_name} ${l.sets || ""}×${l.reps || ""}${l.load ? ` @${l.load}` : ""}${l.rpe ? ` RPE${l.rpe}` : ""}${l.notes ? ` "${l.notes}"` : ""}`
+        ).join(" | ");
+        ctx += "\n";
+      });
+    });
+
+    // Build exercise progression summary for key lifts
+    ctx += "\n## Exercise Progression Summary (load over time)\n";
+    const liftMap = {};
+    athleteLogs.forEach(l => {
+      if (!l.load || !l.exercise_name) return;
+      const name = l.exercise_name;
+      if (!liftMap[name]) liftMap[name] = [];
+      liftMap[name].push({ date: l.date, week: l.week_label, load: l.load, sets: l.sets, reps: l.reps, notes: l.notes });
+    });
+    Object.entries(liftMap).forEach(([name, entries]) => {
+      if (entries.length < 1) return;
+      entries.sort((a, b) => new Date(a.date) - new Date(b.date));
+      ctx += `  ${name}: `;
+      ctx += entries.map(e => `${e.week?.replace(/WEEK \d+ — /, "W") || e.date} ${e.sets || ""}×${e.reps || ""} @${e.load}`).join(" → ");
+      ctx += "\n";
+    });
+  }
+
+  // Videos
+  const av = (videoSubs || []).filter(v => v.athlete_id === athlete.id);
+  if (av.length > 0) {
+    ctx += `\n## Video Submissions: ${av.length} total\n`;
+    av.forEach(v => {
+      ctx += `  ${v.exercise_name || "?"}: ${v.status}${v.coach_feedback ? ` — "${v.coach_feedback}"` : ""}\n`;
+    });
+  }
+
+  return ctx;
+}
 
 function buildCoachContext(athletes, programs, logs, exercises, baselines, videoSubs) {
   if (!athletes || athletes.length === 0) return "";
@@ -98,7 +218,7 @@ function buildCoachContext(athletes, programs, logs, exercises, baselines, video
   return ctx;
 }
 
-export default function AIChat({ isMobile, athleteName, isCoach, athletes, programs, logs, exercises, baselines, videoSubs }) {
+export default function AIChat({ isMobile, athleteName, isCoach, athletes, programs, logs, exercises, baselines, videoSubs, athlete }) {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -108,6 +228,11 @@ export default function AIChat({ isMobile, athleteName, isCoach, athletes, progr
     if (!isCoach) return "";
     return buildCoachContext(athletes, programs, logs, exercises, baselines, videoSubs);
   }, [isCoach, athletes, programs, logs, exercises, baselines, videoSubs]);
+
+  const athleteContext = useMemo(() => {
+    if (isCoach || !athlete) return "";
+    return buildAthleteContext(athlete, programs, logs, baselines, videoSubs);
+  }, [isCoach, athlete, programs, logs, baselines, videoSubs]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -124,7 +249,7 @@ export default function AIChat({ isMobile, athleteName, isCoach, athletes, progr
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: newMessages, coachContext: coachContext || undefined }),
+        body: JSON.stringify({ messages: newMessages, coachContext: coachContext || undefined, athleteContext: athleteContext || undefined }),
       });
       const data = await res.json();
       if (data.error) {
@@ -163,7 +288,7 @@ export default function AIChat({ isMobile, athleteName, isCoach, athletes, progr
               <p style={{ fontSize: 13, color: "#71717A", marginTop: 4 }}>
                 {isCoach
                   ? `I have access to ${(athletes || []).length} athlete${(athletes || []).length !== 1 ? "s" : ""}, their programs, logs, baselines, and video submissions.`
-                  : "I know T2P programming, exercises, form cues, scaling, and recovery."}
+                  : `I have access to your program, workout logs, baselines, and progress data.`}
               </p>
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 8, maxWidth: 440, margin: "0 auto" }}>
@@ -198,7 +323,7 @@ export default function AIChat({ isMobile, athleteName, isCoach, athletes, progr
           value={input}
           onChange={e => setInput(e.target.value)}
           onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
-          placeholder={isCoach ? "Ask about an athlete, progression, or programming…" : "Ask about an exercise, modification, or technique…"}
+          placeholder={isCoach ? "Ask about an athlete, progression, or programming…" : "Ask about your progress, lifts, programming, or technique…"}
           style={{ flex: 1, padding: "10px 14px", border: "1px solid #E4E4E7", borderRadius: 10, fontSize: 16, fontFamily: "inherit", outline: "none", boxSizing: "border-box", background: "#fff" }}
         />
         <button onClick={() => send()} disabled={loading || !input.trim()} style={{ padding: "10px 16px", background: loading || !input.trim() ? "#D4D4D8" : "#F97316", color: "#fff", border: "none", borderRadius: 10, fontWeight: 700, fontSize: 14, cursor: loading || !input.trim() ? "default" : "pointer", fontFamily: "inherit", flexShrink: 0 }}>

@@ -153,7 +153,7 @@ export default function AthleteView({ athlete, onLogout }) {
           {page === "my-baselines" && <MyBaselines baselines={baselines} updateBaseline={updateBaseline} isMobile={isMobile} />}
           {page === "my-logs" && <MyLogs logs={logs} colors={colors} cats={cats} isMobile={isMobile} deleteLog={deleteLog} deleteDayLogs={deleteDayLogs} />}
           {page === "my-videos" && <MyVideos videoSubs={videoSubs} addVideoSub={addVideoSub} deleteVideoSub={deleteVideoSub} athlete={athlete} exercises={exercises} cats={cats} colors={colors} isMobile={isMobile} />}
-          {page === "ai-chat" && <AIChat isMobile={isMobile} athleteName={athlete.name} />}
+          {page === "ai-chat" && <AIChat isMobile={isMobile} athleteName={athlete.name} athlete={athlete} programs={programs} logs={logs} baselines={baselines} videoSubs={videoSubs} />}
         </main>
       </div>
     </div>

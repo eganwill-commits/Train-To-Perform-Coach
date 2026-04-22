@@ -45,7 +45,7 @@ You are built into the T2P Coach Platform and help athletes and coaches with:
 
 export async function POST(request) {
   try {
-    const { messages, coachContext } = await request.json();
+    const { messages, coachContext, athleteContext } = await request.json();
     
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey) {
@@ -55,6 +55,9 @@ export async function POST(request) {
     let systemPrompt = SYSTEM_PROMPT;
     if (coachContext) {
       systemPrompt += `\n\nYou are now in COACH MODE. You have access to real athlete data from the T2P platform. Use this data to provide specific, actionable coaching insights. Reference athletes by name, cite their actual numbers, and make concrete recommendations based on their progress.\n${coachContext}`;
+    }
+    if (athleteContext) {
+      systemPrompt += `\n\nYou are now in ATHLETE MODE. You are speaking directly to this athlete. You have access to their complete training data — programs (past, current, AND upcoming weeks), logged workouts, loads, reps, notes, baselines, and progression history. Use this data to answer their questions with specific numbers and facts from their training. When they ask about progress, reference actual loads and dates. When they ask about upcoming workouts, describe the planned exercises, sets, reps, and loads from their program. When they ask what to focus on, reference their coach's notes and their recent performance. Weeks marked [UPCOMING] or [PLANNED] are future workouts the coach has programmed but the athlete hasn't done yet. The week marked ← CURRENT WEEK is what they're working on now.\n${athleteContext}`;
     }
 
     const response = await fetch("https://api.anthropic.com/v1/messages", {
@@ -66,9 +69,9 @@ export async function POST(request) {
       },
       body: JSON.stringify({
         model: "claude-sonnet-4-20250514",
-        max_tokens: 2048,
+        max_tokens: 4096,
         system: systemPrompt,
-        messages: messages.slice(-10),
+        messages: messages.slice(-12),
       }),
     });
 
