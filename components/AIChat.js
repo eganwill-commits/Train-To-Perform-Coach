@@ -271,7 +271,7 @@ export default function AIChat({ isMobile, athleteName, isCoach, athletes, progr
         <div>
           <h2 style={{ margin: 0, fontSize: isMobile ? 20 : 28, fontFamily: "'Space Mono', monospace" }}>T2P Assistant</h2>
           <p style={{ fontSize: 12, color: "#71717A", marginTop: 2 }}>
-            {isCoach ? "Analyze athletes, plan progressions, get coaching insights" : "Ask about movements, form, scaling, recovery & more"}
+            {isCoach ? "Analyze athletes, plan progressions, get coaching insights" : athlete ? "Your program, logs, and progress data are loaded" : "Ask about movements, form, scaling, recovery & more"}
           </p>
         </div>
         {messages.length > 0 && <Btn small variant="secondary" onClick={() => setMessages([])}>Clear</Btn>}
@@ -288,7 +288,9 @@ export default function AIChat({ isMobile, athleteName, isCoach, athletes, progr
               <p style={{ fontSize: 13, color: "#71717A", marginTop: 4 }}>
                 {isCoach
                   ? `I have access to ${(athletes || []).length} athlete${(athletes || []).length !== 1 ? "s" : ""}, their programs, logs, baselines, and video submissions.`
-                  : `I have access to your program, workout logs, baselines, and progress data.`}
+                  : athlete
+                    ? `I have access to your ${(programs || []).length} program${(programs || []).length !== 1 ? "s" : ""}, ${(logs || []).length} logged exercises, and ${(baselines || []).length} baselines.`
+                    : `I know T2P programming, exercises, form cues, scaling, and recovery.`}
               </p>
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 8, maxWidth: 440, margin: "0 auto" }}>
