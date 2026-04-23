@@ -419,12 +419,38 @@ function ProgramDetail({ program, programs, exercises, cats, colors, addBlock, u
     setUnlogging(null);
   };
 
-  const toggleExerciseStatus = async (logEntry, newStatus) => {
-    if (!logEntry || !logEntry.id) return;
-    const status = logEntry.exercise_status === newStatus ? "completed" : newStatus;
-    const { error } = await supabase.from("logs").update({ exercise_status: status }).eq("id", logEntry.id);
-    if (!error && setLogs) {
-      setLogs(prev => prev.map(l => l.id === logEntry.id ? { ...l, exercise_status: status } : l));
+  const toggleExerciseStatus = async (logEntry, newStatus, block, dayLabel) => {
+    if (logEntry && logEntry.id) {
+      // Update existing log
+      const status = logEntry.exercise_status === newStatus ? "completed" : newStatus;
+      const { error } = await supabase.from("logs").update({ exercise_status: status }).eq("id", logEntry.id);
+      if (!error && setLogs) {
+        setLogs(prev => prev.map(l => l.id === logEntry.id ? { ...l, exercise_status: status } : l));
+      }
+    } else if (block) {
+      // Create a new log entry for this exercise
+      const exName = getDisplayName(block);
+      const athleteName = ath?.name || "Unknown";
+      const newLog = {
+        athlete_id: program.athlete_id || "",
+        athlete_name: athleteName,
+        exercise_id: block.exerciseId || "",
+        exercise_name: exName,
+        category: block.category || "",
+        sets: block.sets || "",
+        reps: block.reps || "",
+        load: block.load || "",
+        rpe: "",
+        notes: "",
+        exercise_status: newStatus,
+        date: getDateForDay(dayLabel || ""),
+        week_label: week?.label || "",
+        day_label: dayLabel || "",
+      };
+      const { data, error } = await supabase.from("logs").insert([newLog]).select();
+      if (!error && data && setLogs) {
+        setLogs(prev => [...data, ...prev]);
+      }
     }
   };
 
@@ -569,12 +595,10 @@ function ProgramDetail({ program, programs, exercises, cats, colors, addBlock, u
                       return (
                         <>
                           <div style={{ display: "flex", alignItems: "center", padding: "10px 10px", gap: 6 }}>
-                            {blockLogged && (
-                              <div style={{ display: "flex", gap: 2, flexShrink: 0 }} onClick={e => e.stopPropagation()}>
-                                <button onClick={() => toggleExerciseStatus(logEntry, "completed")} style={{ width: 22, height: 22, borderRadius: 4, border: exStatus === "completed" ? "2px solid #16A34A" : "1px solid #D4D4D8", background: exStatus === "completed" ? "#16A34A" : "transparent", color: exStatus === "completed" ? "#fff" : "#A1A1AA", fontSize: 11, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}>✓</button>
-                                <button onClick={() => toggleExerciseStatus(logEntry, "missed")} style={{ width: 22, height: 22, borderRadius: 4, border: exStatus === "missed" ? "2px solid #DC2626" : "1px solid #D4D4D8", background: exStatus === "missed" ? "#DC2626" : "transparent", color: exStatus === "missed" ? "#fff" : "#A1A1AA", fontSize: 11, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}>✗</button>
-                              </div>
-                            )}
+                            <div style={{ display: "flex", gap: 2, flexShrink: 0 }} onClick={e => e.stopPropagation()}>
+                              <button onClick={() => toggleExerciseStatus(logEntry, "completed", block, day.label)} style={{ width: 22, height: 22, borderRadius: 4, border: exStatus === "completed" ? "2px solid #16A34A" : "1px solid #D4D4D8", background: exStatus === "completed" ? "#16A34A" : "transparent", color: exStatus === "completed" ? "#fff" : "#A1A1AA", fontSize: 11, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}>✓</button>
+                              <button onClick={() => toggleExerciseStatus(logEntry, "missed", block, day.label)} style={{ width: 22, height: 22, borderRadius: 4, border: exStatus === "missed" ? "2px solid #DC2626" : "1px solid #D4D4D8", background: exStatus === "missed" ? "#DC2626" : "transparent", color: exStatus === "missed" ? "#fff" : "#A1A1AA", fontSize: 11, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}>✗</button>
+                            </div>
                             <div onClick={() => setExpandedBlock(isOpen ? null : block.id)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flex: 1, cursor: "pointer" }}>
                               <div style={{ display: "flex", alignItems: "center", gap: 8, flex: 1, minWidth: 0 }}>
                                 <Badge color={cc?.bg || "#999"}>{block.category}</Badge>
@@ -650,12 +674,10 @@ function ProgramDetail({ program, programs, exercises, cats, colors, addBlock, u
                       <div style={{ padding: 10 }}>
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
                           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                            {blockLogged && (
-                              <div style={{ display: "flex", gap: 2, flexShrink: 0 }}>
-                                <button onClick={() => toggleExerciseStatus(logEntry, "completed")} style={{ width: 22, height: 22, borderRadius: 4, border: exStatus === "completed" ? "2px solid #16A34A" : "1px solid #D4D4D8", background: exStatus === "completed" ? "#16A34A" : "transparent", color: exStatus === "completed" ? "#fff" : "#A1A1AA", fontSize: 11, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}>✓</button>
-                                <button onClick={() => toggleExerciseStatus(logEntry, "missed")} style={{ width: 22, height: 22, borderRadius: 4, border: exStatus === "missed" ? "2px solid #DC2626" : "1px solid #D4D4D8", background: exStatus === "missed" ? "#DC2626" : "transparent", color: exStatus === "missed" ? "#fff" : "#A1A1AA", fontSize: 11, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}>✗</button>
-                              </div>
-                            )}
+                            <div style={{ display: "flex", gap: 2, flexShrink: 0 }}>
+                              <button onClick={() => toggleExerciseStatus(logEntry, "completed", block, day.label)} style={{ width: 22, height: 22, borderRadius: 4, border: exStatus === "completed" ? "2px solid #16A34A" : "1px solid #D4D4D8", background: exStatus === "completed" ? "#16A34A" : "transparent", color: exStatus === "completed" ? "#fff" : "#A1A1AA", fontSize: 11, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}>✓</button>
+                              <button onClick={() => toggleExerciseStatus(logEntry, "missed", block, day.label)} style={{ width: 22, height: 22, borderRadius: 4, border: exStatus === "missed" ? "2px solid #DC2626" : "1px solid #D4D4D8", background: exStatus === "missed" ? "#DC2626" : "transparent", color: exStatus === "missed" ? "#fff" : "#A1A1AA", fontSize: 11, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}>✗</button>
+                            </div>
                             <Badge color={cc?.bg || "#999"}>{block.category}</Badge>
                             {blockLogged && <span style={{ width: 8, height: 8, borderRadius: 4, background: "#16A34A", flexShrink: 0 }} title="Athlete logged" />}
                             <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
