@@ -6,7 +6,7 @@ import { printDay } from "./printHelper";
 
 const uid = () => Math.random().toString(36).slice(2, 10);
 
-export default function Programs({ programs, addProgram, updateProgram, deleteProgram, athletes, exercises, cats, colors, isMobile, submitDay, unlogDay, logs, groups }) {
+export default function Programs({ programs, addProgram, updateProgram, deleteProgram, athletes, exercises, cats, colors, isMobile, submitDay, unlogDay, logs, groups, setLogs }) {
   const [modal, setModal] = useState(false);
   const [form, setForm] = useState({ name: "", selectedAthletes: [], weeks: 4, description: "", group_id: "" });
   const [detail, setDetail] = useState(null);
@@ -164,7 +164,7 @@ export default function Programs({ programs, addProgram, updateProgram, deletePr
     await updateProgram(ap.id, { weeks });
   };
 
-  if (detail && ap) return <ProgramDetail program={ap} programs={programs} exercises={exercises} cats={cats} colors={colors} addBlock={addBlock} updateBlock={updateBlock} removeBlock={removeBlock} moveBlock={moveBlock} onBack={() => setDetail(null)} athletes={athletes} isMobile={isMobile} submitDay={submitDay} unlogDay={unlogDay} logs={logs || []} copyToAthletes={copyToAthletes} updateProgram={updateProgram} groups={groups} />;
+  if (detail && ap) return <ProgramDetail program={ap} programs={programs} exercises={exercises} cats={cats} colors={colors} addBlock={addBlock} updateBlock={updateBlock} removeBlock={removeBlock} moveBlock={moveBlock} onBack={() => setDetail(null)} athletes={athletes} isMobile={isMobile} submitDay={submitDay} unlogDay={unlogDay} logs={logs || []} copyToAthletes={copyToAthletes} updateProgram={updateProgram} groups={groups} setLogs={setLogs} />;
 
   return (
     <div>
@@ -258,7 +258,7 @@ export default function Programs({ programs, addProgram, updateProgram, deletePr
   );
 }
 
-function ProgramDetail({ program, programs, exercises, cats, colors, addBlock, updateBlock, removeBlock, moveBlock, onBack, athletes, isMobile, submitDay, unlogDay, logs, copyToAthletes, updateProgram, groups }) {
+function ProgramDetail({ program, programs, exercises, cats, colors, addBlock, updateBlock, removeBlock, moveBlock, onBack, athletes, isMobile, submitDay, unlogDay, logs, copyToAthletes, updateProgram, groups, setLogs }) {
   // Keep a ref to latest program to prevent stale closures in async handlers
   const programRef = useRef(program);
   programRef.current = program;
@@ -419,6 +419,15 @@ function ProgramDetail({ program, programs, exercises, cats, colors, addBlock, u
     setUnlogging(null);
   };
 
+  const toggleExerciseStatus = async (logEntry, newStatus) => {
+    if (!logEntry || !logEntry.id) return;
+    const status = logEntry.exercise_status === newStatus ? "completed" : newStatus;
+    const { error } = await supabase.from("logs").update({ exercise_status: status }).eq("id", logEntry.id);
+    if (!error && setLogs) {
+      setLogs(prev => prev.map(l => l.id === logEntry.id ? { ...l, exercise_status: status } : l));
+    }
+  };
+
   return (
     <div>
       <button onClick={onBack} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 14, color: "#71717A", marginBottom: 12, fontFamily: "inherit" }}>← Back</button>
@@ -548,25 +557,37 @@ function ProgramDetail({ program, programs, exercises, cats, colors, addBlock, u
                 const resolvedEx = resolvedId !== "__custom__" ? exercises.find(e => e.id === resolvedId) : null;
                 const videoUrl = resolvedEx?.video_url || (block.exerciseName ? exercises.find(e => e.name === block.exerciseName)?.video_url : "") || "";
                 const blockLogged = !!blockLogMap[block.id];
+                const logEntry = blockLogMap[block.id];
+                const exStatus = logEntry?.exercise_status || null;
+                const borderLeftColor = exStatus === "missed" ? "#DC2626" : exStatus === "completed" ? "#16A34A" : (cc?.bg || "#999");
+                const cardBg = exStatus === "missed" ? "#FEF2F2" : exStatus === "completed" ? "#F0FDF4" : (cc?.light || "#F9FAFB");
 
                 return (
-                  <div key={block.id} style={{ background: cc?.light || "#F9FAFB", border: `1px solid ${cc?.border || "#E5E7EB"}`, borderRadius: 10, marginBottom: 8, borderLeft: `4px solid ${cc?.bg || "#999"}`, overflow: "hidden" }}>
+                  <div key={block.id} style={{ background: cardBg, border: `1px solid ${cc?.border || "#E5E7EB"}`, borderRadius: 10, marginBottom: 8, borderLeft: `4px solid ${borderLeftColor}`, overflow: "hidden", opacity: exStatus === "missed" ? 0.6 : 1 }}>
                     {isMobile ? (() => {
                       const isOpen = expandedBlock === block.id;
                       return (
                         <>
-                          <div onClick={() => setExpandedBlock(isOpen ? null : block.id)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 10px", cursor: "pointer" }}>
-                            <div style={{ display: "flex", alignItems: "center", gap: 8, flex: 1, minWidth: 0 }}>
-                              <Badge color={cc?.bg || "#999"}>{block.category}</Badge>
-                              <div style={{ minWidth: 0, flex: 1 }}>
-                                <div style={{ fontWeight: 600, fontSize: 13, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", lineHeight: 1.3 }}>{displayName}</div>
-                                <div style={{ fontSize: 11, color: "#71717A" }}>{[block.sets && block.reps ? `${block.sets}×${block.reps}` : null, block.load ? `@ ${block.load}` : null].filter(Boolean).join(" ") || "—"}</div>
+                          <div style={{ display: "flex", alignItems: "center", padding: "10px 10px", gap: 6 }}>
+                            {blockLogged && (
+                              <div style={{ display: "flex", gap: 2, flexShrink: 0 }} onClick={e => e.stopPropagation()}>
+                                <button onClick={() => toggleExerciseStatus(logEntry, "completed")} style={{ width: 22, height: 22, borderRadius: 4, border: exStatus === "completed" ? "2px solid #16A34A" : "1px solid #D4D4D8", background: exStatus === "completed" ? "#16A34A" : "transparent", color: exStatus === "completed" ? "#fff" : "#A1A1AA", fontSize: 11, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}>✓</button>
+                                <button onClick={() => toggleExerciseStatus(logEntry, "missed")} style={{ width: 22, height: 22, borderRadius: 4, border: exStatus === "missed" ? "2px solid #DC2626" : "1px solid #D4D4D8", background: exStatus === "missed" ? "#DC2626" : "transparent", color: exStatus === "missed" ? "#fff" : "#A1A1AA", fontSize: 11, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}>✗</button>
                               </div>
-                            </div>
-                            <div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0 }}>
-                              {blockLogged && <span style={{ width: 8, height: 8, borderRadius: 4, background: "#16A34A", flexShrink: 0 }} title="Athlete logged" />}
-                              {videoUrl && <a href={videoUrl} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 11, color: "#fff", background: "#2563EB", textDecoration: "none", fontWeight: 700, padding: "2px 8px", borderRadius: 999 }}>▶</a>}
-                              <span style={{ fontSize: 12, color: "#A1A1AA", transform: isOpen ? "rotate(180deg)" : "none", transition: "transform .2s" }}>▼</span>
+                            )}
+                            <div onClick={() => setExpandedBlock(isOpen ? null : block.id)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flex: 1, cursor: "pointer" }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 8, flex: 1, minWidth: 0 }}>
+                                <Badge color={cc?.bg || "#999"}>{block.category}</Badge>
+                                <div style={{ minWidth: 0, flex: 1 }}>
+                                  <div style={{ fontWeight: 600, fontSize: 13, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", lineHeight: 1.3, textDecoration: exStatus === "missed" ? "line-through" : "none" }}>{displayName}</div>
+                                  <div style={{ fontSize: 11, color: "#71717A" }}>{[block.sets && block.reps ? `${block.sets}×${block.reps}` : null, block.load ? `@ ${block.load}` : null].filter(Boolean).join(" ") || "—"}</div>
+                                </div>
+                              </div>
+                              <div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0 }}>
+                                {blockLogged && <span style={{ width: 8, height: 8, borderRadius: 4, background: "#16A34A", flexShrink: 0 }} title="Athlete logged" />}
+                                {videoUrl && <a href={videoUrl} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 11, color: "#fff", background: "#2563EB", textDecoration: "none", fontWeight: 700, padding: "2px 8px", borderRadius: 999 }}>▶</a>}
+                                <span style={{ fontSize: 12, color: "#A1A1AA", transform: isOpen ? "rotate(180deg)" : "none", transition: "transform .2s" }}>▼</span>
+                              </div>
                             </div>
                           </div>
                           {isOpen && (
@@ -629,6 +650,12 @@ function ProgramDetail({ program, programs, exercises, cats, colors, addBlock, u
                       <div style={{ padding: 10 }}>
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
                           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            {blockLogged && (
+                              <div style={{ display: "flex", gap: 2, flexShrink: 0 }}>
+                                <button onClick={() => toggleExerciseStatus(logEntry, "completed")} style={{ width: 22, height: 22, borderRadius: 4, border: exStatus === "completed" ? "2px solid #16A34A" : "1px solid #D4D4D8", background: exStatus === "completed" ? "#16A34A" : "transparent", color: exStatus === "completed" ? "#fff" : "#A1A1AA", fontSize: 11, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}>✓</button>
+                                <button onClick={() => toggleExerciseStatus(logEntry, "missed")} style={{ width: 22, height: 22, borderRadius: 4, border: exStatus === "missed" ? "2px solid #DC2626" : "1px solid #D4D4D8", background: exStatus === "missed" ? "#DC2626" : "transparent", color: exStatus === "missed" ? "#fff" : "#A1A1AA", fontSize: 11, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}>✗</button>
+                              </div>
+                            )}
                             <Badge color={cc?.bg || "#999"}>{block.category}</Badge>
                             {blockLogged && <span style={{ width: 8, height: 8, borderRadius: 4, background: "#16A34A", flexShrink: 0 }} title="Athlete logged" />}
                             <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>

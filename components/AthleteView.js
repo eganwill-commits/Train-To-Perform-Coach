@@ -271,6 +271,7 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
         load: result.load ?? existingLog?.load ?? block.load ?? "",
         rpe: result.rpe ?? existingLog?.rpe ?? "",
         notes: result.notes ?? existingLog?.notes ?? "",
+        exercise_status: result.status ?? existingLog?.exercise_status ?? "completed",
         date, week_label: weekLabel, day_label: day.label,
       });
     }
@@ -496,19 +497,30 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
               const effRpe = result.rpe ?? loggedResult?.rpe ?? "";
               const effNotes = result.notes ?? loggedResult?.notes ?? "";
 
+              const exStatus = result.status ?? loggedResult?.exercise_status ?? null;
+              const borderLeftColor = exStatus === "completed" ? "#16A34A" : exStatus === "missed" ? "#DC2626" : (cc?.bg || "#999");
+              const bgColor = exStatus === "completed" ? "#F0FDF4" : exStatus === "missed" ? "#FEF2F2" : (cc?.light || "#F9FAFB");
+
               return (
-                <div key={block.id} style={{ background: cc?.light || "#F9FAFB", border: `1px solid ${cc?.border || "#E5E7EB"}`, borderRadius: 8, marginBottom: 6, borderLeft: `3px solid ${cc?.bg || "#999"}`, overflow: "hidden" }}>
+                <div key={block.id} style={{ background: bgColor, border: `1px solid ${cc?.border || "#E5E7EB"}`, borderRadius: 8, marginBottom: 6, borderLeft: `3px solid ${borderLeftColor}`, overflow: "hidden", opacity: exStatus === "missed" ? 0.6 : 1 }}>
                   {/* Collapsed row */}
-                  <div onClick={() => setExpandedBlock(isOpen ? null : block.id)} style={{ display: "flex", alignItems: "center", padding: "8px 8px", cursor: "pointer", gap: 6 }}>
-                    <Badge color={cc?.bg || "#999"}>{block.category}</Badge>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontWeight: 600, fontSize: 13, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", lineHeight: 1.3 }}>{getDisplayName(block)}</div>
-                      {!isOpen && <div style={{ fontSize: 11, color: "#71717A" }}>{[block.sets && block.reps ? `${block.sets}×${block.reps}` : null, block.load ? `@ ${block.load}` : null].filter(Boolean).join(" ") || ""}</div>}
+                  <div style={{ display: "flex", alignItems: "center", padding: "8px 8px", gap: 6 }}>
+                    {/* Complete/Missed toggles */}
+                    <div style={{ display: "flex", gap: 2, flexShrink: 0 }} onClick={e => e.stopPropagation()}>
+                      <button onClick={() => updateResult(block.id, "status", exStatus === "completed" ? null : "completed")} style={{ width: 24, height: 24, borderRadius: 4, border: exStatus === "completed" ? "2px solid #16A34A" : "1px solid #D4D4D8", background: exStatus === "completed" ? "#16A34A" : "transparent", color: exStatus === "completed" ? "#fff" : "#A1A1AA", fontSize: 12, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}>✓</button>
+                      <button onClick={() => updateResult(block.id, "status", exStatus === "missed" ? null : "missed")} style={{ width: 24, height: 24, borderRadius: 4, border: exStatus === "missed" ? "2px solid #DC2626" : "1px solid #D4D4D8", background: exStatus === "missed" ? "#DC2626" : "transparent", color: exStatus === "missed" ? "#fff" : "#A1A1AA", fontSize: 12, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}>✗</button>
                     </div>
-                    {hasInput && <span style={{ width: 7, height: 7, borderRadius: 4, background: "#16A34A", flexShrink: 0 }} />}
-                    {!hasInput && loggedResult && <span style={{ width: 7, height: 7, borderRadius: 4, background: "#16A34A", flexShrink: 0 }} />}
-                    {videoUrl && <a href={videoUrl} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} style={{ fontSize: 10, color: "#fff", background: "#2563EB", textDecoration: "none", fontWeight: 700, padding: "2px 6px", borderRadius: 999, flexShrink: 0 }}>▶</a>}
-                    <span style={{ fontSize: 10, color: "#A1A1AA", transform: isOpen ? "rotate(180deg)" : "none", transition: "transform .15s", flexShrink: 0 }}>▼</span>
+                    <div onClick={() => setExpandedBlock(isOpen ? null : block.id)} style={{ display: "flex", alignItems: "center", flex: 1, minWidth: 0, cursor: "pointer", gap: 6 }}>
+                      <Badge color={cc?.bg || "#999"}>{block.category}</Badge>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 600, fontSize: 13, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", lineHeight: 1.3, textDecoration: exStatus === "missed" ? "line-through" : "none" }}>{getDisplayName(block)}</div>
+                        {!isOpen && <div style={{ fontSize: 11, color: "#71717A" }}>{[block.sets && block.reps ? `${block.sets}×${block.reps}` : null, block.load ? `@ ${block.load}` : null].filter(Boolean).join(" ") || ""}</div>}
+                      </div>
+                      {hasInput && <span style={{ width: 7, height: 7, borderRadius: 4, background: "#16A34A", flexShrink: 0 }} />}
+                      {!hasInput && loggedResult && <span style={{ width: 7, height: 7, borderRadius: 4, background: "#16A34A", flexShrink: 0 }} />}
+                      {videoUrl && <a href={videoUrl} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} style={{ fontSize: 10, color: "#fff", background: "#2563EB", textDecoration: "none", fontWeight: 700, padding: "2px 6px", borderRadius: 999, flexShrink: 0 }}>▶</a>}
+                      <span style={{ fontSize: 10, color: "#A1A1AA", transform: isOpen ? "rotate(180deg)" : "none", transition: "transform .15s", flexShrink: 0 }}>▼</span>
+                    </div>
                   </div>
 
                   {/* Expanded */}

@@ -180,6 +180,7 @@ export default function CoachApp({ onLogout }) {
         date: date || new Date().toISOString().slice(0, 10),
         week_label: weekLabel || "",
         day_label: day.label || "",
+        exercise_status: "completed",
       };
     });
     const { data, error } = await supabase.from("logs").insert(logEntries).select();
@@ -327,7 +328,7 @@ export default function CoachApp({ onLogout }) {
   );
 
   const pp = {
-    athletes, programs, exercises, logs, cats, colors, usePillars, isMobile, setPage: nav,
+    athletes, programs, exercises, logs, setLogs, cats, colors, usePillars, isMobile, setPage: nav,
     groups, groupAthletes, baselines, videoSubs,
     addAthlete, updateAthlete, deleteAthlete,
     addProgram, updateProgram, deleteProgram,
