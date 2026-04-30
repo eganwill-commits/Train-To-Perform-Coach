@@ -24,6 +24,11 @@ export default function AlertsBell({ logs, videoSubs, athletes, isMobile, onNavi
   }, []);
 
   const getAthleteName = (id) => (athletes || []).find(a => a.id === id)?.name || "Unknown";
+  const getInitials = (name) => {
+    const parts = (name || "").trim().split(/\s+/);
+    if (parts.length >= 2) return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+    return (parts[0]?.[0] || "?").toUpperCase();
+  };
 
   // New logs since last checked
   const newLogs = (logs || []).filter(l => l.logged_at && l.logged_at > lastChecked);
@@ -91,10 +96,10 @@ export default function AlertsBell({ logs, videoSubs, athletes, isMobile, onNavi
                 {/* Video submissions */}
                 {newVideos.map(v => {
                   const name = v.athlete_name || getAthleteName(v.athlete_id);
-                  const initial = name.charAt(0).toUpperCase();
+                  const initials = getInitials(name);
                   return (
                   <div key={v.id} onClick={() => { if (onNavigate) { onNavigate(v.athlete_id); setOpen(false); } }} style={{ display: "flex", gap: 10, padding: "12px 16px", borderBottom: "1px solid #F4F4F5", alignItems: "start", cursor: onNavigate ? "pointer" : "default" }}>
-                    <div style={{ width: 36, height: 36, borderRadius: 18, background: "#DBEAFE", color: "#2563EB", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 15, flexShrink: 0 }}>{initial}</div>
+                    <div style={{ width: 36, height: 36, borderRadius: 18, background: "#DBEAFE", color: "#2563EB", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 13, flexShrink: 0 }}>{initials}</div>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                         <span style={{ fontWeight: 700, fontSize: 14 }}>{name}</span>
@@ -111,10 +116,10 @@ export default function AlertsBell({ logs, videoSubs, athletes, isMobile, onNavi
                 {/* Workout logs */}
                 {logAlerts.map((g, i) => {
                   const name = getAthleteName(g.athlete_id);
-                  const initial = name.charAt(0).toUpperCase();
+                  const initials = getInitials(name);
                   return (
                   <div key={i} onClick={() => { if (onNavigate) { onNavigate(g.athlete_id); setOpen(false); } }} style={{ display: "flex", gap: 10, padding: "12px 16px", borderBottom: "1px solid #F4F4F5", alignItems: "start", cursor: onNavigate ? "pointer" : "default" }}>
-                    <div style={{ width: 36, height: 36, borderRadius: 18, background: "#F0FDF4", color: "#16A34A", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 15, flexShrink: 0 }}>{initial}</div>
+                    <div style={{ width: 36, height: 36, borderRadius: 18, background: "#F0FDF4", color: "#16A34A", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 13, flexShrink: 0 }}>{initials}</div>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                         <span style={{ fontWeight: 700, fontSize: 14 }}>{name}</span>
