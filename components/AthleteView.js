@@ -48,22 +48,40 @@ export default function AthleteView({ athlete, onLogout }) {
     load();
   }, [athlete.id]);
 
-  // Poll for updates every 30 seconds
+  // Poll for programs, videos, baselines every 30 seconds
   useEffect(() => {
     if (!loaded) return;
     const poll = setInterval(async () => {
-      const [pRes, lRes, vRes, bRes] = await Promise.all([
+      const [pRes, vRes, bRes] = await Promise.all([
         supabase.from("programs").select("*").eq("athlete_id", athlete.id),
-        supabase.from("logs").select("*").eq("athlete_id", athlete.id).order("date", { ascending: false }),
         supabase.from("video_submissions").select("*").eq("athlete_id", athlete.id).order("created_at", { ascending: false }),
         supabase.from("baselines").select("*").eq("athlete_id", athlete.id).order("sort_order", { ascending: true }),
       ]);
       if (pRes.data) setPrograms(pRes.data);
-      if (lRes.data) setLogs(lRes.data);
       if (vRes.data) setVideoSubs(vRes.data);
       if (bRes.data) setBaselines(bRes.data);
     }, 30000);
     return () => clearInterval(poll);
+  }, [loaded, athlete.id]);
+
+  // Realtime subscription for logs — instant updates
+  useEffect(() => {
+    if (!loaded) return;
+    const channel = supabase.channel(`athlete-logs-${athlete.id}`)
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "logs", filter: `athlete_id=eq.${athlete.id}` }, (payload) => {
+        setLogs(prev => {
+          if (prev.some(l => l.id === payload.new.id)) return prev;
+          return [payload.new, ...prev];
+        });
+      })
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "logs", filter: `athlete_id=eq.${athlete.id}` }, (payload) => {
+        setLogs(prev => prev.map(l => l.id === payload.new.id ? payload.new : l));
+      })
+      .on("postgres_changes", { event: "DELETE", schema: "public", table: "logs", filter: `athlete_id=eq.${athlete.id}` }, (payload) => {
+        setLogs(prev => prev.filter(l => l.id !== payload.old.id));
+      })
+      .subscribe();
+    return () => supabase.removeChannel(channel);
   }, [loaded, athlete.id]);
 
   const addLog = useCallback(async (log) => {

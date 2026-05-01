@@ -77,20 +77,38 @@ export default function CoachApp({ onLogout }) {
     loadData();
   }, []);
 
-  // Poll for new logs and videos every 30 seconds
+  // Poll for programs and videos every 30 seconds
   useEffect(() => {
     if (!loaded) return;
     const poll = setInterval(async () => {
-      const [lRes, vRes, pRes] = await Promise.all([
-        supabase.from("logs").select("*").order("date", { ascending: false }),
+      const [vRes, pRes] = await Promise.all([
         supabase.from("video_submissions").select("*").order("created_at", { ascending: false }),
         supabase.from("programs").select("*"),
       ]);
-      if (lRes.data) setLogs(lRes.data);
       if (vRes.data) setVideoSubs(vRes.data);
       if (pRes.data) setPrograms(pRes.data);
     }, 30000);
     return () => clearInterval(poll);
+  }, [loaded]);
+
+  // Realtime subscription for logs — instant updates
+  useEffect(() => {
+    if (!loaded) return;
+    const channel = supabase.channel("coach-logs-realtime")
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "logs" }, (payload) => {
+        setLogs(prev => {
+          if (prev.some(l => l.id === payload.new.id)) return prev;
+          return [payload.new, ...prev];
+        });
+      })
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "logs" }, (payload) => {
+        setLogs(prev => prev.map(l => l.id === payload.new.id ? payload.new : l));
+      })
+      .on("postgres_changes", { event: "DELETE", schema: "public", table: "logs" }, (payload) => {
+        setLogs(prev => prev.filter(l => l.id !== payload.old.id));
+      })
+      .subscribe();
+    return () => supabase.removeChannel(channel);
   }, [loaded]);
 
   // Save helpers — update local state + Supabase
