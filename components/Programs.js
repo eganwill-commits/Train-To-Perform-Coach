@@ -411,9 +411,19 @@ function ProgramDetail({ program, programs, exercises, cats, colors, addBlock, u
     setSubmitting(null);
   };
 
+  const handleReopenDay = async (day) => {
+    // Just reset the day status to "" — keeps all athlete log data intact
+    const weeks = JSON.parse(JSON.stringify(programRef.current.weeks));
+    const wDay = weeks[aw]?.days?.find(d => d.id === day.id);
+    if (wDay) {
+      wDay.status = "";
+      await updateProgram(programRef.current.id, { weeks });
+    }
+  };
+
   const handleUnlog = async (day, skipConfirm) => {
     const date = getDateForDay(day.id);
-    if (!skipConfirm && !confirm(`⚠️ This will permanently delete ${ath?.name || "this athlete"}'s logged workout for ${day.label} on ${date}, including their notes, RPE, and load data.\n\nAre you sure?`)) return;
+    if (!skipConfirm && !confirm(`⚠️ This will permanently delete ${ath?.name || "this athlete"}'s logged workout for ${day.label} on ${date}, including their notes, RPE, and load data.\n\nThis cannot be undone. Are you sure?`)) return;
     setUnlogging(day.id);
     await unlogDay(program.athlete_id, date, day.label, week.label);
     setUnlogging(null);
@@ -740,36 +750,56 @@ function ProgramDetail({ program, programs, exercises, cats, colors, addBlock, u
               });
               })()}
 
-              {/* Submit / Unlog section */}
+              {/* Submit / Reopen / Manage section */}
               {day.blocks.length > 0 && submitDay && (
                 <div style={{ marginTop: 8, padding: 10, background: isLogged ? "#F0FDF4" : "#F9FAFB", borderRadius: 8, border: `1px solid ${isLogged ? "#4ADE80" : "#E4E4E7"}` }}>
                   <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 6 }}>
                     <label style={{ fontSize: 11, color: "#71717A", fontWeight: 600 }}>Date:</label>
                     <input type="date" value={date} onChange={e => setSubmitDates(prev => ({ ...prev, [day.id]: e.target.value }))} style={{ flex: 1, padding: "3px 6px", border: "1px solid #E4E4E7", borderRadius: 6, fontSize: 12, fontFamily: "inherit", boxSizing: "border-box" }} />
                   </div>
-                  {isLogged ? (
+                  {isLogged && day.status === "completed" ? (
                     <div>
                       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
                         <span style={{ color: "#16A34A", fontWeight: 600, fontSize: 13 }}>✓ Logged — {dayLogs.length} exercises</span>
                       </div>
                       <div style={{ display: "flex", gap: 6 }}>
                         <button
-                          onClick={() => handleUnlog(day)}
-                          disabled={unlogging === day.id}
-                          style={{ flex: 1, padding: "7px", background: "#FEE2E2", color: "#DC2626", border: "none", borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: unlogging === day.id ? "default" : "pointer", fontFamily: "inherit" }}
+                          onClick={() => handleReopenDay(day)}
+                          style={{ flex: 1, padding: "7px", background: "#FEF3C7", color: "#92400E", border: "none", borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}
                         >
-                          {unlogging === day.id ? "Removing…" : "Unlog Day"}
+                          ✏️ Reopen Day
                         </button>
+                      </div>
+                      <button
+                        onClick={() => handleUnlog(day)}
+                        disabled={unlogging === day.id}
+                        style={{ width: "100%", marginTop: 4, padding: "5px", background: "none", color: "#DC2626", border: "none", fontSize: 11, fontWeight: 600, cursor: unlogging === day.id ? "default" : "pointer", fontFamily: "inherit", opacity: 0.7 }}
+                      >
+                        {unlogging === day.id ? "Deleting…" : "🗑 Delete All Logs"}
+                      </button>
+                    </div>
+                  ) : isLogged && day.status !== "completed" ? (
+                    <div>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                        <span style={{ color: "#D97706", fontWeight: 600, fontSize: 13 }}>✏️ Reopened — {dayLogs.length} exercises (athlete data preserved)</span>
+                      </div>
+                      <div style={{ display: "flex", gap: 6 }}>
                         <button
                           onClick={() => {
-                            if (!confirm(`⚠️ Re-submit will DELETE the athlete's logged data (their notes, RPE, load) and replace it with your programmed values.\n\nThis cannot be undone. Continue?`)) return;
-                            handleUnlog(day, true).then(() => setTimeout(() => handleSubmit(day), 300));
+                            setDayStatus(aw, di, "completed");
                           }}
                           style={{ flex: 1, padding: "7px", background: "#18181B", color: "#fff", border: "none", borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}
                         >
-                          Re-submit
+                          ✓ Mark Complete
                         </button>
                       </div>
+                      <button
+                        onClick={() => handleUnlog(day)}
+                        disabled={unlogging === day.id}
+                        style={{ width: "100%", marginTop: 4, padding: "5px", background: "none", color: "#DC2626", border: "none", fontSize: 11, fontWeight: 600, cursor: unlogging === day.id ? "default" : "pointer", fontFamily: "inherit", opacity: 0.7 }}
+                      >
+                        {unlogging === day.id ? "Deleting…" : "🗑 Delete All Logs"}
+                      </button>
                     </div>
                   ) : (
                     <button
