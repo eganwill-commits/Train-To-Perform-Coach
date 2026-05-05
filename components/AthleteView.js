@@ -531,7 +531,7 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
                     <div onClick={() => setExpandedBlock(isOpen ? null : block.id)} style={{ display: "flex", alignItems: "center", flex: 1, minWidth: 0, cursor: "pointer", gap: 6 }}>
                       <Badge color={cc?.bg || "#999"}>{block.category}</Badge>
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontWeight: 600, fontSize: 13, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", lineHeight: 1.3, textDecoration: exStatus === "missed" ? "line-through" : "none" }}>{getDisplayName(block)}</div>
+                        <div style={{ fontWeight: 600, fontSize: 13, lineHeight: 1.3, textDecoration: exStatus === "missed" ? "line-through" : "none", wordBreak: "break-word" }}>{getDisplayName(block)}</div>
                         {!isOpen && <div style={{ fontSize: 11, color: "#71717A" }}>{[block.sets && block.reps ? `${block.sets}×${block.reps}` : null, block.load ? `@ ${block.load}` : null].filter(Boolean).join(" ") || ""}</div>}
                       </div>
                       {hasInput && <span style={{ width: 7, height: 7, borderRadius: 4, background: "#16A34A", flexShrink: 0 }} />}
@@ -557,7 +557,7 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
                         </div>
                       )}
                       {block.notes && (
-                        <div style={{ marginTop: 6, padding: "6px 8px", background: "#fff", borderRadius: 6, border: "1px solid #E4E4E7", fontSize: 12, color: "#52525B", fontStyle: "italic" }}>{block.notes}</div>
+                        <div style={{ marginTop: 6, padding: "6px 8px", background: "#fff", borderRadius: 6, border: "1px solid #E4E4E7", fontSize: 12, color: "#52525B", fontStyle: "italic", whiteSpace: "pre-wrap", lineHeight: 1.4, wordBreak: "break-word" }}>{block.notes}</div>
                       )}
                       {videoUrl && <a href={videoUrl} target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, color: "#fff", background: "#2563EB", textDecoration: "none", fontWeight: 700, padding: "5px 12px", borderRadius: 999, marginTop: 6 }}>▶ Watch Video</a>}
 
@@ -774,7 +774,7 @@ function AthleteLog({ addLog, athlete, exercises, cats, colors, isMobile, progra
                     <div style={{ display: "flex", alignItems: "center", gap: 8, flex: 1, minWidth: 0 }}>
                       <Badge color={cc?.bg || "#999"}>{block.category}</Badge>
                       <div style={{ minWidth: 0, flex: 1 }}>
-                        <div style={{ fontWeight: 700, fontSize: 14, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", lineHeight: 1.3 }}>{getDisplayName(block)}</div>
+                        <div style={{ fontWeight: 700, fontSize: 14, lineHeight: 1.3, wordBreak: "break-word" }}>{getDisplayName(block)}</div>
                         <div style={{ fontSize: 11, color: "#71717A" }}>
                           {[block.sets && block.reps ? `${block.sets}×${block.reps}` : null, block.load ? `@ ${block.load}` : null].filter(Boolean).join(" ") || ""}
                         </div>

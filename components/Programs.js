@@ -613,7 +613,7 @@ function ProgramDetail({ program, programs, exercises, cats, colors, addBlock, u
                               <div style={{ display: "flex", alignItems: "center", gap: 8, flex: 1, minWidth: 0 }}>
                                 <Badge color={cc?.bg || "#999"}>{block.category}</Badge>
                                 <div style={{ minWidth: 0, flex: 1 }}>
-                                  <div style={{ fontWeight: 600, fontSize: 13, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", lineHeight: 1.3, textDecoration: exStatus === "missed" ? "line-through" : "none" }}>{displayName}</div>
+                                  <div style={{ fontWeight: 600, fontSize: 13, lineHeight: 1.3, textDecoration: exStatus === "missed" ? "line-through" : "none", wordBreak: "break-word" }}>{displayName}</div>
                                   <div style={{ fontSize: 11, color: "#71717A" }}>{[block.sets && block.reps ? `${block.sets}×${block.reps}` : null, block.load ? `@ ${block.load}` : null].filter(Boolean).join(" ") || "—"}</div>
                                 </div>
                               </div>
@@ -649,9 +649,9 @@ function ProgramDetail({ program, programs, exercises, cats, colors, addBlock, u
                                 ))}
                               </div>
                               <label style={{ fontSize: 10, color: "#71717A", display: "block", marginTop: 4 }}>Notes
-                                <BlurInput value={block.notes || ""} onSave={v => updateBlock(aw, di, bi, "notes", v)} placeholder="Coaching cues, modifications…" style={{ width: "100%", padding: "6px 5px", border: "1px solid #E4E4E7", borderRadius: 6, fontSize: 14, fontFamily: "inherit", marginTop: 1, boxSizing: "border-box" }} />
+                                <BlurInput value={block.notes || ""} onSave={v => updateBlock(aw, di, bi, "notes", v)} placeholder="Coaching cues, modifications…" multiline style={{ width: "100%", padding: "6px 5px", border: "1px solid #E4E4E7", borderRadius: 6, fontSize: 14, fontFamily: "inherit", marginTop: 1, boxSizing: "border-box", minHeight: block.notes && block.notes.length > 60 ? 60 : undefined }} />
                               </label>
-                              {block.notes && !expandedBlock && <div style={{ fontSize: 11, color: "#71717A", marginTop: 4, fontStyle: "italic" }}>{block.notes}</div>}
+                              {block.notes && !expandedBlock && <div style={{ fontSize: 11, color: "#71717A", marginTop: 4, fontStyle: "italic", whiteSpace: "pre-wrap", lineHeight: 1.4, wordBreak: "break-word" }}>{block.notes}</div>}
 
                               {/* Athlete's logged results */}
                               {(() => {
@@ -718,7 +718,7 @@ function ProgramDetail({ program, programs, exercises, cats, colors, addBlock, u
                           ))}
                         </div>
                         <label style={{ fontSize: 10, color: "#71717A", display: "block", marginTop: 4 }}>Notes
-                          <BlurInput value={block.notes || ""} onSave={v => updateBlock(aw, di, bi, "notes", v)} placeholder="Coaching cues, modifications…" style={{ width: "100%", padding: "4px 5px", border: "1px solid #E4E4E7", borderRadius: 6, fontSize: 13, fontFamily: "inherit", marginTop: 1, boxSizing: "border-box" }} />
+                          <BlurInput value={block.notes || ""} onSave={v => updateBlock(aw, di, bi, "notes", v)} placeholder="Coaching cues, modifications…" multiline style={{ width: "100%", padding: "4px 5px", border: "1px solid #E4E4E7", borderRadius: 6, fontSize: 13, fontFamily: "inherit", marginTop: 1, boxSizing: "border-box", minHeight: block.notes && block.notes.length > 60 ? 60 : undefined }} />
                         </label>
 
                         {/* Athlete's logged results */}
