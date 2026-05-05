@@ -47,7 +47,7 @@ export function SearchableSelect({ label, value, onChange, options, placeholder 
     <div ref={ref} style={{ position: "relative" }}>
       {label && <div style={{ fontSize: 13, fontWeight: 600, color: "#52525B", marginBottom: 4 }}>{label}</div>}
       <button ref={btnRef} type="button" onClick={openDropdown} style={{ width: "100%", padding: "7px 10px", border: "1px solid #E4E4E7", borderRadius: 6, fontSize: 13, fontFamily: "inherit", boxSizing: "border-box", background: "#fff", textAlign: "left", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <span style={{ overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", lineHeight: 1.3, textAlign: "left" }}>{selectedLabel || placeholder}</span>
+        <span style={{ lineHeight: 1.3, textAlign: "left", wordBreak: "break-word" }}>{selectedLabel || placeholder}</span>
         <span style={{ color: "#A1A1AA", fontSize: 10, marginLeft: 6 }}>▼</span>
       </button>
       {open && (
