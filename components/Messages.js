@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect, useRef, useMemo } from "react";
-import { supabase } from "../lib/supabase";
+import { supabase, supabaseUrl, supabaseAnonKey } from "../lib/supabase";
 
 const timeAgo = (d) => {
   const s = Math.floor((Date.now() - new Date(d).getTime()) / 1000);
@@ -124,20 +124,75 @@ export default function Messages({ isCoach, currentUserId, currentUserName, athl
     if (file.size > MAX_FILE_MB * 1024 * 1024) { alert(`File too large. Max ${MAX_FILE_MB}MB.`); return; }
     const type = file.type.startsWith("image/") ? "image" : "video";
     const preview = type === "image" ? URL.createObjectURL(file) : null;
-    setPendingFile({ file, name: file.name, size: file.size, type, preview });
+    // Compress images before setting as pending
+    if (type === "image") {
+      try {
+        const compressed = await compressImage(file, 1600, 0.7);
+        setPendingFile({ file: compressed, name: file.name, size: compressed.size, originalSize: file.size, type, preview });
+      } catch (e) {
+        setPendingFile({ file, name: file.name, size: file.size, type, preview });
+      }
+    } else {
+      setPendingFile({ file, name: file.name, size: file.size, type, preview });
+    }
     e.target.value = "";
+  };
+
+  // Compress image to max dimension and JPEG quality
+  const compressImage = (file, maxDim, quality) => {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => {
+        let w = img.width, h = img.height;
+        if (w > maxDim || h > maxDim) {
+          if (w > h) { h = Math.round(h * maxDim / w); w = maxDim; }
+          else { w = Math.round(w * maxDim / h); h = maxDim; }
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = w; canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0, w, h);
+        canvas.toBlob(blob => {
+          if (blob) resolve(new File([blob], file.name.replace(/\.\w+$/, ".jpg"), { type: "image/jpeg" }));
+          else reject(new Error("Compression failed"));
+        }, "image/jpeg", quality);
+      };
+      img.onerror = reject;
+      img.src = URL.createObjectURL(file);
+    });
   };
 
   const uploadFile = async (file) => {
     const ext = file.name.split(".").pop() || "bin";
     const path = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`;
-    setUploadProgress(10);
-    const { error } = await supabase.storage.from("messages-media").upload(path, file, { cacheControl: "3600", upsert: false });
-    if (error) throw error;
-    setUploadProgress(80);
-    const { data: urlData } = supabase.storage.from("messages-media").getPublicUrl(path);
-    setUploadProgress(100);
-    return urlData.publicUrl;
+
+    // Use XMLHttpRequest for real progress
+    return new Promise((resolve, reject) => {
+      const { data: { publicUrl } } = supabase.storage.from("messages-media").getPublicUrl(path);
+      const uploadUrl = `${supabaseUrl}/storage/v1/object/messages-media/${path}`;
+
+      const xhr = new XMLHttpRequest();
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) {
+          setUploadProgress(Math.round((e.loaded / e.total) * 95));
+        }
+      };
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          setUploadProgress(100);
+          resolve(publicUrl);
+        } else {
+          reject(new Error(`Upload failed: ${xhr.status}`));
+        }
+      };
+      xhr.onerror = () => reject(new Error("Upload failed"));
+      xhr.open("POST", uploadUrl);
+      xhr.setRequestHeader("Authorization", `Bearer ${supabaseAnonKey}`);
+      xhr.setRequestHeader("apikey", supabaseAnonKey);
+      xhr.setRequestHeader("x-upsert", "false");
+      xhr.setRequestHeader("Cache-Control", "max-age=3600");
+      xhr.send(file);
+    });
   };
 
   const send = async () => {
@@ -214,9 +269,16 @@ export default function Messages({ isCoach, currentUserId, currentUserName, athl
           {pendingFile.type === "image" ? <img src={pendingFile.preview} alt="" style={{ width: 48, height: 48, borderRadius: 6, objectFit: "cover" }} /> : <div style={{ width: 48, height: 48, borderRadius: 6, background: "#DBEAFE", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>🎬</div>}
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 12, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{pendingFile.name}</div>
-            <div style={{ fontSize: 11, color: "#71717A" }}>{(pendingFile.size / 1024 / 1024).toFixed(1)} MB</div>
+            <div style={{ fontSize: 11, color: "#71717A" }}>{(pendingFile.size / 1024 / 1024).toFixed(1)} MB{pendingFile.originalSize ? ` (was ${(pendingFile.originalSize / 1024 / 1024).toFixed(1)} MB)` : ""}</div>
           </div>
-          {uploading ? <div style={{ fontSize: 11, color: "#2563EB", fontWeight: 600 }}>{uploadProgress}%</div> : <button onClick={() => setPendingFile(null)} style={{ background: "none", border: "none", fontSize: 16, cursor: "pointer", color: "#A1A1AA", padding: 0 }}>✕</button>}
+          {uploading ? (
+            <div style={{ width: 48, display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
+              <div style={{ fontSize: 11, color: "#2563EB", fontWeight: 600 }}>{uploadProgress}%</div>
+              <div style={{ width: "100%", height: 3, background: "#E4E4E7", borderRadius: 2 }}>
+                <div style={{ width: `${uploadProgress}%`, height: "100%", background: "#2563EB", borderRadius: 2, transition: "width .2s" }} />
+              </div>
+            </div>
+          ) : <button onClick={() => setPendingFile(null)} style={{ background: "none", border: "none", fontSize: 16, cursor: "pointer", color: "#A1A1AA", padding: 0 }}>✕</button>}
         </div>
       )}
       {showLinkInput && (
