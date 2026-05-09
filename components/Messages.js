@@ -118,26 +118,6 @@ export default function Messages({ isCoach, currentUserId, currentUserName, athl
     return () => clearInterval(iv);
   }, [isCoach]);
 
-  const handleFileSelect = (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (file.size > MAX_FILE_MB * 1024 * 1024) { alert(`File too large. Max ${MAX_FILE_MB}MB.`); return; }
-    const type = file.type.startsWith("image/") ? "image" : "video";
-    const preview = type === "image" ? URL.createObjectURL(file) : null;
-    // Compress images before setting as pending
-    if (type === "image") {
-      try {
-        const compressed = await compressImage(file, 1600, 0.7);
-        setPendingFile({ file: compressed, name: file.name, size: compressed.size, originalSize: file.size, type, preview });
-      } catch (e) {
-        setPendingFile({ file, name: file.name, size: file.size, type, preview });
-      }
-    } else {
-      setPendingFile({ file, name: file.name, size: file.size, type, preview });
-    }
-    e.target.value = "";
-  };
-
   // Compress image to max dimension and JPEG quality
   const compressImage = (file, maxDim, quality) => {
     return new Promise((resolve, reject) => {
@@ -160,6 +140,26 @@ export default function Messages({ isCoach, currentUserId, currentUserName, athl
       img.onerror = reject;
       img.src = URL.createObjectURL(file);
     });
+  };
+
+  const handleFileSelect = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > MAX_FILE_MB * 1024 * 1024) { alert(`File too large. Max ${MAX_FILE_MB}MB.`); return; }
+    const type = file.type.startsWith("image/") ? "image" : "video";
+    const preview = type === "image" ? URL.createObjectURL(file) : null;
+    // Compress images before setting as pending
+    if (type === "image") {
+      try {
+        const compressed = await compressImage(file, 1600, 0.7);
+        setPendingFile({ file: compressed, name: file.name, size: compressed.size, originalSize: file.size, type, preview });
+      } catch (e) {
+        setPendingFile({ file, name: file.name, size: file.size, type, preview });
+      }
+    } else {
+      setPendingFile({ file, name: file.name, size: file.size, type, preview });
+    }
+    e.target.value = "";
   };
 
   const uploadFile = async (file) => {
