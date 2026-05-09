@@ -3,6 +3,7 @@ import { useState, useEffect, useRef } from "react";
 import { Badge, Btn, Card, Input, Select, Modal, EmptyState, SearchableSelect, BlurInput } from "./ui";
 import { supabase } from "../lib/supabase";
 import { printDay } from "./printHelper";
+import NotesBoard from "./NotesBoard";
 
 const uid = () => Math.random().toString(36).slice(2, 10);
 
@@ -488,6 +489,9 @@ function ProgramDetail({ program, programs, exercises, cats, colors, addBlock, u
           {(groups || []).map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
         </select>
       </div>
+
+      {/* Notes Board */}
+      <NotesBoard athleteId={program.athlete_id} authorName="Coach" authorRole="coach" isMobile={isMobile} />
 
       <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap" }}>
         {weeks.map((w, i) => {

@@ -6,6 +6,8 @@ import { Badge, Btn, Card, Input, Select, Modal, EmptyState, SearchableSelect } 
 import { printDay } from "./printHelper";
 import T2PLogo from "./T2PLogo";
 import AIChat from "./AIChat";
+import Messages from "./Messages";
+import NotesBoard from "./NotesBoard";
 
 function useIsMobile(bp = 768) {
   const [m, setM] = useState(false);
@@ -23,6 +25,7 @@ export default function AthleteView({ athlete, onLogout }) {
   const [baselines, setBaselines] = useState([]);
   const [loaded, setLoaded] = useState(false);
   const [navOpen, setNavOpen] = useState(false);
+  const [unreadMsgCount, setUnreadMsgCount] = useState(0);
   const isMobile = useIsMobile();
   const colors = PILLAR_COLORS;
   const cats = Object.keys(colors);
@@ -83,6 +86,17 @@ export default function AthleteView({ athlete, onLogout }) {
       .subscribe();
     return () => supabase.removeChannel(channel);
   }, [loaded, athlete.id]);
+
+  // Poll for unread messages from coach
+  useEffect(() => {
+    const fetchUnread = async () => {
+      const { data } = await supabase.from("messages").select("id").eq("athlete_id", athlete.id).eq("sender_role", "coach").is("read_at", null);
+      setUnreadMsgCount(data?.length || 0);
+    };
+    fetchUnread();
+    const iv = setInterval(fetchUnread, 15000);
+    return () => clearInterval(iv);
+  }, [athlete.id]);
 
   const addLog = useCallback(async (log) => {
     const { data, error } = await supabase.from("logs").insert(log).select().single();
@@ -147,7 +161,10 @@ export default function AthleteView({ athlete, onLogout }) {
               border: "none", background: page === n.id ? "#27272A" : "transparent",
               color: page === n.id ? "#fff" : "#A1A1AA", fontSize: 14, fontWeight: 600,
               cursor: "pointer", fontFamily: "inherit", textAlign: "left",
-            }}><span style={{ fontSize: 16 }}>{n.icon}</span>{n.label}</button>
+            }}>
+              <span style={{ fontSize: 16 }}>{n.icon}</span>{n.label}
+              {n.id === "messages" && unreadMsgCount > 0 && <span style={{ background: "#DC2626", color: "#fff", fontSize: 10, fontWeight: 700, borderRadius: 10, padding: "1px 5px", minWidth: 16, textAlign: "center", marginLeft: "auto" }}>{unreadMsgCount}</span>}
+            </button>
           ))}
         </div>
         <div style={{ padding: "12px 20px", borderTop: "1px solid #27272A" }}>
@@ -171,6 +188,7 @@ export default function AthleteView({ athlete, onLogout }) {
           {page === "my-baselines" && <MyBaselines baselines={baselines} updateBaseline={updateBaseline} isMobile={isMobile} />}
           {page === "my-logs" && <MyLogs logs={logs} colors={colors} cats={cats} isMobile={isMobile} deleteLog={deleteLog} deleteDayLogs={deleteDayLogs} />}
           {page === "my-videos" && <MyVideos videoSubs={videoSubs} addVideoSub={addVideoSub} deleteVideoSub={deleteVideoSub} athlete={athlete} exercises={exercises} cats={cats} colors={colors} isMobile={isMobile} />}
+          {page === "messages" && <Messages currentUserId={athlete.id} currentUserName={athlete.name} isMobile={isMobile} />}
           {page === "ai-chat" && <AIChat isMobile={isMobile} athleteName={athlete.name} athlete={athlete} programs={programs} logs={logs} baselines={baselines} videoSubs={videoSubs} />}
         </main>
       </div>
@@ -428,6 +446,9 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
       })()}
 
       {saved && <div style={{ background: "#F0FDF4", color: "#16A34A", padding: "10px 14px", borderRadius: 8, marginBottom: 10, fontWeight: 600, fontSize: 14 }}>Workout logged!</div>}
+
+      {/* Notes Board */}
+      <NotesBoard athleteId={athlete.id} authorName={athlete.name} authorRole="athlete" isMobile={isMobile} />
 
       {/* Week tabs — current and past only */}
       {(() => {

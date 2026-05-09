@@ -9,6 +9,7 @@ import Library from "./Library";
 import LogPage from "./LogPage";
 import Settings from "./Settings";
 import Seasons from "./Seasons";
+import Messages from "./Messages";
 import AIChat from "./AIChat";
 import AlertsBell from "./AlertsBell";
 import T2PLogo from "./T2PLogo";
@@ -38,6 +39,7 @@ export default function CoachApp({ onLogout }) {
   const [usePillars, setUsePillars] = useState(true);
   const [loaded, setLoaded] = useState(false);
   const [navOpen, setNavOpen] = useState(false);
+  const [unreadMsgCount, setUnreadMsgCount] = useState(0);
   const isMobile = useIsMobile();
 
   const cats = usePillars ? Object.keys(PILLAR_COLORS) : Object.keys(GENERIC_COLORS);
@@ -110,6 +112,17 @@ export default function CoachApp({ onLogout }) {
       .subscribe();
     return () => supabase.removeChannel(channel);
   }, [loaded]);
+
+  // Poll for unread messages
+  useEffect(() => {
+    const fetchUnread = async () => {
+      const { data } = await supabase.from("messages").select("id").eq("sender_role", "athlete").is("read_at", null);
+      setUnreadMsgCount(data?.length || 0);
+    };
+    fetchUnread();
+    const iv = setInterval(fetchUnread, 15000);
+    return () => clearInterval(iv);
+  }, []);
 
   // Save helpers — update local state + Supabase
   const saveAthletes = useCallback(async (newAthletes) => {
@@ -384,9 +397,10 @@ export default function CoachApp({ onLogout }) {
               display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: 8,
               border: "none", background: page === n.id ? "#27272A" : "transparent",
               color: page === n.id ? "#fff" : "#A1A1AA", fontSize: 14, fontWeight: 600,
-              cursor: "pointer", fontFamily: "inherit", textAlign: "left",
+              cursor: "pointer", fontFamily: "inherit", textAlign: "left", position: "relative",
             }}>
               <span style={{ fontSize: 16 }}>{n.icon}</span>{n.label}
+              {n.id === "messages" && unreadMsgCount > 0 && <span style={{ background: "#DC2626", color: "#fff", fontSize: 10, fontWeight: 700, borderRadius: 10, padding: "1px 5px", minWidth: 16, textAlign: "center", marginLeft: "auto" }}>{unreadMsgCount}</span>}
             </button>
           ))}
         </div>
@@ -417,6 +431,7 @@ export default function CoachApp({ onLogout }) {
           {page === "programs" && <Programs {...pp} />}
           {page === "library" && <Library {...pp} />}
           {page === "log" && <LogPage {...pp} />}
+          {page === "messages" && <Messages isCoach currentUserId="coach" currentUserName="Coach" athletes={pp.athletes} isMobile={isMobile} />}
           {page === "settings" && <Settings {...pp} />}
           {page === "ai-chat" && <AIChat isMobile={isMobile} isCoach athletes={pp.athletes} programs={pp.programs} logs={pp.logs} exercises={pp.exercises} baselines={pp.baselines} videoSubs={pp.videoSubs} />}
         </main>
