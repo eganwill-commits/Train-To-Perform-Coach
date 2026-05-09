@@ -227,13 +227,16 @@ export default function Messages({ isCoach, currentUserId, currentUserName, athl
       )}
       <div style={{ display: "flex", gap: 6, alignItems: "flex-end" }}>
         <div style={{ display: "flex", gap: 2, flexShrink: 0 }}>
-          <label style={{ width: 34, height: 34, borderRadius: 8, background: "#F4F4F5", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", fontSize: 16 }}>
-            📷<input type="file" accept="image/*,video/*" capture="environment" onChange={handleFileSelect} style={{ display: "none" }} />
+          <label title="Take photo or video" style={{ width: 34, height: 34, borderRadius: 8, background: "#F4F4F5", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", fontSize: 16 }}>
+            📷<input type="file" accept="image/*" capture="environment" onChange={handleFileSelect} style={{ display: "none" }} />
           </label>
-          <label style={{ width: 34, height: 34, borderRadius: 8, background: "#F4F4F5", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", fontSize: 16 }}>
-            📁<input type="file" accept="image/*,video/*,.mov,.mp4,.heic,.heif" onChange={handleFileSelect} style={{ display: "none" }} />
+          <label title="Choose photo from library" style={{ width: 34, height: 34, borderRadius: 8, background: "#F4F4F5", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", fontSize: 16 }}>
+            🖼<input type="file" accept="image/*" onChange={handleFileSelect} style={{ display: "none" }} />
           </label>
-          <button onClick={() => setShowLinkInput(v => !v)} style={{ width: 34, height: 34, borderRadius: 8, background: showLinkInput ? "#DBEAFE" : "#F4F4F5", border: "none", cursor: "pointer", fontSize: 16 }}>🔗</button>
+          <label title="Choose video from library" style={{ width: 34, height: 34, borderRadius: 8, background: "#F4F4F5", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", fontSize: 16 }}>
+            🎬<input type="file" accept="video/*,video/quicktime,video/mp4,.mov,.mp4,.m4v" onChange={handleFileSelect} style={{ display: "none" }} />
+          </label>
+          <button onClick={() => setShowLinkInput(v => !v)} title="Paste a link" style={{ width: 34, height: 34, borderRadius: 8, background: showLinkInput ? "#DBEAFE" : "#F4F4F5", border: "none", cursor: "pointer", fontSize: 16 }}>🔗</button>
         </div>
         <textarea ref={inputRef} value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }} placeholder="Type a message…" rows={1} style={{ flex: 1, padding: "8px 10px", border: "1px solid #E4E4E7", borderRadius: 10, fontSize: 14, fontFamily: "inherit", resize: "none", maxHeight: 100, lineHeight: 1.4, boxSizing: "border-box" }} onInput={e => { e.target.style.height = "auto"; e.target.style.height = Math.min(e.target.scrollHeight, 100) + "px"; }} />
         <button onClick={send} disabled={uploading} style={{ width: 36, height: 36, borderRadius: 10, background: "#18181B", color: "#fff", border: "none", cursor: uploading ? "default" : "pointer", fontSize: 16, flexShrink: 0, opacity: uploading ? 0.5 : 1, display: "flex", alignItems: "center", justifyContent: "center" }}>↑</button>
