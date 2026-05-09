@@ -11,6 +11,7 @@ import Settings from "./Settings";
 import Seasons from "./Seasons";
 import Messages from "./Messages";
 import AIChat from "./AIChat";
+import ToastNotifications from "./ToastNotifications";
 import AlertsBell from "./AlertsBell";
 import T2PLogo from "./T2PLogo";
 
@@ -350,7 +351,7 @@ export default function CoachApp({ onLogout }) {
   }, []);
 
   const nav = (id) => { setPage(id); setFocusAthleteId(null); if (isMobile) setNavOpen(false); };
-  const navToAthlete = (athleteId) => { setFocusAthleteId(athleteId); setPage("athletes"); if (isMobile) setNavOpen(false); };
+  const navToAthlete = (athleteId, targetPage) => { setFocusAthleteId(athleteId); setPage(targetPage || "athletes"); if (isMobile) setNavOpen(false); };
 
   if (!loaded) return (
     <div className="t2p-root" style={{ display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'DM Sans', sans-serif" }}>
@@ -374,6 +375,7 @@ export default function CoachApp({ onLogout }) {
 
   return (
     <div className="t2p-root" style={{ fontFamily: "'DM Sans', sans-serif", display: "flex", background: "#FAFAFA", overflow: "hidden", position: "relative" }}>
+      <ToastNotifications isCoach currentUserId="coach" onNavigate={navToAthlete} />
       {isMobile && navOpen && <div onClick={() => setNavOpen(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.35)", zIndex: 999 }} />}
       <nav className="t2p-nav" style={{
         width: 220, minWidth: 220, background: "#18181B", color: "#fff",

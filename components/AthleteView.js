@@ -8,6 +8,7 @@ import T2PLogo from "./T2PLogo";
 import AIChat from "./AIChat";
 import Messages from "./Messages";
 import NotesBoard from "./NotesBoard";
+import ToastNotifications from "./ToastNotifications";
 
 function useIsMobile(bp = 768) {
   const [m, setM] = useState(false);
@@ -134,11 +135,13 @@ export default function AthleteView({ athlete, onLogout }) {
   }, []);
 
   const nav = (id) => { setPage(id); if (isMobile) setNavOpen(false); };
+  const toastNav = (targetPage) => { setPage(targetPage === "messages" ? "messages" : "my-program"); if (isMobile) setNavOpen(false); };
 
   if (!loaded) return <div className="t2p-root" style={{ display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'DM Sans', sans-serif" }}><p style={{ color: "#71717A" }}>Loading…</p></div>;
 
   return (
     <div className="t2p-root" style={{ fontFamily: "'DM Sans', sans-serif", display: "flex", background: "#FAFAFA", overflow: "hidden" }}>
+      <ToastNotifications currentUserId={athlete.id} onNavigate={(pg) => toastNav(pg)} />
       {isMobile && navOpen && <div onClick={() => setNavOpen(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.35)", zIndex: 999 }} />}
       <nav className="t2p-nav" style={{
         width: 220, minWidth: 220, background: "#18181B", color: "#fff",

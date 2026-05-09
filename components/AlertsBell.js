@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
+import { supabase } from "../lib/supabase";
 
 const LS_KEY = "t2p_last_checked";
 
@@ -15,6 +16,8 @@ function setLastChecked() {
 export default function AlertsBell({ logs, videoSubs, athletes, isMobile, onNavigate }) {
   const [open, setOpen] = useState(false);
   const [lastChecked, setLC] = useState(getLastChecked);
+  const [unreadMsgs, setUnreadMsgs] = useState([]);
+  const [recentNotes, setRecentNotes] = useState([]);
   const ref = useRef(null);
 
   useEffect(() => {
@@ -22,6 +25,21 @@ export default function AlertsBell({ logs, videoSubs, athletes, isMobile, onNavi
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, []);
+
+  // Fetch unread messages and recent notes
+  useEffect(() => {
+    const fetch = async () => {
+      const [msgRes, noteRes] = await Promise.all([
+        supabase.from("messages").select("*").eq("sender_role", "athlete").is("read_at", null).order("created_at", { ascending: false }).limit(10),
+        supabase.from("athlete_notes").select("*").eq("author_role", "athlete").gt("created_at", lastChecked).order("created_at", { ascending: false }).limit(10),
+      ]);
+      setUnreadMsgs(msgRes.data || []);
+      setRecentNotes(noteRes.data || []);
+    };
+    fetch();
+    const iv = setInterval(fetch, 15000);
+    return () => clearInterval(iv);
+  }, [lastChecked]);
 
   const getAthleteName = (id) => (athletes || []).find(a => a.id === id)?.name || "Unknown";
   const getInitials = (name) => {
@@ -44,7 +62,7 @@ export default function AlertsBell({ logs, videoSubs, athletes, isMobile, onNavi
   });
   const logAlerts = Object.values(logGroups).sort((a, b) => b.latest.localeCompare(a.latest));
 
-  const totalNew = logAlerts.length + newVideos.length;
+  const totalNew = logAlerts.length + newVideos.length + unreadMsgs.length + recentNotes.length;
 
   const markRead = () => {
     setLastChecked();
@@ -128,6 +146,48 @@ export default function AlertsBell({ logs, videoSubs, athletes, isMobile, onNavi
                       <div style={{ fontSize: 13, color: "#52525B", marginTop: 1 }}>
                         💪 Logged <strong>{g.count} exercises</strong>
                         {g.week_label || g.day_label ? ` — ${g.week_label ? g.week_label.replace(/WEEK\s*/i, "W").split("—")[0].trim() : ""} ${g.day_label || ""}` : ""}
+                      </div>
+                      {onNavigate && <div style={{ fontSize: 11, color: "#2563EB", fontWeight: 600, marginTop: 3 }}>View →</div>}
+                    </div>
+                  </div>
+                  );
+                })}
+
+                {/* Messages */}
+                {unreadMsgs.map(msg => {
+                  const name = msg.sender_name || msg.athlete_name || "Unknown";
+                  const initials = getInitials(name);
+                  return (
+                  <div key={msg.id} onClick={() => { if (onNavigate) { onNavigate(msg.athlete_id, "messages"); setOpen(false); } }} style={{ display: "flex", gap: 10, padding: "12px 16px", borderBottom: "1px solid #F4F4F5", alignItems: "start", cursor: onNavigate ? "pointer" : "default" }}>
+                    <div style={{ width: 36, height: 36, borderRadius: 18, background: "#EFF6FF", color: "#2563EB", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 13, flexShrink: 0 }}>{initials}</div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <span style={{ fontWeight: 700, fontSize: 14 }}>{name}</span>
+                        <span style={{ fontSize: 11, color: "#A1A1AA" }}>{timeAgo(msg.created_at)}</span>
+                      </div>
+                      <div style={{ fontSize: 13, color: "#52525B", marginTop: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        ✉ {msg.content || (msg.media_url ? "Sent a photo/video" : msg.video_url ? "Shared a link" : "New message")}
+                      </div>
+                      {onNavigate && <div style={{ fontSize: 11, color: "#2563EB", fontWeight: 600, marginTop: 3 }}>View →</div>}
+                    </div>
+                  </div>
+                  );
+                })}
+
+                {/* Notes */}
+                {recentNotes.map(note => {
+                  const name = note.author_name || "Unknown";
+                  const initials = getInitials(name);
+                  return (
+                  <div key={note.id} onClick={() => { if (onNavigate) { onNavigate(note.athlete_id, "programs"); setOpen(false); } }} style={{ display: "flex", gap: 10, padding: "12px 16px", borderBottom: "1px solid #F4F4F5", alignItems: "start", cursor: onNavigate ? "pointer" : "default" }}>
+                    <div style={{ width: 36, height: 36, borderRadius: 18, background: "#FFFBEB", color: "#D97706", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 13, flexShrink: 0 }}>{initials}</div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <span style={{ fontWeight: 700, fontSize: 14 }}>{name}</span>
+                        <span style={{ fontSize: 11, color: "#A1A1AA" }}>{timeAgo(note.created_at)}</span>
+                      </div>
+                      <div style={{ fontSize: 13, color: "#52525B", marginTop: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        📋 {note.content?.slice(0, 80) || "New note"}
                       </div>
                       {onNavigate && <div style={{ fontSize: 11, color: "#2563EB", fontWeight: 600, marginTop: 3 }}>View →</div>}
                     </div>
