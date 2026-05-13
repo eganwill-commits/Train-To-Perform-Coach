@@ -493,17 +493,21 @@ function ProgramDetail({ program, programs, exercises, cats, colors, addBlock, u
       {/* Notes Board */}
       <NotesBoard athleteId={program.athlete_id} authorName="Coach" authorRole="coach" isMobile={isMobile} />
 
-      <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap" }}>
+      <div style={{ display: "flex", gap: 6, marginBottom: 4, flexWrap: "wrap" }}>
         {weeks.map((w, i) => {
           const st = w.status || "";
           const bgColor = aw === i ? "#18181B" : st === "completed" ? "#16A34A" : st === "missed" ? "#DC2626" : "#fff";
           const textColor = aw === i ? "#fff" : st === "completed" || st === "missed" ? "#fff" : "#52525B";
           const borderColor = aw === i ? "#18181B" : st === "completed" ? "#16A34A" : st === "missed" ? "#DC2626" : "#E4E4E7";
+          const weekStart = new Date(2026, 3, 6 + i * 7); // April 6, 2026
+          const weekEnd = new Date(2026, 3, 6 + i * 7 + 4); // Friday
+          const fmt = (d) => d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
           return (
-            <button key={w.id} onClick={() => setAw(i)} style={{ padding: "5px 14px", borderRadius: 8, border: `2px solid ${borderColor}`, background: bgColor, color: textColor, fontWeight: 600, fontSize: 12, cursor: "pointer", fontFamily: "inherit", position: "relative" }}>
+            <button key={w.id} onClick={() => setAw(i)} style={{ padding: "4px 10px", borderRadius: 8, border: `2px solid ${borderColor}`, background: bgColor, color: textColor, fontWeight: 600, fontSize: 12, cursor: "pointer", fontFamily: "inherit", position: "relative", textAlign: "center", lineHeight: 1.2 }}>
               {st === "completed" && "✓ "}
               {st === "missed" && "✗ "}
               W{i + 1}
+              <div style={{ fontSize: 9, fontWeight: 500, opacity: 0.75, marginTop: 1 }}>{fmt(weekStart)}–{fmt(weekEnd)}</div>
             </button>
           );
         })}
@@ -531,7 +535,11 @@ function ProgramDetail({ program, programs, exercises, cats, colors, addBlock, u
                 <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                   {day.status === "completed" && <span style={{ color: "#16A34A", fontWeight: 700, fontSize: 14 }}>✓</span>}
                   {day.status === "missed" && <span style={{ color: "#DC2626", fontWeight: 700, fontSize: 14 }}>✗</span>}
-                  <h4 style={{ margin: 0, fontSize: 15 }}>{day.label}</h4>
+                  <h4 style={{ margin: 0, fontSize: 15 }}>{day.label}
+                    <span style={{ fontWeight: 400, fontSize: 12, color: "#71717A", marginLeft: 6 }}>
+                      {(() => { const dayOff = { Monday: 0, Tuesday: 1, Wednesday: 2, Thursday: 3, Friday: 4 }; const d = new Date(2026, 3, 6 + aw * 7 + (dayOff[day.label] ?? 0)); return d.toLocaleDateString("en-US", { month: "short", day: "numeric" }); })()}
+                    </span>
+                  </h4>
                 </div>
                 <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                   <button onClick={() => printDay(program, week.label, day, exercises, colors)} style={{ background: "none", border: "1px solid #E4E4E7", borderRadius: 6, cursor: "pointer", padding: "4px 10px", fontSize: 12, color: "#52525B", fontFamily: "inherit", fontWeight: 600 }}>🖨</button>

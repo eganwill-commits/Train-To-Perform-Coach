@@ -472,7 +472,13 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
               const bg = isActive ? "#18181B" : st === "completed" ? "#16A34A" : st === "missed" ? "#DC2626" : "#fff";
               const fg = isActive || st === "completed" || st === "missed" ? "#fff" : "#52525B";
               const bd = isActive ? "#18181B" : st === "completed" ? "#16A34A" : st === "missed" ? "#DC2626" : "#E4E4E7";
-              return <button key={w.id} onClick={() => setAw(i)} style={{ padding: "4px 9px", borderRadius: 6, border: `2px solid ${bd}`, background: bg, color: fg, fontWeight: 600, fontSize: 11, cursor: "pointer", fontFamily: "inherit", lineHeight: 1.2 }}>{st === "completed" ? "✓" : st === "missed" ? "✗" : ""}{isCurrent ? "→ " : ""}W{i + 1}</button>;
+              const weekStart = new Date(2026, 3, 6 + i * 7);
+              const weekEnd = new Date(2026, 3, 6 + i * 7 + 4);
+              const fmt = (d) => d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+              return <button key={w.id} onClick={() => setAw(i)} style={{ padding: "4px 8px", borderRadius: 6, border: `2px solid ${bd}`, background: bg, color: fg, fontWeight: 600, fontSize: 11, cursor: "pointer", fontFamily: "inherit", lineHeight: 1.2, textAlign: "center" }}>
+                {st === "completed" ? "✓" : st === "missed" ? "✗" : ""}{isCurrent ? "→ " : ""}W{i + 1}
+                <div style={{ fontSize: 8, fontWeight: 500, opacity: 0.75, marginTop: 1 }}>{fmt(weekStart)}–{fmt(weekEnd)}</div>
+              </button>;
             })}
             {maxVisible < weeks.length - 1 && (
               <span style={{ fontSize: 11, color: "#A1A1AA", marginLeft: 4 }}>+{weeks.length - maxVisible - 1} upcoming</span>
@@ -516,7 +522,11 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
               <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                 {dayStatus === "completed" && <span style={{ color: "#16A34A", fontWeight: 700, fontSize: 14 }}>✓</span>}
                 {dayStatus === "missed" && <span style={{ color: "#DC2626", fontWeight: 700, fontSize: 14 }}>✗</span>}
-                <h4 style={{ margin: 0, fontSize: 15 }}>{day.label}</h4>
+                <h4 style={{ margin: 0, fontSize: 15 }}>{day.label}
+                  <span style={{ fontWeight: 400, fontSize: 12, color: "#71717A", marginLeft: 6 }}>
+                    {(() => { const dayOff = { Monday: 0, Tuesday: 1, Wednesday: 2, Thursday: 3, Friday: 4 }; const d = new Date(2026, 3, 6 + aw * 7 + (dayOff[day.label] ?? 0)); return d.toLocaleDateString("en-US", { month: "short", day: "numeric" }); })()}
+                  </span>
+                </h4>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                 {dayStatus === "missed" && <span style={{ fontSize: 11, fontWeight: 600, color: "#DC2626" }}>Missed</span>}
