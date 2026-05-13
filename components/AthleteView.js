@@ -242,6 +242,19 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
 
   const prog = programs.find(p => p.id === selectedProg);
 
+  // Compute current week index (don't auto-navigate, just track it)
+  const currentWeekIndex = (() => {
+    if (!prog) return 0;
+    const weeks = prog.weeks || [];
+    const wi = weeks.findIndex(w => {
+      if (w.status === "completed" || w.status === "missed") return false;
+      const days = w.days || [];
+      if (days.length === 0) return true;
+      return !days.every(d => d.status === "completed" || d.status === "missed");
+    });
+    return wi >= 0 ? wi : weeks.length - 1;
+  })();
+
   useEffect(() => {
     if (prog) {
       const weeks = prog.weeks || [];
@@ -463,7 +476,8 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
         });
         const maxVisible = currentWi >= 0 ? currentWi : weeks.length - 1;
         return (
-          <div style={{ display: "flex", gap: 4, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
+          <>
+          <div style={{ display: "flex", gap: 4, marginBottom: 4, flexWrap: "wrap", alignItems: "center" }}>
             {weeks.map((w, i) => {
               if (i > maxVisible) return null;
               const st = w.status || "";
@@ -471,7 +485,7 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
               const isCurrent = i === maxVisible;
               const bg = isActive ? "#18181B" : st === "completed" ? "#16A34A" : st === "missed" ? "#DC2626" : "#fff";
               const fg = isActive || st === "completed" || st === "missed" ? "#fff" : "#52525B";
-              const bd = isActive ? "#18181B" : st === "completed" ? "#16A34A" : st === "missed" ? "#DC2626" : "#E4E4E7";
+              const bd = isActive ? "#18181B" : isCurrent && !isActive ? "#F59E0B" : st === "completed" ? "#16A34A" : st === "missed" ? "#DC2626" : "#E4E4E7";
               const weekStart = new Date(2026, 3, 6 + i * 7);
               const weekEnd = new Date(2026, 3, 6 + i * 7 + 4);
               const fmt = (d) => d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
@@ -484,6 +498,12 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
               <span style={{ fontSize: 11, color: "#A1A1AA", marginLeft: 4 }}>+{weeks.length - maxVisible - 1} upcoming</span>
             )}
           </div>
+          {aw !== currentWeekIndex && aw <= maxVisible && (
+            <button onClick={() => setAw(currentWeekIndex)} style={{ marginBottom: 8, padding: "4px 12px", background: "#FEF3C7", color: "#92400E", border: "1px solid #FDE68A", borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>
+              ← Back to Current Week (W{currentWeekIndex + 1})
+            </button>
+          )}
+          </>
         );
       })()}
 

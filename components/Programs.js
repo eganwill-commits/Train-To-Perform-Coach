@@ -288,25 +288,17 @@ function ProgramDetail({ program, programs, exercises, cats, colors, addBlock, u
   const [expandedBlock, setExpandedBlock] = useState(null);
   const [recapSaved, setRecapSaved] = useState(false);
 
-  // Auto-advance to next open week when status changes
-  useEffect(() => {
+  // Compute current week (for the "back to current" button) but don't auto-navigate
+  const currentWeekIndex = (() => {
     const weeks = program.weeks || [];
-    const currentWeek = weeks[aw];
-    if (!currentWeek) return;
-    // Check if current week is fully done (week-level or all days done)
-    const weekDone = currentWeek.status === "completed" || currentWeek.status === "missed";
-    const allDaysDone = (currentWeek.days || []).length > 0 && (currentWeek.days || []).every(d => d.status === "completed" || d.status === "missed");
-    if (weekDone || allDaysDone) {
-      const nextOpen = weeks.findIndex((w, i) => {
-        if (i <= aw) return false;
-        if (w.status === "completed" || w.status === "missed") return false;
-        const days = w.days || [];
-        if (days.length === 0) return true;
-        return !days.every(d => d.status === "completed" || d.status === "missed");
-      });
-      if (nextOpen >= 0) setAw(nextOpen);
-    }
-  }, [program.weeks]);
+    const wi = weeks.findIndex(w => {
+      if (w.status === "completed" || w.status === "missed") return false;
+      const days = w.days || [];
+      if (days.length === 0) return true;
+      return !days.every(d => d.status === "completed" || d.status === "missed");
+    });
+    return wi >= 0 ? wi : weeks.length - 1;
+  })();
 
   const setWeekStatus = async (weekIndex, status) => {
     const weeks = JSON.parse(JSON.stringify(programRef.current.weeks));
@@ -496,11 +488,12 @@ function ProgramDetail({ program, programs, exercises, cats, colors, addBlock, u
       <div style={{ display: "flex", gap: 6, marginBottom: 4, flexWrap: "wrap" }}>
         {weeks.map((w, i) => {
           const st = w.status || "";
+          const isCurrent = i === currentWeekIndex;
           const bgColor = aw === i ? "#18181B" : st === "completed" ? "#16A34A" : st === "missed" ? "#DC2626" : "#fff";
           const textColor = aw === i ? "#fff" : st === "completed" || st === "missed" ? "#fff" : "#52525B";
-          const borderColor = aw === i ? "#18181B" : st === "completed" ? "#16A34A" : st === "missed" ? "#DC2626" : "#E4E4E7";
-          const weekStart = new Date(2026, 3, 6 + i * 7); // April 6, 2026
-          const weekEnd = new Date(2026, 3, 6 + i * 7 + 4); // Friday
+          const borderColor = aw === i ? "#18181B" : isCurrent && aw !== i ? "#F59E0B" : st === "completed" ? "#16A34A" : st === "missed" ? "#DC2626" : "#E4E4E7";
+          const weekStart = new Date(2026, 3, 6 + i * 7);
+          const weekEnd = new Date(2026, 3, 6 + i * 7 + 4);
           const fmt = (d) => d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
           return (
             <button key={w.id} onClick={() => setAw(i)} style={{ padding: "4px 10px", borderRadius: 8, border: `2px solid ${borderColor}`, background: bgColor, color: textColor, fontWeight: 600, fontSize: 12, cursor: "pointer", fontFamily: "inherit", position: "relative", textAlign: "center", lineHeight: 1.2 }}>
@@ -512,6 +505,11 @@ function ProgramDetail({ program, programs, exercises, cats, colors, addBlock, u
           );
         })}
       </div>
+      {aw !== currentWeekIndex && (
+        <button onClick={() => setAw(currentWeekIndex)} style={{ marginBottom: 6, padding: "4px 12px", background: "#FEF3C7", color: "#92400E", border: "1px solid #FDE68A", borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>
+          ← Back to Current Week (W{currentWeekIndex + 1})
+        </button>
+      )}
       {/* Week status controls */}
       <div style={{ display: "flex", gap: 8, marginBottom: 16, alignItems: "center" }}>
         <span style={{ fontSize: 12, color: "#71717A", fontWeight: 600 }}>{week.label}:</span>
