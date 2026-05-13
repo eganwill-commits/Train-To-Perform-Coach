@@ -126,12 +126,38 @@ export default function LogPage({ logs, addLog, deleteLog, unlogDay, athletes, e
       {/* ===================== WORKOUTS TAB ===================== */}
       {tab === "workouts" && (
         <>
-          {sortedDays.length === 0 ? <EmptyState icon="◇" title="No workouts logged" sub={selectedAthlete !== "all" ? "No workouts for this athlete yet." : "Start tracking."} action="+ Log Workout" onAction={openNew} /> : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {sortedDays.map(day => {
-                const isExpanded = expandedDay === day.key;
-                const catArray = Array.from(day.categories);
-                const showLoggedDate = datesAreDifferent(day.date, day.logged_at);
+          {sortedDays.length === 0 ? <EmptyState icon="◇" title="No workouts logged" sub={selectedAthlete !== "all" ? "No workouts for this athlete yet." : "Start tracking."} action="+ Log Workout" onAction={openNew} /> : (() => {
+            // Group sorted days by athlete
+            const byAthlete = {};
+            sortedDays.forEach(day => {
+              const aid = day.athlete_id || "unknown";
+              if (!byAthlete[aid]) byAthlete[aid] = { name: day.athlete_name, id: aid, days: [] };
+              byAthlete[aid].days.push(day);
+            });
+            const athleteGroups = Object.values(byAthlete).sort((a, b) => a.name.localeCompare(b.name));
+            // If filtered to one athlete, don't show the header
+            const showHeaders = selectedAthlete === "all" && athleteGroups.length > 1;
+
+            return (
+              <div style={{ display: "flex", flexDirection: "column", gap: showHeaders ? 20 : 10 }}>
+                {athleteGroups.map(ag => (
+                  <div key={ag.id}>
+                    {showHeaders && (
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10, paddingBottom: 6, borderBottom: "2px solid #18181B" }}>
+                        <div style={{ width: 32, height: 32, borderRadius: 16, background: "#18181B", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 12 }}>
+                          {ag.name.split(/\s+/).map(w => w[0]).join("").toUpperCase().slice(0, 2)}
+                        </div>
+                        <div>
+                          <div style={{ fontWeight: 700, fontSize: 16 }}>{ag.name}</div>
+                          <div style={{ fontSize: 12, color: "#71717A" }}>{ag.days.length} workout{ag.days.length !== 1 ? "s" : ""} · {ag.days.reduce((s, d) => s + d.entries.length, 0)} exercises</div>
+                        </div>
+                      </div>
+                    )}
+                    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                      {ag.days.map(day => {
+                        const isExpanded = expandedDay === day.key;
+                        const catArray = Array.from(day.categories);
+                        const showLoggedDate = datesAreDifferent(day.date, day.logged_at);
 
                 return (
                   <Card key={day.key} style={{ padding: 0, overflow: "hidden" }}>
@@ -141,7 +167,7 @@ export default function LogPage({ logs, addLog, deleteLog, unlogDay, athletes, e
                     >
                       <div>
                         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                          {selectedAthlete === "all" && <span style={{ fontWeight: 700, fontSize: 15 }}>{day.athlete_name}</span>}
+                          {!showHeaders && selectedAthlete === "all" && <span style={{ fontWeight: 700, fontSize: 15 }}>{day.athlete_name}</span>}
                           <span style={{ fontWeight: selectedAthlete !== "all" ? 700 : 500, fontSize: selectedAthlete !== "all" ? 15 : 13, color: selectedAthlete !== "all" ? "#18181B" : "#52525B" }}>
                             {formatDate(day.date)}
                           </span>
@@ -242,19 +268,47 @@ export default function LogPage({ logs, addLog, deleteLog, unlogDay, athletes, e
                   </Card>
                 );
               })}
-            </div>
-          )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
         </>
       )}
 
       {/* ===================== EXERCISES TAB ===================== */}
       {tab === "exercises" && (
         <>
-          {exerciseDeduped.length === 0 ? <EmptyState icon="◇" title="No exercises logged" sub={selectedAthlete !== "all" ? "No exercises for this athlete yet." : "Start tracking."} /> : (
+          {exerciseDeduped.length === 0 ? <EmptyState icon="◇" title="No exercises logged" sub={selectedAthlete !== "all" ? "No exercises for this athlete yet." : "Start tracking."} /> : (() => {
+            const byAthlete = {};
+            exerciseDeduped.forEach(l => {
+              const aid = l.athlete_id || "unknown";
+              if (!byAthlete[aid]) byAthlete[aid] = { name: l.athlete_name, id: aid, exercises: [] };
+              byAthlete[aid].exercises.push(l);
+            });
+            const groups = Object.values(byAthlete).sort((a, b) => a.name.localeCompare(b.name));
+            const showHeaders = selectedAthlete === "all" && groups.length > 1;
+
+            return (
             <div>
               <div style={{ fontSize: 13, color: "#71717A", marginBottom: 12 }}>{exerciseDeduped.length} exercise{exerciseDeduped.length !== 1 ? "s" : ""} logged</div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                {exerciseDeduped.map(l => {
+              <div style={{ display: "flex", flexDirection: "column", gap: showHeaders ? 20 : 6 }}>
+                {groups.map(ag => (
+                  <div key={ag.id}>
+                    {showHeaders && (
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10, paddingBottom: 6, borderBottom: "2px solid #18181B" }}>
+                        <div style={{ width: 32, height: 32, borderRadius: 16, background: "#18181B", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 12 }}>
+                          {ag.name.split(/\s+/).map(w => w[0]).join("").toUpperCase().slice(0, 2)}
+                        </div>
+                        <div>
+                          <div style={{ fontWeight: 700, fontSize: 16 }}>{ag.name}</div>
+                          <div style={{ fontSize: 12, color: "#71717A" }}>{ag.exercises.length} exercise{ag.exercises.length !== 1 ? "s" : ""}</div>
+                        </div>
+                      </div>
+                    )}
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {ag.exercises.map(l => {
                   const cc = colors[l.category];
                   const isExpanded = expandedExercise === l.id;
                   return (
@@ -269,7 +323,7 @@ export default function LogPage({ logs, addLog, deleteLog, unlogDay, athletes, e
                             {l.category && <Badge color={cc?.bg || "#71717A"}>{l.category}</Badge>}
                           </div>
                           <div style={{ fontSize: 12, color: "#71717A", marginTop: 2 }}>
-                            {selectedAthlete === "all" && <><span style={{ fontWeight: 600, color: "#52525B" }}>{l.athlete_name}</span> · </>}
+                            {!showHeaders && selectedAthlete === "all" && <><span style={{ fontWeight: 600, color: "#52525B" }}>{l.athlete_name}</span> · </>}
                             {formatDate(l.date)}
                             {(l.week_label || l.day_label) && <> · <span style={{ color: "#F97316" }}>{l.week_label ? l.week_label.replace(/WEEK\s*/i, "W").split("—")[0].trim() : ""} {l.day_label || ""}</span></>}
                             {" · "}{[l.sets && l.reps ? `${l.sets}×${l.reps}` : null, l.load ? `@${l.load}` : null].filter(Boolean).join(" ") || "—"}
@@ -338,9 +392,13 @@ export default function LogPage({ logs, addLog, deleteLog, unlogDay, athletes, e
                     </Card>
                   );
                 })}
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
-          )}
+            );
+          })()}
         </>
       )}
 
