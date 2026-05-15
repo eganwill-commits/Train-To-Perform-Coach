@@ -1,24 +1,66 @@
 "use client";
 import { useState } from "react";
 import { Badge, Btn, Card, Input, Select, Modal } from "./ui";
+import { ALL_WORKSPACES, ALL_PROGRAM_TYPES } from "../lib/workspaces";
 
-export default function Library({ exercises, addExercise, deleteExercise, updateExercise, cats, colors, isMobile }) {
+export default function Library({ exercises, addExercise, deleteExercise, updateExercise, cats, colors, isMobile, activeProgramType }) {
   const [modal, setModal] = useState(false);
   const [editId, setEditId] = useState(null);
   const [filter, setFilter] = useState("All");
   const [search, setSearch] = useState("");
-  const [form, setForm] = useState({ name: "", category: "", notes: "", video_url: "" });
+  const [form, setForm] = useState({
+    name: "",
+    category: "",
+    notes: "",
+    video_url: "",
+    suitability: [...ALL_PROGRAM_TYPES],   // ★ default: suitable everywhere
+  });
 
-  const openNew = () => { setForm({ name: "", category: cats[0], notes: "", video_url: "" }); setEditId(null); setModal(true); };
-  const openEdit = (e) => { setForm({ name: e.name, category: e.category, notes: e.notes || "", video_url: e.video_url || "" }); setEditId(e.id); setModal(true); };
+  const openNew = () => {
+    setForm({
+      name: "",
+      category: cats[0],
+      notes: "",
+      video_url: "",
+      // ★ Default new exercises to suit the active workspace AT MINIMUM,
+      //   but pre-check all three so adding is one less click for shared moves.
+      suitability: [...ALL_PROGRAM_TYPES],
+    });
+    setEditId(null);
+    setModal(true);
+  };
+
+  const openEdit = (e) => {
+    setForm({
+      name: e.name,
+      category: e.category,
+      notes: e.notes || "",
+      video_url: e.video_url || "",
+      suitability: Array.isArray(e.suitability) && e.suitability.length > 0
+        ? e.suitability
+        : [...ALL_PROGRAM_TYPES],
+    });
+    setEditId(e.id);
+    setModal(true);
+  };
+
+  const toggleSuit = (id) => {
+    setForm(prev => {
+      const has = prev.suitability.includes(id);
+      const next = has
+        ? prev.suitability.filter(x => x !== id)
+        : [...prev.suitability, id];
+      return { ...prev, suitability: next };
+    });
+  };
 
   const save = async () => {
     if (!form.name.trim()) return;
-    if (editId) {
-      await updateExercise(editId, form);
-    } else {
-      await addExercise(form);
-    }
+    // Guard: at least one workspace must be selected so the exercise stays visible
+    const suitability = form.suitability.length > 0 ? form.suitability : [activeProgramType || "teen"];
+    const payload = { ...form, suitability };
+    if (editId) await updateExercise(editId, payload);
+    else        await addExercise(payload);
     setModal(false);
   };
 
@@ -37,10 +79,12 @@ export default function Library({ exercises, addExercise, deleteExercise, update
         <h2 style={{ margin: 0, fontSize: isMobile ? 22 : 28, fontFamily: "'Space Mono', monospace" }}>Library</h2>
         <Btn onClick={openNew} small={isMobile}>+ Add</Btn>
       </div>
+
       <div style={{ display: "flex", gap: 6, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
         <button onClick={() => setFilter("All")} style={{ padding: "4px 12px", borderRadius: 999, border: filter === "All" ? "2px solid #18181B" : "1px solid #E4E4E7", background: filter === "All" ? "#18181B" : "#fff", color: filter === "All" ? "#fff" : "#52525B", fontWeight: 600, fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>All</button>
         {cats.map(c => <button key={c} onClick={() => setFilter(c)} style={{ padding: "4px 12px", borderRadius: 999, border: filter === c ? `2px solid ${colors[c].bg}` : "1px solid #E4E4E7", background: filter === c ? colors[c].bg : "#fff", color: filter === c ? "#fff" : "#52525B", fontWeight: 600, fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>{c}</button>)}
       </div>
+
       <div style={{ marginBottom: 16, position: "relative" }}>
         <input
           type="text"
@@ -52,31 +96,55 @@ export default function Library({ exercises, addExercise, deleteExercise, update
         <span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", fontSize: 16, color: "#A1A1AA" }}>⌕</span>
         {search && <button onClick={() => setSearch("")} style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", fontSize: 16, color: "#A1A1AA", cursor: "pointer" }}>✕</button>}
       </div>
+
       {filtered.length === 0 && search ? (
         <div style={{ textAlign: "center", padding: "40px 20px", color: "#A1A1AA" }}>
           <p style={{ fontSize: 14 }}>No exercises match "{search}"</p>
         </div>
       ) : (
       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill, minmax(260px, 1fr))", gap: 10 }}>
-        {filtered.map(e => (
-          <div key={e.id} onClick={() => openEdit(e)} style={{ background: colors[e.category]?.light || "#F9FAFB", border: `1px solid ${colors[e.category]?.border || "#E5E7EB"}`, borderRadius: 10, padding: 12, borderLeft: `4px solid ${colors[e.category]?.bg || "#999"}`, display: "flex", justifyContent: "space-between", alignItems: "start", cursor: "pointer" }}>
-            <div style={{ minWidth: 0, flex: 1 }}>
-              <div style={{ fontWeight: 600, fontSize: 14 }}>{e.name}</div>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4 }}>
-                <Badge color={colors[e.category]?.bg || "#999"}>{e.category}</Badge>
-                {e.video_url && (
-                  <a href={e.video_url} target="_blank" rel="noopener noreferrer" onClick={ev => ev.stopPropagation()} style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, color: "#fff", background: "#2563EB", textDecoration: "none", fontWeight: 700, padding: "2px 10px", borderRadius: 999 }}>
-                    ▶ Video
-                  </a>
-                )}
+        {filtered.map(e => {
+          const suit = Array.isArray(e.suitability) && e.suitability.length > 0 ? e.suitability : ALL_PROGRAM_TYPES;
+          return (
+            <div key={e.id} onClick={() => openEdit(e)} style={{ background: colors[e.category]?.light || "#F9FAFB", border: `1px solid ${colors[e.category]?.border || "#E5E7EB"}`, borderRadius: 10, padding: 12, borderLeft: `4px solid ${colors[e.category]?.bg || "#999"}`, display: "flex", justifyContent: "space-between", alignItems: "start", cursor: "pointer" }}>
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div style={{ fontWeight: 600, fontSize: 14 }}>{e.name}</div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4, flexWrap: "wrap" }}>
+                  <Badge color={colors[e.category]?.bg || "#999"}>{e.category}</Badge>
+                  {e.video_url && (
+                    <a href={e.video_url} target="_blank" rel="noopener noreferrer" onClick={ev => ev.stopPropagation()} style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, color: "#fff", background: "#2563EB", textDecoration: "none", fontWeight: 700, padding: "2px 10px", borderRadius: 999 }}>
+                      ▶ Video
+                    </a>
+                  )}
+                </div>
+                {/* ★ Suitability dots — quick visual of where this move fits */}
+                <div style={{ display: "flex", gap: 4, marginTop: 6, alignItems: "center" }}>
+                  {ALL_WORKSPACES.map(w => {
+                    const on = suit.includes(w.id);
+                    return (
+                      <span key={w.id} title={`${w.label}${on ? "" : " (not suited)"}`}
+                        style={{
+                          fontSize: 9, fontWeight: 700, letterSpacing: 0.4,
+                          padding: "1px 6px", borderRadius: 4,
+                          background: on ? w.accent : "transparent",
+                          color: on ? "#fff" : "#C4C4C7",
+                          border: on ? "none" : "1px dashed #D4D4D8",
+                          fontFamily: "'Space Mono', monospace",
+                        }}>
+                        {w.label[0].toUpperCase()}{w.label.slice(1, 3).toLowerCase()}
+                      </span>
+                    );
+                  })}
+                </div>
+                {e.notes && <div style={{ fontSize: 12, color: "#71717A", marginTop: 6 }}>{e.notes}</div>}
               </div>
-              {e.notes && <div style={{ fontSize: 12, color: "#71717A", marginTop: 6 }}>{e.notes}</div>}
+              <button onClick={(ev) => { ev.stopPropagation(); deleteExercise(e.id); }} style={{ background: "none", border: "none", cursor: "pointer", color: "#A1A1AA", fontSize: 14, flexShrink: 0 }}>✕</button>
             </div>
-            <button onClick={(ev) => { ev.stopPropagation(); deleteExercise(e.id); }} style={{ background: "none", border: "none", cursor: "pointer", color: "#A1A1AA", fontSize: 14, flexShrink: 0 }}>✕</button>
-          </div>
-        ))}
+          );
+        })}
       </div>
       )}
+
       <Modal open={modal} onClose={() => setModal(false)} title={editId ? "Edit Exercise" : "New Exercise"}>
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           <Input label="Exercise Name" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="e.g. Box Jump" />
@@ -88,6 +156,38 @@ export default function Library({ exercises, addExercise, deleteExercise, update
             </a>
           )}
           <Input label="Notes / Coaching Cues" value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} placeholder="Cues, variations…" />
+
+          {/* ★ Suitability checkboxes */}
+          <div>
+            <label style={{ fontSize: 12, fontWeight: 600, color: "#52525B", display: "block", marginBottom: 6, letterSpacing: 0.3 }}>
+              Suitable For
+            </label>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {ALL_WORKSPACES.map(w => {
+                const on = form.suitability.includes(w.id);
+                return (
+                  <button key={w.id} type="button" onClick={() => toggleSuit(w.id)}
+                    style={{
+                      padding: "8px 14px", borderRadius: 8, cursor: "pointer",
+                      border: on ? `2px solid ${w.accent}` : "1px solid #E4E4E7",
+                      background: on ? w.accent : "#fff",
+                      color: on ? "#fff" : "#52525B",
+                      fontWeight: 700, fontSize: 12, letterSpacing: 0.4,
+                      fontFamily: "inherit",
+                      display: "flex", alignItems: "center", gap: 6,
+                      transition: "all 0.15s ease",
+                    }}>
+                    <span style={{ fontSize: 14 }}>{on ? "✓" : "○"}</span>
+                    {w.label}
+                  </button>
+                );
+              })}
+            </div>
+            <div style={{ fontSize: 11, color: "#A1A1AA", marginTop: 6, fontStyle: "italic" }}>
+              Pick every workspace this move fits. Exercises only appear in the workspaces tagged here.
+            </div>
+          </div>
+
           <Btn onClick={save} style={{ marginTop: 8 }}>{editId ? "Save Changes" : "Add Exercise"}</Btn>
         </div>
       </Modal>
