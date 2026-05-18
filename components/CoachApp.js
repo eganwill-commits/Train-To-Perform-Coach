@@ -1,9 +1,7 @@
 "use client";
-import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "../lib/supabase";
 import { PILLAR_COLORS, GENERIC_COLORS, NAV_ITEMS } from "../lib/constants";
-import { WorkspaceProvider, useWorkspace } from "../lib/WorkspaceContext";
-import { DEFAULT_WORKSPACE } from "../lib/workspaces";
 import Dashboard from "./Dashboard";
 import Athletes from "./Athletes";
 import Programs from "./Programs";
@@ -16,7 +14,6 @@ import AIChat from "./AIChat";
 import ToastNotifications from "./ToastNotifications";
 import AlertsBell from "./AlertsBell";
 import T2PLogo from "./T2PLogo";
-import WorkspaceSwitcher from "./WorkspaceSwitcher";
 
 function useIsMobile(bp = 768) {
   const [m, setM] = useState(false);
@@ -29,18 +26,7 @@ function useIsMobile(bp = 768) {
   return m;
 }
 
-// Outer wrapper provides WorkspaceContext to the entire coach tree
-export default function CoachApp(props) {
-  return (
-    <WorkspaceProvider>
-      <CoachAppInner {...props} />
-    </WorkspaceProvider>
-  );
-}
-
-function CoachAppInner({ onLogout }) {
-  const { activeProgramType, workspace } = useWorkspace();
-
+export default function CoachApp({ onLogout }) {
   const [page, setPage] = useState("dashboard");
   const [focusAthleteId, setFocusAthleteId] = useState(null);
   const [athletes, setAthletes] = useState([]);
@@ -65,8 +51,6 @@ function CoachAppInner({ onLogout }) {
   programsRef.current = programs;
   const athletesRef = useRef(athletes);
   athletesRef.current = athletes;
-  const activeProgramTypeRef = useRef(activeProgramType);
-  activeProgramTypeRef.current = activeProgramType;
 
   // Load all data from Supabase
   useEffect(() => {
@@ -146,10 +130,8 @@ function CoachAppInner({ onLogout }) {
     setAthletes(newAthletes);
   }, []);
 
-  // ★ Workspace-aware: auto-stamp program_type on new athletes
   const addAthlete = useCallback(async (athlete) => {
-    const stamped = { ...athlete, program_type: athlete.program_type || activeProgramTypeRef.current };
-    const { data, error } = await supabase.from("athletes").insert(stamped).select().single();
+    const { data, error } = await supabase.from("athletes").insert(athlete).select().single();
     if (!error && data) setAthletes(prev => [...prev, data]);
   }, []);
 
@@ -163,18 +145,8 @@ function CoachAppInner({ onLogout }) {
     setAthletes(prev => prev.filter(a => a.id !== id));
   }, []);
 
-  // ★ Workspace-aware: auto-stamp program_type on new programs
-  //   - If program has athlete_id, inherit that athlete's workspace
-  //   - Otherwise, use the currently active workspace
   const addProgram = useCallback(async (program) => {
-    let pt = program.program_type;
-    if (!pt && program.athlete_id) {
-      const a = athletesRef.current.find(x => x.id === program.athlete_id);
-      pt = a?.program_type;
-    }
-    pt = pt || activeProgramTypeRef.current;
-    const stamped = { ...program, program_type: pt };
-    const { data, error } = await supabase.from("programs").insert(stamped).select().single();
+    const { data, error } = await supabase.from("programs").insert(program).select().single();
     if (!error && data) { setPrograms(prev => [...prev, data]); return data; }
     return null;
   }, []);
@@ -189,13 +161,8 @@ function CoachAppInner({ onLogout }) {
     setPrograms(prev => prev.filter(p => p.id !== id));
   }, []);
 
-  // ★ Workspace-aware: default suitability includes current workspace
   const addExercise = useCallback(async (exercise) => {
-    const suitability = exercise.suitability && exercise.suitability.length > 0
-      ? exercise.suitability
-      : [activeProgramTypeRef.current];
-    const stamped = { ...exercise, suitability };
-    const { data, error } = await supabase.from("exercises").insert(stamped).select().single();
+    const { data, error } = await supabase.from("exercises").insert(exercise).select().single();
     if (!error && data) setExercises(prev => [...prev, data]);
   }, []);
 
@@ -309,20 +276,20 @@ function CoachAppInner({ onLogout }) {
     // Auto-copy programs from this season to the new athlete
     const uid = () => Math.random().toString(36).slice(2, 10);
     const seasonPrograms = programsRef.current.filter(p => p.group_id === groupId);
+    // Find a "template" — use the first program from another athlete in this season
     const existingAthleteIds = seasonPrograms.map(p => p.athlete_id).filter(id => id && id !== athleteId);
     if (existingAthleteIds.length === 0) return; // No existing programs to copy
-
     const templateAthleteId = existingAthleteIds[0];
     const templatePrograms = seasonPrograms.filter(p => p.athlete_id === templateAthleteId);
+    // Check if this athlete already has programs in this season
     const alreadyHas = seasonPrograms.some(p => p.athlete_id === athleteId);
     if (alreadyHas) return;
 
     const athlete = athletesRef.current.find(a => a.id === athleteId);
     const athName = athlete?.name || "Athlete";
-    // ★ Inherit workspace from the destination athlete
-    const newProgramType = athlete?.program_type || activeProgramTypeRef.current;
 
     for (const tp of templatePrograms) {
+      // Deep clone and re-ID all weeks/days/blocks
       const newWeeks = JSON.parse(JSON.stringify(tp.weeks || [])).map(w => ({
         ...w, id: uid(),
         days: (w.days || []).map(d => ({
@@ -331,6 +298,7 @@ function CoachAppInner({ onLogout }) {
         })),
         status: "", coachRecap: "",
       }));
+      // Create program name with athlete's name
       const baseName = tp.name.includes("—") ? tp.name.split("—").slice(1).join("—").trim() : tp.name;
       const newProg = await supabase.from("programs").insert({
         name: `${athName} — ${baseName}`,
@@ -338,7 +306,6 @@ function CoachAppInner({ onLogout }) {
         description: tp.description || "",
         weeks: newWeeks,
         group_id: groupId,
-        program_type: newProgramType,   // ★ stamp workspace
       }).select().single();
       if (!newProg.error && newProg.data) {
         setPrograms(prev => [...prev, newProg.data]);
@@ -386,60 +353,15 @@ function CoachAppInner({ onLogout }) {
   const nav = (id) => { setPage(id); setFocusAthleteId(null); if (isMobile) setNavOpen(false); };
   const navToAthlete = (athleteId, targetPage) => { setFocusAthleteId(athleteId); setPage(targetPage || "athletes"); if (isMobile) setNavOpen(false); };
 
-  // ═══════════════════════════════════════════════════════════════
-  // ★ WORKSPACE FILTERING
-  // Everything below this point is filtered by the active workspace.
-  // ═══════════════════════════════════════════════════════════════
-  const filteredAthletes = useMemo(() => {
-    return athletes.filter(a => (a.program_type || "teen") === activeProgramType);
-  }, [athletes, activeProgramType]);
-
-  const filteredAthleteIds = useMemo(
-    () => new Set(filteredAthletes.map(a => a.id)),
-    [filteredAthletes]
-  );
-
-  const filteredPrograms = useMemo(() => {
-    return programs.filter(p => (p.program_type || "teen") === activeProgramType);
-  }, [programs, activeProgramType]);
-
-  const filteredExercises = useMemo(() => {
-    return exercises.filter(e => {
-      // Defensive: if suitability missing or empty, show in all workspaces
-      if (!e.suitability || e.suitability.length === 0) return true;
-      return e.suitability.includes(activeProgramType);
-    });
-  }, [exercises, activeProgramType]);
-
-  // Logs only from athletes in this workspace
-  const filteredLogs = useMemo(() => {
-    return logs.filter(l => filteredAthleteIds.has(l.athlete_id));
-  }, [logs, filteredAthleteIds]);
-
-  // Seasons that include at least one athlete from this workspace
-  const filteredGroups = useMemo(() => {
-    return groups.filter(g =>
-      groupAthletes.some(ga => ga.group_id === g.id && filteredAthleteIds.has(ga.athlete_id))
-    );
-  }, [groups, groupAthletes, filteredAthleteIds]);
-
   if (!loaded) return (
     <div className="t2p-root" style={{ display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'DM Sans', sans-serif" }}>
       <p style={{ color: "#71717A" }}>Loading…</p>
     </div>
   );
 
-  // Props pack uses FILTERED data — children stay workspace-unaware
   const pp = {
-    athletes: filteredAthletes,
-    programs: filteredPrograms,
-    exercises: filteredExercises,
-    logs: filteredLogs,
-    groups: filteredGroups,
-    setLogs, cats, colors, usePillars, isMobile, setPage: nav,
-    groupAthletes, baselines, videoSubs,
-    // Pass workspace context for components that need it (e.g. Athletes edit modal)
-    activeProgramType, workspace,
+    athletes, programs, exercises, logs, setLogs, cats, colors, usePillars, isMobile, setPage: nav,
+    groups, groupAthletes, baselines, videoSubs,
     addAthlete, updateAthlete, deleteAthlete,
     addProgram, updateProgram, deleteProgram,
     addExercise, deleteExercise, updateExercise,
@@ -463,20 +385,15 @@ function CoachAppInner({ onLogout }) {
         top: 0, bottom: 0, zIndex: 1000,
         transition: "left .25s cubic-bezier(.4,0,.2,1)",
         boxShadow: isMobile && navOpen ? "4px 0 24px rgba(0,0,0,.25)" : "none",
-        overflowY: "auto",
       }}>
-        <div style={{ padding: "0 20px 20px", borderBottom: "1px solid #27272A", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div style={{ padding: "0 20px 28px", borderBottom: "1px solid #27272A", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <T2PLogo />
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <AlertsBell logs={filteredLogs} videoSubs={videoSubs} athletes={filteredAthletes} isMobile={isMobile} onNavigate={navToAthlete} />
+            <AlertsBell logs={logs} videoSubs={videoSubs} athletes={athletes} isMobile={isMobile} onNavigate={navToAthlete} />
             {isMobile && <button onClick={() => setNavOpen(false)} style={{ background: "none", border: "none", color: "#A1A1AA", fontSize: 22, cursor: "pointer", padding: 4 }}>✕</button>}
           </div>
         </div>
-
-        {/* ★ Workspace switcher mounts above the nav */}
-        <WorkspaceSwitcher />
-
-        <div style={{ flex: 1, padding: "4px 10px 12px", display: "flex", flexDirection: "column", gap: 2 }}>
+        <div style={{ flex: 1, padding: "12px 10px", display: "flex", flexDirection: "column", gap: 2 }}>
           {NAV_ITEMS.map(n => (
             <button key={n.id} onClick={() => nav(n.id)} style={{
               display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: 8,
@@ -504,15 +421,7 @@ function CoachAppInner({ onLogout }) {
             </button>
             <T2PLogo size="small" variant="dark" />
             <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
-              {/* Mobile workspace badge — shows active workspace at a glance */}
-              <span style={{
-                fontSize: 10, fontWeight: 700, letterSpacing: 0.8, padding: "3px 8px",
-                borderRadius: 999, background: workspace.accent, color: "#fff",
-                fontFamily: "'Space Mono', monospace",
-              }}>
-                {workspace.label.toUpperCase()}
-              </span>
-              <AlertsBell logs={filteredLogs} videoSubs={videoSubs} athletes={filteredAthletes} isMobile={isMobile} onNavigate={navToAthlete} />
+              <AlertsBell logs={logs} videoSubs={videoSubs} athletes={athletes} isMobile={isMobile} onNavigate={navToAthlete} />
               <span style={{ fontSize: 13, color: "#A1A1AA", textTransform: "capitalize" }}>{page}</span>
             </div>
           </header>

@@ -1,16 +1,15 @@
 "use client";
 import { useState, useEffect } from "react";
 import { Badge, Btn, Card, Input, Modal, EmptyState } from "./ui";
-import { ALL_WORKSPACES, WORKSPACES } from "../lib/workspaces";
 
 function formatDate(d) {
   return new Date(d + "T12:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
 }
 
-export default function Athletes({ athletes, addAthlete, updateAthlete, deleteAthlete, logs, colors, cats, isMobile, groups, groupAthletes, addAthleteToGroup, removeAthleteFromGroup, baselines, updateBaseline, addBaseline, deleteBaseline, videoSubs, updateVideoSub, deleteVideoSub, focusAthleteId, onFocusClear, activeProgramType }) {
+export default function Athletes({ athletes, addAthlete, updateAthlete, deleteAthlete, logs, colors, cats, isMobile, groups, groupAthletes, addAthleteToGroup, removeAthleteFromGroup, baselines, updateBaseline, addBaseline, deleteBaseline, videoSubs, updateVideoSub, deleteVideoSub, focusAthleteId, onFocusClear }) {
   const [modal, setModal] = useState(false);
   const [edit, setEdit] = useState(null);
-  const [form, setForm] = useState({ name: "", age: "", sport: "", notes: "", program_type: "teen" });
+  const [form, setForm] = useState({ name: "", age: "", sport: "", notes: "" });
   const [showCode, setShowCode] = useState(null);
   const [detail, setDetail] = useState(null);
   const [expandedDay, setExpandedDay] = useState(null);
@@ -27,8 +26,8 @@ export default function Athletes({ athletes, addAthlete, updateAthlete, deleteAt
     }
   }, [focusAthleteId]);
 
-  const openNew = () => { setForm({ name: "", age: "", sport: "", notes: "", program_type: activeProgramType || "teen" }); setEdit(null); setModal(true); };
-  const openEdit = (a) => { setForm({ name: a.name, age: a.age || "", sport: a.sport || "", notes: a.notes || "", program_type: a.program_type || "teen" }); setEdit(a.id); setModal(true); };
+  const openNew = () => { setForm({ name: "", age: "", sport: "", notes: "" }); setEdit(null); setModal(true); };
+  const openEdit = (a) => { setForm({ name: a.name, age: a.age || "", sport: a.sport || "", notes: a.notes || "" }); setEdit(a.id); setModal(true); };
 
   const save = async () => {
     if (!form.name.trim()) return;
@@ -383,7 +382,6 @@ export default function Athletes({ athletes, addAthlete, updateAthlete, deleteAt
             <Input label="Name" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
             <div style={{ display: "flex", gap: 12 }}><div style={{ flex: 1 }}><Input label="Age" type="number" value={form.age} onChange={e => setForm({ ...form, age: e.target.value })} /></div><div style={{ flex: 1 }}><Input label="Sport" value={form.sport} onChange={e => setForm({ ...form, sport: e.target.value })} /></div></div>
             <Input label="Notes" value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} />
-            <WorkspaceField value={form.program_type} onChange={pt => setForm({ ...form, program_type: pt })} />
             <Btn onClick={save} style={{ marginTop: 8 }}>Save</Btn>
           </div>
         </Modal>
@@ -403,17 +401,11 @@ export default function Athletes({ athletes, addAthlete, updateAthlete, deleteAt
           {athletes.map(a => {
             const athleteLogCount = (logs || []).filter(l => l.athlete_id === a.id).length;
             const athleteSeasons = (groups || []).filter(g => (groupAthletes || []).some(ga => ga.group_id === g.id && ga.athlete_id === a.id));
-            const aWs = WORKSPACES[a.program_type || "teen"];
             return (
-              <Card key={a.id} onClick={() => setDetail(a.id)} style={{ cursor: "pointer", padding: isMobile ? 14 : 20, borderLeft: `4px solid ${aWs.accent}` }}>
+              <Card key={a.id} onClick={() => setDetail(a.id)} style={{ cursor: "pointer", padding: isMobile ? 14 : 20 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start" }}>
                   <div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                      <div style={{ fontWeight: 700, fontSize: 16 }}>{a.name}</div>
-                      <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: 0.6, padding: "2px 6px", borderRadius: 4, background: aWs.accentSoft, color: aWs.accent, fontFamily: "'Space Mono', monospace" }}>
-                        {aWs.label.toUpperCase()}
-                      </span>
-                    </div>
+                    <div style={{ fontWeight: 700, fontSize: 16 }}>{a.name}</div>
                     <div style={{ fontSize: 13, color: "#71717A", marginTop: 2 }}>{a.sport}{a.age ? ` · Age ${a.age}` : ""}</div>
                   </div>
                   <Btn variant="danger" small onClick={(e) => { e.stopPropagation(); deleteAthlete(a.id); }}>✕</Btn>
@@ -437,80 +429,9 @@ export default function Athletes({ athletes, addAthlete, updateAthlete, deleteAt
           <Input label="Name" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="Athlete name" />
           <div style={{ display: "flex", gap: 12 }}><div style={{ flex: 1 }}><Input label="Age" type="number" value={form.age} onChange={e => setForm({ ...form, age: e.target.value })} /></div><div style={{ flex: 1 }}><Input label="Sport" value={form.sport} onChange={e => setForm({ ...form, sport: e.target.value })} /></div></div>
           <Input label="Notes" value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} placeholder="Injury history, goals…" />
-          <WorkspaceField value={form.program_type} onChange={pt => setForm({ ...form, program_type: pt })} />
           <Btn onClick={save} style={{ marginTop: 8 }}>{edit ? "Save" : "Add Athlete"}</Btn>
         </div>
       </Modal>
     </div>
   );
 }
-
-/* ─── Workspace assignment field ─────────────────────────────────
-   Two-level picker: TEEN | ADULT, then Anchor/Ascend when Adult selected.
-   Used in both create + edit modals so athletes can be reassigned later.
-─────────────────────────────────────────────────────────────────── */
-function WorkspaceField({ value, onChange }) {
-  const isAdult = value === "adult_anchor" || value === "adult_ascend";
-  return (
-    <div>
-      <label style={{ fontSize: 12, fontWeight: 600, color: "#52525B", display: "block", marginBottom: 6, letterSpacing: 0.3 }}>
-        Workspace
-      </label>
-      <div style={{ display: "flex", gap: 4, background: "#F4F4F5", borderRadius: 8, padding: 3, marginBottom: isAdult ? 6 : 0 }}>
-        <button type="button" onClick={() => onChange("teen")}
-          style={btnStyle(value === "teen", WORKSPACES.teen.accent)}>
-          TEEN
-        </button>
-        <button type="button" onClick={() => { if (!isAdult) onChange("adult_anchor"); }}
-          style={btnStyle(isAdult, isAdult ? WORKSPACES[value].accent : WORKSPACES.adult_anchor.accent)}>
-          ADULT
-        </button>
-      </div>
-      {isAdult && (
-        <div style={{ display: "flex", gap: 6, marginLeft: 10 }}>
-          <button type="button" onClick={() => onChange("adult_anchor")}
-            style={subBtnStyle(value === "adult_anchor", WORKSPACES.adult_anchor.accent)}>
-            Anchor
-          </button>
-          <button type="button" onClick={() => onChange("adult_ascend")}
-            style={subBtnStyle(value === "adult_ascend", WORKSPACES.adult_ascend.accent)}>
-            Ascend
-          </button>
-        </div>
-      )}
-      <div style={{ fontSize: 11, color: "#A1A1AA", marginTop: 6, fontStyle: "italic" }}>
-        Changing this moves the athlete to a different workspace.
-      </div>
-    </div>
-  );
-}
-
-const btnStyle = (active, accent) => ({
-  flex: 1,
-  padding: "8px 12px",
-  borderRadius: 6,
-  border: "none",
-  background: active ? accent : "transparent",
-  color: active ? "#fff" : "#52525B",
-  fontFamily: "inherit",
-  fontSize: 12,
-  fontWeight: 700,
-  letterSpacing: 0.8,
-  cursor: "pointer",
-  transition: "all 0.15s ease",
-});
-
-const subBtnStyle = (active, accent) => ({
-  flex: 1,
-  padding: "6px 10px",
-  borderRadius: 5,
-  border: `1px solid ${active ? accent : "#E4E4E7"}`,
-  background: active ? accent : "#fff",
-  color: active ? "#fff" : "#52525B",
-  fontFamily: "inherit",
-  fontSize: 11,
-  fontWeight: 600,
-  letterSpacing: 0.4,
-  cursor: "pointer",
-  transition: "all 0.15s ease",
-});

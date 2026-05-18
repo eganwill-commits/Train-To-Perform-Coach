@@ -1,4 +1,4 @@
-export const metadata = { title: "T2P Coach Platform", description: "Train to Perform — Programming, Tracking & Training" };
+export const metadata = { title: "Train To Perform", description: "Train to Perform — Programming, Tracking & Training" };
 export default function RootLayout({ children }) {
   return (
     <html lang="en">
@@ -6,7 +6,14 @@ export default function RootLayout({ children }) {
         <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+        <meta name="apple-mobile-web-app-title" content="T2P" />
         <meta name="mobile-web-app-capable" content="yes" />
+        <meta name="theme-color" content="#18181B" />
+        <meta name="application-name" content="Train To Perform" />
+        <link rel="manifest" href="/manifest.json" />
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+        <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
+        <link rel="icon" type="image/png" sizes="512x512" href="/icon-512.png" />
         <link rel="icon" href="/favicon.ico" />
         <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;600;700&family=Space+Mono:wght@700&display=swap" rel="stylesheet" />
         <style>{`
@@ -36,7 +43,23 @@ export default function RootLayout({ children }) {
             -webkit-overflow-scrolling: touch;
             max-width: 100%;
           }
+          /* PWA standalone mode adjustments */
+          @media (display-mode: standalone) {
+            .t2p-mobile-header {
+              padding-top: max(16px, env(safe-area-inset-top, 16px));
+            }
+            .t2p-nav {
+              padding-top: max(28px, env(safe-area-inset-top, 28px));
+            }
+          }
         `}</style>
+        <script dangerouslySetInnerHTML={{ __html: `
+          if ('serviceWorker' in navigator) {
+            window.addEventListener('load', function() {
+              navigator.serviceWorker.register('/sw.js').catch(function() {});
+            });
+          }
+        `}} />
       </head>
       <body>{children}</body>
     </html>
