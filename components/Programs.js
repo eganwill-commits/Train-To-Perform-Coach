@@ -457,6 +457,18 @@ function ProgramDetail({ program, programs, exercises, cats, colors, addBlock, u
     }
   };
 
+  // Coach delete: remove the block from the program AND wipe any associated log entry
+  // so the exercise fully disappears (no red ghost from a missed/completed log).
+  const deleteBlockAndLog = async (wi, di, bi, block, logEntry) => {
+    if (logEntry && logEntry.id) {
+      const { error } = await supabase.from("logs").delete().eq("id", logEntry.id);
+      if (!error && setLogs) {
+        setLogs(prev => prev.filter(l => l.id !== logEntry.id));
+      }
+    }
+    await removeBlock(wi, di, bi);
+  };
+
   return (
     <div>
       <button onClick={onBack} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 14, color: "#71717A", marginBottom: 12, fontFamily: "inherit" }}>← Back</button>
@@ -617,7 +629,8 @@ function ProgramDetail({ program, programs, exercises, cats, colors, addBlock, u
                           <div style={{ display: "flex", alignItems: "center", padding: "10px 10px", gap: 6 }}>
                             <div style={{ display: "flex", gap: 2, flexShrink: 0 }} onClick={e => e.stopPropagation()}>
                               <button onClick={() => toggleExerciseStatus(logEntry, "completed", block, day.label)} style={{ width: 22, height: 22, borderRadius: 4, border: exStatus === "completed" ? "2px solid #16A34A" : "1px solid #D4D4D8", background: exStatus === "completed" ? "#16A34A" : "transparent", color: exStatus === "completed" ? "#fff" : "#A1A1AA", fontSize: 11, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}>✓</button>
-                              <button onClick={() => toggleExerciseStatus(logEntry, "missed", block, day.label)} style={{ width: 22, height: 22, borderRadius: 4, border: exStatus === "missed" ? "2px solid #DC2626" : "1px solid #D4D4D8", background: exStatus === "missed" ? "#DC2626" : "transparent", color: exStatus === "missed" ? "#fff" : "#A1A1AA", fontSize: 11, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}>✗</button>
+                              <button onClick={() => toggleExerciseStatus(logEntry, "missed", block, day.label)} style={{ width: 22, height: 22, borderRadius: 4, border: exStatus === "missed" ? "2px solid #DC2626" : "1px solid #D4D4D8", background: exStatus === "missed" ? "#DC2626" : "transparent", color: exStatus === "missed" ? "#fff" : "#A1A1AA", fontSize: 11, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }} title="Mark missed">✗</button>
+                              <button onClick={() => { if (confirm(`Delete "${getDisplayName(block)}" from ${day.label}? This removes it from the day's program.`)) deleteBlockAndLog(aw, di, bi, block, logEntry); }} style={{ width: 22, height: 22, borderRadius: 4, border: "1px solid #FCA5A5", background: "transparent", color: "#DC2626", fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }} title="Delete from day">🗑</button>
                             </div>
                             <div onClick={() => setExpandedBlock(isOpen ? null : block.id)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flex: 1, cursor: "pointer" }}>
                               <div style={{ display: "flex", alignItems: "center", gap: 8, flex: 1, minWidth: 0 }}>
@@ -696,7 +709,8 @@ function ProgramDetail({ program, programs, exercises, cats, colors, addBlock, u
                           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                             <div style={{ display: "flex", gap: 2, flexShrink: 0 }}>
                               <button onClick={() => toggleExerciseStatus(logEntry, "completed", block, day.label)} style={{ width: 22, height: 22, borderRadius: 4, border: exStatus === "completed" ? "2px solid #16A34A" : "1px solid #D4D4D8", background: exStatus === "completed" ? "#16A34A" : "transparent", color: exStatus === "completed" ? "#fff" : "#A1A1AA", fontSize: 11, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}>✓</button>
-                              <button onClick={() => toggleExerciseStatus(logEntry, "missed", block, day.label)} style={{ width: 22, height: 22, borderRadius: 4, border: exStatus === "missed" ? "2px solid #DC2626" : "1px solid #D4D4D8", background: exStatus === "missed" ? "#DC2626" : "transparent", color: exStatus === "missed" ? "#fff" : "#A1A1AA", fontSize: 11, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}>✗</button>
+                              <button onClick={() => toggleExerciseStatus(logEntry, "missed", block, day.label)} style={{ width: 22, height: 22, borderRadius: 4, border: exStatus === "missed" ? "2px solid #DC2626" : "1px solid #D4D4D8", background: exStatus === "missed" ? "#DC2626" : "transparent", color: exStatus === "missed" ? "#fff" : "#A1A1AA", fontSize: 11, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }} title="Mark missed">✗</button>
+                              <button onClick={() => { if (confirm(`Delete "${getDisplayName(block)}" from ${day.label}? This removes it from the day's program.`)) deleteBlockAndLog(aw, di, bi, block, logEntry); }} style={{ width: 22, height: 22, borderRadius: 4, border: "1px solid #FCA5A5", background: "transparent", color: "#DC2626", fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }} title="Delete from day">🗑</button>
                             </div>
                             <Badge color={cc?.bg || "#999"}>{block.category}</Badge>
                             {blockLogged && <span style={{ width: 8, height: 8, borderRadius: 4, background: "#16A34A", flexShrink: 0 }} title="Athlete logged" />}
