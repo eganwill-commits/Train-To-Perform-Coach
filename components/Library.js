@@ -72,7 +72,7 @@ export default function Library({ exercises, addExercise, deleteExercise, update
               </div>
               {e.notes && <div style={{ fontSize: 12, color: "#71717A", marginTop: 6 }}>{e.notes}</div>}
             </div>
-            <button onClick={(ev) => { ev.stopPropagation(); deleteExercise(e.id); }} style={{ background: "none", border: "none", cursor: "pointer", color: "#A1A1AA", fontSize: 14, flexShrink: 0 }}>✕</button>
+            <button onClick={(ev) => { ev.stopPropagation(); if (confirm(`Delete "${e.name}" from the library? This will not affect existing programs.`)) deleteExercise(e.id); }} title="Delete from library" style={{ background: "#FEE2E2", border: "none", borderRadius: 6, cursor: "pointer", color: "#DC2626", fontSize: 14, fontWeight: 700, flexShrink: 0, width: 28, height: 28, display: "flex", alignItems: "center", justifyContent: "center", padding: 0, fontFamily: "inherit" }}>🗑</button>
           </div>
         ))}
       </div>
@@ -89,6 +89,19 @@ export default function Library({ exercises, addExercise, deleteExercise, update
           )}
           <Input label="Notes / Coaching Cues" value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} placeholder="Cues, variations…" />
           <Btn onClick={save} style={{ marginTop: 8 }}>{editId ? "Save Changes" : "Add Exercise"}</Btn>
+          {editId && (
+            <button
+              onClick={() => {
+                if (confirm(`Delete "${form.name}" from the library? This will not affect existing programs.`)) {
+                  deleteExercise(editId);
+                  setModal(false);
+                }
+              }}
+              style={{ width: "100%", padding: "10px", background: "#FEE2E2", color: "#DC2626", border: "none", borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", marginTop: 4 }}
+            >
+              🗑 Delete Exercise
+            </button>
+          )}
         </div>
       </Modal>
     </div>
