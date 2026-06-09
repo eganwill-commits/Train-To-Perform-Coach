@@ -140,6 +140,11 @@ function buildAthleteContext(athlete, programs, logs, baselines, videoSubs) {
   return ctx;
 }
 
+// How far back the coach assistant gets full day-by-day detail.
+// Anything older than this is condensed into a per-lift rollup instead of
+// being sent line by line, so context stays manageable as seasons stack up.
+const FULL_DETAIL_DAYS = 183; // ~6 months
+
 function buildCoachContext(athletes, programs, logs, exercises, baselines, videoSubs) {
   if (!athletes || athletes.length === 0) return "";
   let ctx = "\n\n--- COACH DATA: YOUR ATHLETES ---\n";
@@ -190,21 +195,76 @@ function buildCoachContext(athletes, programs, logs, exercises, baselines, video
         if (cw.coachRecap) ctx += `  Weekly Recap: ${cw.coachRecap}\n`;
       }
     });
-    const recentLogs = (logs || []).filter(l => l.athlete_id === a.id && (new Date() - new Date(l.date)) / 86400000 < 14);
-    if (recentLogs.length > 0) {
-      ctx += `Recent activity (last 14 days): ${recentLogs.length} exercises logged\n`;
-      const byDate = {};
-      recentLogs.forEach(l => {
-        const key = `${l.date} ${l.week_label || ""} ${l.day_label || ""}`.trim();
-        if (!byDate[key]) byDate[key] = [];
-        byDate[key].push(l);
+
+    // --- Workout log: FULL history ---
+    // Recent window (<= FULL_DETAIL_DAYS) goes in day-by-day. Older entries are
+    // summarized per lift so the assistant can still reason across the whole
+    // training history without the context ballooning.
+    const allLogs = (logs || []).filter(l => l.athlete_id === a.id);
+    if (allLogs.length > 0) {
+      const ageDays = l => (new Date() - new Date(l.date)) / 86400000;
+      const recentLogs = allLogs.filter(l => ageDays(l) <= FULL_DETAIL_DAYS);
+      const olderLogs = allLogs.filter(l => ageDays(l) > FULL_DETAIL_DAYS);
+
+      // Recent — full day-by-day detail (most recent first)
+      if (recentLogs.length > 0) {
+        ctx += `Recent activity (last 6 months — full detail): ${recentLogs.length} exercises logged\n`;
+        const byDate = {};
+        recentLogs.forEach(l => {
+          const key = `${l.date} ${l.week_label || ""} ${l.day_label || ""}`.trim();
+          if (!byDate[key]) byDate[key] = [];
+          byDate[key].push(l);
+        });
+        Object.entries(byDate)
+          .sort((x, y) => new Date(y[1][0]?.date) - new Date(x[1][0]?.date))
+          .forEach(([dateKey, entries]) => {
+            ctx += `  ${dateKey}: `;
+            ctx += entries.map(l => `${l.category} ${l.exercise_name} ${l.sets}×${l.reps}${l.load ? ` @${l.load}` : ""}${l.rpe ? ` RPE${l.rpe}` : ""}${l.notes ? ` "${l.notes}"` : ""}`).join(" | ");
+            ctx += "\n";
+          });
+      }
+
+      // Older than 6 months — condensed per-lift rollup
+      if (olderLogs.length > 0) {
+        ctx += `Older history (>6 months ago — summarized per lift):\n`;
+        const roll = {};
+        olderLogs.forEach(l => {
+          const n = l.exercise_name;
+          if (!n) return;
+          if (!roll[n]) roll[n] = { sessions: 0, loads: [], lastDate: l.date };
+          roll[n].sessions++;
+          const ld = parseFloat(l.load);
+          if (!isNaN(ld)) roll[n].loads.push(ld);
+          if (new Date(l.date) > new Date(roll[n].lastDate)) roll[n].lastDate = l.date;
+        });
+        Object.entries(roll).forEach(([name, s]) => {
+          let line = `  ${name}: ${s.sessions} session${s.sessions !== 1 ? "s" : ""}`;
+          if (s.loads.length > 0) {
+            const min = Math.min(...s.loads), max = Math.max(...s.loads);
+            line += `, load ${min}${min !== max ? `→${max}` : ""}`;
+          }
+          line += `, last logged ${s.lastDate}`;
+          ctx += line + "\n";
+        });
+      }
+
+      // Per-lift progression across ALL time (compact load-over-time view)
+      const liftMap = {};
+      allLogs.forEach(l => {
+        if (!l.load || !l.exercise_name) return;
+        if (!liftMap[l.exercise_name]) liftMap[l.exercise_name] = [];
+        liftMap[l.exercise_name].push({ date: l.date, week: l.week_label, load: l.load, sets: l.sets, reps: l.reps });
       });
-      Object.entries(byDate).slice(0, 6).forEach(([dateKey, entries]) => {
-        ctx += `  ${dateKey}: `;
-        ctx += entries.map(l => `${l.category} ${l.exercise_name} ${l.sets}×${l.reps}${l.load ? ` @${l.load}` : ""}${l.rpe ? ` RPE${l.rpe}` : ""}${l.notes ? ` "${l.notes}"` : ""}`).join(" | ");
-        ctx += "\n";
-      });
+      const progLifts = Object.entries(liftMap).filter(([, e]) => e.length >= 2);
+      if (progLifts.length > 0) {
+        ctx += `Progression (loaded lifts, full history):\n`;
+        progLifts.forEach(([name, entries]) => {
+          entries.sort((x, y) => new Date(x.date) - new Date(y.date));
+          ctx += `  ${name}: ` + entries.map(e => `${e.week?.replace(/WEEK \d+ — /, "W") || e.date} ${e.sets || ""}×${e.reps || ""} @${e.load}`).join(" → ") + "\n";
+        });
+      }
     }
+
     const av = (videoSubs || []).filter(v => v.athlete_id === a.id);
     if (av.length > 0) {
       const pending = av.filter(v => v.status === "pending").length;
@@ -287,7 +347,7 @@ export default function AIChat({ isMobile, athleteName, isCoach, athletes, progr
               </div>
               <p style={{ fontSize: 13, color: "#71717A", marginTop: 4 }}>
                 {isCoach
-                  ? `I have access to ${(athletes || []).length} athlete${(athletes || []).length !== 1 ? "s" : ""}, their programs, logs, baselines, and video submissions.`
+                  ? `I have access to ${(athletes || []).length} athlete${(athletes || []).length !== 1 ? "s" : ""}, their programs, full log history, baselines, and video submissions.`
                   : athlete
                     ? `I have access to your ${(programs || []).length} program${(programs || []).length !== 1 ? "s" : ""}, ${(logs || []).length} logged exercises, and ${(baselines || []).length} baselines.`
                     : `I know T2P programming, exercises, form cues, scaling, and recovery.`}
