@@ -7,6 +7,21 @@ import NotesBoard from "./NotesBoard";
 
 const uid = () => Math.random().toString(36).slice(2, 10);
 
+// Derive real calendar dates from week/day labels (e.g. "Week 1 · Jul 6–10").
+// Falls back to the legacy fixed base for programs whose labels have no dates,
+// so existing programs are unaffected.
+const MONTHS = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 };
+const WDAYS = { mon: 0, tue: 1, wed: 2, thu: 3, fri: 4, sat: 5, sun: 6 };
+function weekStartFromLabel(label, idx) {
+  const m = (label || "").match(/(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(\d{1,2})/i);
+  if (m) return new Date(2026, MONTHS[m[1].slice(0, 3).toLowerCase()], parseInt(m[2], 10));
+  return new Date(2026, 3, 6 + idx * 7);
+}
+function weekdayOffset(label) {
+  const m = (label || "").toLowerCase().match(/\b(mon|tue|wed|thu|fri|sat|sun)[a-z]*\b/);
+  return m ? WDAYS[m[1]] : 0;
+}
+
 export default function Programs({ programs, addProgram, updateProgram, deleteProgram, athletes, exercises, cats, colors, isMobile, submitDay, unlogDay, logs, groups, setLogs, addGroup, addAthleteToGroup, addSeasonMembership }) {
   const [modal, setModal] = useState(false);
   const [form, setForm] = useState({ name: "", selectedAthletes: [], weeks: 4, description: "", group_id: "", trackAsSeason: false });
@@ -683,8 +698,8 @@ function ProgramDetail({ program, programs, exercises, cats, colors, addBlock, u
           const bgColor = aw === i ? "#18181B" : st === "completed" ? "#16A34A" : st === "missed" ? "#DC2626" : "#fff";
           const textColor = aw === i ? "#fff" : st === "completed" || st === "missed" ? "#fff" : "#52525B";
           const borderColor = aw === i ? "#18181B" : isCurrent && aw !== i ? "#F59E0B" : st === "completed" ? "#16A34A" : st === "missed" ? "#DC2626" : "#E4E4E7";
-          const weekStart = new Date(2026, 3, 6 + i * 7);
-          const weekEnd = new Date(2026, 3, 6 + i * 7 + 4);
+          const weekStart = weekStartFromLabel(w.label, i);
+          const weekEnd = new Date(weekStart); weekEnd.setDate(weekStart.getDate() + 4);
           const fmt = (d) => d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
           return (
             <button key={w.id} onClick={() => setAw(i)} style={{ padding: "4px 10px", borderRadius: 8, border: `2px solid ${borderColor}`, background: bgColor, color: textColor, fontWeight: 600, fontSize: 12, cursor: "pointer", fontFamily: "inherit", position: "relative", textAlign: "center", lineHeight: 1.2 }}>
@@ -726,7 +741,7 @@ function ProgramDetail({ program, programs, exercises, cats, colors, addBlock, u
                   {day.status === "missed" && <span style={{ color: "#DC2626", fontWeight: 700, fontSize: 14 }}>✗</span>}
                   <h4 style={{ margin: 0, fontSize: 15 }}>{day.label}
                     <span style={{ fontWeight: 400, fontSize: 12, color: "#71717A", marginLeft: 6 }}>
-                      {(() => { const dayOff = { Monday: 0, Tuesday: 1, Wednesday: 2, Thursday: 3, Friday: 4 }; const d = new Date(2026, 3, 6 + aw * 7 + (dayOff[day.label] ?? 0)); return d.toLocaleDateString("en-US", { month: "short", day: "numeric" }); })()}
+                      {(() => { const ws = weekStartFromLabel(week.label, aw); const d = new Date(ws); d.setDate(ws.getDate() + weekdayOffset(day.label)); return d.toLocaleDateString("en-US", { month: "short", day: "numeric" }); })()}
                     </span>
                   </h4>
                 </div>
