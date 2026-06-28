@@ -26,11 +26,13 @@ export default function Seasons({ groups, athletes, programs, logs, colors, cats
     const athleteIds = groupAthletes.filter(ga => ga.group_id === detail).map(ga => ga.athlete_id);
     const groupAthletesList = athletes.filter(a => athleteIds.includes(a.id));
     const groupPrograms = programs.filter(p => p.group_id === detail);
-    const groupLogs = logs.filter(l => athleteIds.includes(l.athlete_id));
+    // Season-scoped logs: only logs whose week belongs to THIS season's programs.
+    const groupWeekLabels = new Set(groupPrograms.flatMap(p => (p.weeks || []).map(w => w.label)));
+    const groupLogs = logs.filter(l => athleteIds.includes(l.athlete_id) && (groupWeekLabels.size === 0 || groupWeekLabels.has(l.week_label)));
     const availableAthletes = athletes.filter(a => !athleteIds.includes(a.id));
 
-    // Count exercises from completed/missed weeks AND days in programs
-    const allAthletePrograms = programs.filter(p => athleteIds.includes(p.athlete_id));
+    // Season-scoped: ONLY programs linked to this season (not the athletes' other blocks).
+    const allAthletePrograms = groupPrograms;
     const programCats = { completed: {}, missed: {} };
     cats.forEach(c => { programCats.completed[c] = 0; programCats.missed[c] = 0; });
     let completedWeeks = 0, missedWeeks = 0, totalWeeks = 0;
