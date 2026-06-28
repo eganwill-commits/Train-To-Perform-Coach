@@ -7,12 +7,17 @@ import NotesBoard from "./NotesBoard";
 
 const uid = () => Math.random().toString(36).slice(2, 10);
 
-export default function Programs({ programs, addProgram, updateProgram, deleteProgram, athletes, exercises, cats, colors, isMobile, submitDay, unlogDay, logs, groups, setLogs }) {
+export default function Programs({ programs, addProgram, updateProgram, deleteProgram, athletes, exercises, cats, colors, isMobile, submitDay, unlogDay, logs, groups, setLogs, addGroup, addAthleteToGroup }) {
   const [modal, setModal] = useState(false);
-  const [form, setForm] = useState({ name: "", selectedAthletes: [], weeks: 4, description: "", group_id: "" });
+  const [form, setForm] = useState({ name: "", selectedAthletes: [], weeks: 4, description: "", group_id: "", trackAsSeason: false });
   const [detail, setDetail] = useState(null);
+  const [folderKey, setFolderKey] = useState(null);
+  const [addAthModal, setAddAthModal] = useState(false);
+  const [addAthTargets, setAddAthTargets] = useState([]);
+  const [renameOpen, setRenameOpen] = useState(false);
+  const [renameVal, setRenameVal] = useState("");
 
-  const openNew = () => { setForm({ name: "", selectedAthletes: [], weeks: 4, description: "", group_id: groups?.[0]?.id || "" }); setModal(true); };
+  const openNew = () => { setForm({ name: "", selectedAthletes: [], weeks: 4, description: "", group_id: groups?.[0]?.id || "", trackAsSeason: false }); setModal(true); };
 
   const toggleAthlete = (id) => {
     setForm(prev => ({
@@ -35,13 +40,28 @@ export default function Programs({ programs, addProgram, updateProgram, deletePr
       return weeks;
     };
     const targets = form.selectedAthletes.length > 0 ? form.selectedAthletes : [""];
+
+    // Optionally spin up a matching Season (program_group) and enroll the athletes.
+    // Done BEFORE creating programs so the season has no template yet — avoids duplicate auto-copies.
+    let groupId = form.group_id || "";
+    if (form.trackAsSeason && addGroup) {
+      const g = await addGroup({ name: form.name, description: form.description || "" });
+      if (g) {
+        groupId = g.id;
+        if (addAthleteToGroup) {
+          for (const athId of targets) { if (athId) await addAthleteToGroup(g.id, athId); }
+        }
+      }
+    }
+
     let lastProg = null;
     for (const athId of targets) {
-      const prog = await addProgram({ name: form.name, athlete_id: athId, description: form.description, weeks: makeWeeks(), group_id: form.group_id || "" });
+      const prog = await addProgram({ name: form.name, athlete_id: athId, description: form.description, weeks: makeWeeks(), group_id: groupId });
       if (prog) lastProg = prog;
     }
     setModal(false);
     if (targets.length === 1 && lastProg) setDetail(lastProg.id);
+    else if (targets.length > 1) setFolderKey(form.name.toLowerCase().replace(/\s+/g, " ").trim());
   };
 
   // Re-ID helper for deep copying weeks/days/blocks
@@ -131,6 +151,38 @@ export default function Programs({ programs, addProgram, updateProgram, deletePr
     }
   };
 
+  // ---- Folder grouping (derived from program name, no schema change) ----
+  // Folder = all per-athlete program copies that share the same base name.
+  const baseNameOf = (p) => {
+    const ath = athletes.find(a => a.id === p.athlete_id);
+    if (ath?.name && p.name.startsWith(ath.name + " — ")) return p.name.slice((ath.name + " — ").length).trim();
+    const m = p.name.match(/^(.*?)\s—\s(.*)$/);
+    if (m && athletes.some(a => a.name === m[1])) return m[2].trim();
+    return (p.name || "").trim();
+  };
+  const keyOf = (name) => (name || "").toLowerCase().replace(/\s+/g, " ").trim();
+  const folders = (() => {
+    const map = new Map();
+    programs.forEach(p => {
+      const name = baseNameOf(p);
+      const key = keyOf(name);
+      if (!map.has(key)) map.set(key, { key, name, programs: [] });
+      map.get(key).programs.push(p);
+    });
+    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
+  })();
+
+  const addAthletesToFolder = async (folder, targetIds) => {
+    const source = folder.programs[0];
+    for (const athId of targetIds) {
+      const weeks = reIdWeeks(JSON.parse(JSON.stringify(source?.weeks || [])));
+      await addProgram({ name: folder.name, athlete_id: athId, description: source?.description || "", weeks, group_id: source?.group_id || "" });
+    }
+  };
+  const renameFolder = async (folder, newName) => {
+    for (const p of folder.programs) await updateProgram(p.id, { name: newName });
+  };
+
   const ap = programs.find(p => p.id === detail);
 
   const addBlock = async (wi, di, cat) => {
@@ -167,37 +219,41 @@ export default function Programs({ programs, addProgram, updateProgram, deletePr
 
   if (detail && ap) return <ProgramDetail program={ap} programs={programs} exercises={exercises} cats={cats} colors={colors} addBlock={addBlock} updateBlock={updateBlock} removeBlock={removeBlock} moveBlock={moveBlock} onBack={() => setDetail(null)} athletes={athletes} isMobile={isMobile} submitDay={submitDay} unlogDay={unlogDay} logs={logs || []} copyToAthletes={copyToAthletes} updateProgram={updateProgram} groups={groups} setLogs={setLogs} />;
 
-  return (
-    <div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24, gap: 12 }}>
-        <h2 style={{ margin: 0, fontSize: isMobile ? 22 : 28, fontFamily: "'Space Mono', monospace" }}>Programs</h2>
-        <Btn onClick={openNew} small={isMobile}>+ New</Btn>
-      </div>
-      {programs.length === 0 ? <EmptyState icon="▦" title="No programs yet" sub="Create a training program." action="+ New Program" onAction={openNew} /> : (
+  // ---- Folder detail: the athletes inside one program folder ----
+  const activeFolder = folderKey ? folders.find(f => f.key === folderKey) : null;
+  if (folderKey && activeFolder) {
+    const folderAthIds = activeFolder.programs.map(p => p.athlete_id);
+    const availableAthletes = athletes.filter(a => !folderAthIds.includes(a.id));
+    return (
+      <div>
+        <button onClick={() => setFolderKey(null)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 14, color: "#71717A", marginBottom: 12, fontFamily: "inherit" }}>← Back to Programs</button>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, flexWrap: "wrap", gap: 8 }}>
+          <h2 style={{ margin: 0, fontSize: isMobile ? 20 : 26, fontFamily: "'Space Mono', monospace", display: "flex", alignItems: "center", gap: 8 }}><span>📁</span>{activeFolder.name}</h2>
+          <div style={{ display: "flex", gap: 8 }}>
+            <Btn small variant="secondary" onClick={() => { setRenameVal(activeFolder.name); setRenameOpen(true); }}>Rename</Btn>
+            {availableAthletes.length > 0 && <Btn small onClick={() => { setAddAthTargets([]); setAddAthModal(true); }}>+ Add Athletes</Btn>}
+          </div>
+        </div>
+        <div style={{ fontSize: 13, color: "#71717A", marginBottom: 16 }}>{activeFolder.programs.length} athlete{activeFolder.programs.length !== 1 ? "s" : ""} · {(activeFolder.programs[0]?.weeks || []).length} weeks · each athlete logs their own copy</div>
         <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill, minmax(280px, 1fr))", gap: 12 }}>
-          {programs.map(p => {
+          {activeFolder.programs.map(p => {
             const ath = athletes.find(a => a.id === p.athlete_id);
-            const grp = (groups || []).find(g => g.id === p.group_id);
             const wks = p.weeks || [];
             const completed = wks.filter(w => w.status === "completed").length;
             const missed = wks.filter(w => w.status === "missed").length;
             return (
-              <Card key={p.id} onClick={() => setDetail(p.id)} style={{ cursor: "pointer", padding: isMobile ? 14 : 20 }}>
-                <div style={{ display: "flex", justifyContent: "space-between" }}>
+              <Card key={p.id} onClick={() => setDetail(p.id)} style={{ cursor: "pointer", padding: isMobile ? 14 : 18 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start" }}>
                   <div>
-                    <div style={{ fontWeight: 700, fontSize: 16 }}>{p.name}</div>
-                    <div style={{ fontSize: 13, color: "#71717A", marginTop: 2 }}>{ath?.name || "Unassigned"} · {wks.length}wk</div>
-                    {grp && <div style={{ marginTop: 4 }}><Badge color="#16A34A">{grp.name}</Badge></div>}
+                    <div style={{ fontWeight: 700, fontSize: 15 }}>{ath?.name || "Unassigned"}</div>
+                    <div style={{ fontSize: 12, color: "#71717A", marginTop: 2 }}>{ath?.sport || ""}{ath?.age ? ` · Age ${ath.age}` : ""} · {wks.length}wk</div>
                   </div>
-                  <Btn variant="danger" small onClick={(e) => { e.stopPropagation(); deleteProgram(p.id); if (detail === p.id) setDetail(null); }}>✕</Btn>
+                  <Btn variant="danger" small onClick={(e) => { e.stopPropagation(); if (confirm(`Remove ${ath?.name || "this athlete"} from "${activeFolder.name}"? This deletes their copy of the program.`)) { deleteProgram(p.id); if (detail === p.id) setDetail(null); } }}>✕</Btn>
                 </div>
-                {p.description && <p style={{ fontSize: 13, color: "#52525B", marginTop: 8 }}>{p.description}</p>}
                 {wks.length > 0 && (
                   <div style={{ marginTop: 10 }}>
                     <div style={{ display: "flex", gap: 3, marginBottom: 4 }}>
-                      {wks.map((w, i) => (
-                        <div key={i} style={{ flex: 1, height: 6, borderRadius: 3, background: w.status === "completed" ? "#16A34A" : w.status === "missed" ? "#DC2626" : "#E4E4E7" }} />
-                      ))}
+                      {wks.map((w, i) => (<div key={i} style={{ flex: 1, height: 6, borderRadius: 3, background: w.status === "completed" ? "#16A34A" : w.status === "missed" ? "#DC2626" : "#E4E4E7" }} />))}
                     </div>
                     {(completed > 0 || missed > 0) && (
                       <div style={{ fontSize: 11, color: "#71717A" }}>
@@ -208,6 +264,121 @@ export default function Programs({ programs, addProgram, updateProgram, deletePr
                     )}
                   </div>
                 )}
+                <div style={{ marginTop: 10, fontSize: 12, color: "#18181B", fontWeight: 600 }}>Open program →</div>
+              </Card>
+            );
+          })}
+        </div>
+
+        {/* Add athletes modal */}
+        <Modal open={addAthModal} onClose={() => setAddAthModal(false)} title={`Add Athletes to ${activeFolder.name}`}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {availableAthletes.length === 0 ? (
+              <p style={{ color: "#A1A1AA", fontSize: 14, textAlign: "center", padding: 16 }}>All athletes are already in this folder.</p>
+            ) : (
+              <>
+                <p style={{ fontSize: 12, color: "#71717A", margin: 0 }}>Each athlete gets their own copy of this program to follow and log.</p>
+                <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 240, overflowY: "auto" }}>
+                  {availableAthletes.map(a => {
+                    const checked = addAthTargets.includes(a.id);
+                    return (
+                      <label key={a.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", border: `1px solid ${checked ? "#18181B" : "#E4E4E7"}`, borderRadius: 8, cursor: "pointer", background: checked ? "#F0FDF4" : "#fff" }}>
+                        <input type="checkbox" checked={checked} onChange={() => setAddAthTargets(prev => checked ? prev.filter(id => id !== a.id) : [...prev, a.id])} style={{ accentColor: "#18181B" }} />
+                        <div><div style={{ fontWeight: 600, fontSize: 14 }}>{a.name}</div><div style={{ fontSize: 12, color: "#71717A" }}>{a.sport}{a.age ? ` · Age ${a.age}` : ""}</div></div>
+                      </label>
+                    );
+                  })}
+                </div>
+                {addAthTargets.length > 0 && (
+                  <Btn onClick={async () => { await addAthletesToFolder(activeFolder, addAthTargets); setAddAthModal(false); setAddAthTargets([]); }} style={{ marginTop: 4 }}>
+                    Add {addAthTargets.length} Athlete{addAthTargets.length !== 1 ? "s" : ""}
+                  </Btn>
+                )}
+              </>
+            )}
+          </div>
+        </Modal>
+
+        {/* Rename folder modal */}
+        <Modal open={renameOpen} onClose={() => setRenameOpen(false)} title="Rename Folder">
+          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            <p style={{ fontSize: 12, color: "#71717A", margin: 0 }}>Renames this program for all {activeFolder.programs.length} athlete{activeFolder.programs.length !== 1 ? "s" : ""} in the folder.</p>
+            <Input label="Folder / Program Name" value={renameVal} onChange={e => setRenameVal(e.target.value)} />
+            <Btn onClick={async () => { const nn = renameVal.trim(); if (!nn) return; await renameFolder(activeFolder, nn); setFolderKey(keyOf(nn)); setRenameOpen(false); }} style={{ marginTop: 4 }}>Save</Btn>
+          </div>
+        </Modal>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24, gap: 12 }}>
+        <h2 style={{ margin: 0, fontSize: isMobile ? 22 : 28, fontFamily: "'Space Mono', monospace" }}>Programs</h2>
+        <Btn onClick={openNew} small={isMobile}>+ New</Btn>
+      </div>
+      {programs.length === 0 ? <EmptyState icon="▦" title="No programs yet" sub="Create a training program." action="+ New Program" onAction={openNew} /> : (
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill, minmax(280px, 1fr))", gap: 12 }}>
+          {folders.map(folder => {
+            // Single-athlete program → behaves like a normal program card (opens directly)
+            if (folder.programs.length === 1) {
+              const p = folder.programs[0];
+              const ath = athletes.find(a => a.id === p.athlete_id);
+              const grp = (groups || []).find(g => g.id === p.group_id);
+              const wks = p.weeks || [];
+              const completed = wks.filter(w => w.status === "completed").length;
+              const missed = wks.filter(w => w.status === "missed").length;
+              return (
+                <Card key={p.id} onClick={() => setDetail(p.id)} style={{ cursor: "pointer", padding: isMobile ? 14 : 20 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between" }}>
+                    <div>
+                      <div style={{ fontWeight: 700, fontSize: 16 }}>{folder.name}</div>
+                      <div style={{ fontSize: 13, color: "#71717A", marginTop: 2 }}>{ath?.name || "Unassigned"} · {wks.length}wk</div>
+                      {grp && <div style={{ marginTop: 4 }}><Badge color="#16A34A">{grp.name}</Badge></div>}
+                    </div>
+                    <Btn variant="danger" small onClick={(e) => { e.stopPropagation(); if (confirm(`Delete "${folder.name}" for ${ath?.name || "this athlete"}?`)) { deleteProgram(p.id); if (detail === p.id) setDetail(null); } }}>✕</Btn>
+                  </div>
+                  {p.description && <p style={{ fontSize: 13, color: "#52525B", marginTop: 8 }}>{p.description}</p>}
+                  {wks.length > 0 && (
+                    <div style={{ marginTop: 10 }}>
+                      <div style={{ display: "flex", gap: 3, marginBottom: 4 }}>
+                        {wks.map((w, i) => (
+                          <div key={i} style={{ flex: 1, height: 6, borderRadius: 3, background: w.status === "completed" ? "#16A34A" : w.status === "missed" ? "#DC2626" : "#E4E4E7" }} />
+                        ))}
+                      </div>
+                      {(completed > 0 || missed > 0) && (
+                        <div style={{ fontSize: 11, color: "#71717A" }}>
+                          {completed > 0 && <span style={{ color: "#16A34A", fontWeight: 600 }}>{completed} completed</span>}
+                          {completed > 0 && missed > 0 && " · "}
+                          {missed > 0 && <span style={{ color: "#DC2626", fontWeight: 600 }}>{missed} missed</span>}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </Card>
+              );
+            }
+            // Multi-athlete → folder card (opens the folder)
+            const wks0 = folder.programs[0]?.weeks || [];
+            const grp = (groups || []).find(g => g.id === folder.programs[0]?.group_id);
+            const folderAthletes = folder.programs.map(p => athletes.find(a => a.id === p.athlete_id)).filter(Boolean);
+            return (
+              <Card key={folder.key} onClick={() => setFolderKey(folder.key)} style={{ cursor: "pointer", padding: isMobile ? 14 : 20, borderLeft: "4px solid #18181B" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start" }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontWeight: 700, fontSize: 16, display: "flex", alignItems: "center", gap: 6 }}><span>📁</span>{folder.name}</div>
+                    <div style={{ fontSize: 13, color: "#71717A", marginTop: 2 }}>{folder.programs.length} athletes · {wks0.length}wk</div>
+                    {grp && <div style={{ marginTop: 4 }}><Badge color="#16A34A">{grp.name}</Badge></div>}
+                  </div>
+                  <Badge color="#18181B">{folder.programs.length}</Badge>
+                </div>
+                <div style={{ display: "flex", gap: 6, marginTop: 10, flexWrap: "wrap" }}>
+                  {folderAthletes.slice(0, 8).map(a => (
+                    <span key={a.id} style={{ background: "#F4F4F5", padding: "3px 10px", borderRadius: 999, fontSize: 12, fontWeight: 600, color: "#52525B" }}>{a.name}</span>
+                  ))}
+                  {folderAthletes.length > 8 && <span style={{ fontSize: 12, color: "#A1A1AA", alignSelf: "center" }}>+{folderAthletes.length - 8}</span>}
+                </div>
+                <div style={{ marginTop: 10, fontSize: 12, color: "#18181B", fontWeight: 600 }}>Open folder →</div>
               </Card>
             );
           })}
@@ -236,7 +407,14 @@ export default function Programs({ programs, addProgram, updateProgram, deletePr
             </div>
           )}
           <Input label="Weeks" type="number" value={form.weeks} onChange={e => setForm({ ...form, weeks: e.target.value })} min={1} max={52} />
-          {(groups || []).length > 0 && (
+          <label style={{ display: "flex", alignItems: "start", gap: 10, padding: "10px 12px", border: `1px solid ${form.trackAsSeason ? "#16A34A" : "#E4E4E7"}`, borderRadius: 8, cursor: "pointer", background: form.trackAsSeason ? "#F0FDF4" : "#fff" }}>
+            <input type="checkbox" checked={form.trackAsSeason} onChange={e => setForm({ ...form, trackAsSeason: e.target.checked })} style={{ accentColor: "#16A34A", marginTop: 2 }} />
+            <div>
+              <div style={{ fontWeight: 600, fontSize: 14 }}>Also track this as a Season</div>
+              <div style={{ fontSize: 12, color: "#71717A", marginTop: 2 }}>Creates a matching Season named “{form.name || "…"}” and enrolls the selected athletes — gives you attendance, completion, and category stats without re-entering the roster.</div>
+            </div>
+          </label>
+          {!form.trackAsSeason && (groups || []).length > 0 && (
             <div>
               <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6, color: "#18181B" }}>Link to Season</div>
               <select
