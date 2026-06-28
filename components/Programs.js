@@ -7,7 +7,7 @@ import NotesBoard from "./NotesBoard";
 
 const uid = () => Math.random().toString(36).slice(2, 10);
 
-export default function Programs({ programs, addProgram, updateProgram, deleteProgram, athletes, exercises, cats, colors, isMobile, submitDay, unlogDay, logs, groups, setLogs, addGroup, addAthleteToGroup }) {
+export default function Programs({ programs, addProgram, updateProgram, deleteProgram, athletes, exercises, cats, colors, isMobile, submitDay, unlogDay, logs, groups, setLogs, addGroup, addAthleteToGroup, addSeasonMembership }) {
   const [modal, setModal] = useState(false);
   const [form, setForm] = useState({ name: "", selectedAthletes: [], weeks: 4, description: "", group_id: "", trackAsSeason: false });
   const [detail, setDetail] = useState(null);
@@ -41,23 +41,22 @@ export default function Programs({ programs, addProgram, updateProgram, deletePr
     };
     const targets = form.selectedAthletes.length > 0 ? form.selectedAthletes : [""];
 
-    // Optionally spin up a matching Season (program_group) and enroll the athletes.
-    // Done BEFORE creating programs so the season has no template yet — avoids duplicate auto-copies.
+    // Optionally spin up a matching Season (program_group).
     let groupId = form.group_id || "";
     if (form.trackAsSeason && addGroup) {
       const g = await addGroup({ name: form.name, description: form.description || "" });
-      if (g) {
-        groupId = g.id;
-        if (addAthleteToGroup) {
-          for (const athId of targets) { if (athId) await addAthleteToGroup(g.id, athId); }
-        }
-      }
+      if (g) groupId = g.id;
     }
 
     let lastProg = null;
     for (const athId of targets) {
       const prog = await addProgram({ name: form.name, athlete_id: athId, description: form.description, weeks: makeWeeks(), group_id: groupId });
       if (prog) lastProg = prog;
+    }
+
+    // Keep Program ↔ Season in sync: enroll the athletes in the linked season (membership only).
+    if (groupId && addSeasonMembership) {
+      for (const athId of targets) { if (athId) await addSeasonMembership(groupId, athId); }
     }
     setModal(false);
     if (targets.length === 1 && lastProg) setDetail(lastProg.id);
@@ -177,6 +176,8 @@ export default function Programs({ programs, addProgram, updateProgram, deletePr
     for (const athId of targetIds) {
       const weeks = reIdWeeks(JSON.parse(JSON.stringify(source?.weeks || [])));
       await addProgram({ name: folder.name, athlete_id: athId, description: source?.description || "", weeks, group_id: source?.group_id || "" });
+      // Keep Program ↔ Season in sync: if this folder is linked to a season, enroll them too.
+      if (source?.group_id && addSeasonMembership) await addSeasonMembership(source.group_id, athId);
     }
   };
   const renameFolder = async (folder, newName) => {
@@ -277,7 +278,7 @@ export default function Programs({ programs, addProgram, updateProgram, deletePr
               <p style={{ color: "#A1A1AA", fontSize: 14, textAlign: "center", padding: 16 }}>All athletes are already in this folder.</p>
             ) : (
               <>
-                <p style={{ fontSize: 12, color: "#71717A", margin: 0 }}>Each athlete gets their own copy of this program to follow and log.</p>
+                <p style={{ fontSize: 12, color: "#71717A", margin: 0 }}>Each athlete gets their own copy of this program to follow and log. If this program is linked to a Season, they&apos;re added to it automatically.</p>
                 <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 240, overflowY: "auto" }}>
                   {availableAthletes.map(a => {
                     const checked = addAthTargets.includes(a.id);
