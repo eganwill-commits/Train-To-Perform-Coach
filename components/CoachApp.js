@@ -313,6 +313,19 @@ export default function CoachApp({ onLogout }) {
     }
   }, []);
 
+  // Membership-only: enroll an athlete in a season WITHOUT auto-copying programs
+  // (keeps Program folders and Seasons in sync without duplicating programs).
+  const addSeasonMembership = useCallback(async (groupId, athleteId) => {
+    if (!groupId || !athleteId) return;
+    const { data: existing } = await supabase.from("group_athletes")
+      .select("athlete_id").eq("group_id", groupId).eq("athlete_id", athleteId);
+    if (existing && existing.length) return; // already a member
+    const { data, error } = await supabase.from("group_athletes")
+      .insert({ group_id: groupId, athlete_id: athleteId }).select().single();
+    if (!error && data) setGroupAthletes(prev =>
+      prev.some(ga => ga.group_id === groupId && ga.athlete_id === athleteId) ? prev : [...prev, data]);
+  }, []);
+
   const removeAthleteFromGroup = useCallback(async (groupId, athleteId) => {
     await supabase.from("group_athletes").delete().eq("group_id", groupId).eq("athlete_id", athleteId);
     setGroupAthletes(prev => prev.filter(ga => !(ga.group_id === groupId && ga.athlete_id === athleteId)));
@@ -367,7 +380,7 @@ export default function CoachApp({ onLogout }) {
     addExercise, deleteExercise, updateExercise,
     addLog, deleteLog, submitDay, unlogDay,
     addGroup, updateGroup, deleteGroup,
-    addAthleteToGroup, removeAthleteFromGroup,
+    addAthleteToGroup, removeAthleteFromGroup, addSeasonMembership,
     updateBaseline, addBaseline, deleteBaseline,
     addVideoSub, updateVideoSub, deleteVideoSub,
     saveSettings, resetAll,
