@@ -16,6 +16,13 @@ function useIsMobile(bp = 768) {
   return m;
 }
 
+// Resolve an exercise to the athlete's equipment-tier variant (falls back to canonical name)
+function variantName(ex, tier) {
+  if (!ex) return "";
+  const t = tier || "full_gym";
+  return (ex.variants && ex.variants[t]) || ex.name || "";
+}
+
 export default function AthleteView({ athlete, onLogout }) {
   const [page, setPage] = useState("my-program");
   const [programs, setPrograms] = useState([]);
@@ -273,8 +280,8 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
   }, [selectedProg]);
 
   const getDisplayName = (block) => {
-    if (block.exerciseId) { const f = exercises.find(e => e.id === block.exerciseId); if (f) return f.name; }
-    if (block.exerciseName) return block.exerciseName;
+    if (block.exerciseId) { const f = exercises.find(e => e.id === block.exerciseId); if (f) return variantName(f, athlete?.equipment_tier); }
+    if (block.exerciseName) { const f = exercises.find(e => e.name === block.exerciseName); if (f) return variantName(f, athlete?.equipment_tier); return block.exerciseName; }
     return "—";
   };
   const getVideoUrl = (block) => {
@@ -743,7 +750,8 @@ function AthleteLog({ addLog, athlete, exercises, cats, colors, isMobile, progra
   const selected = workoutOptions.find(o => o.value === selectedWorkout);
 
   const getDisplayName = (block) => {
-    if (block.exerciseId) { const f = exercises.find(e => e.id === block.exerciseId); if (f) return f.name; }
+    if (block.exerciseId) { const f = exercises.find(e => e.id === block.exerciseId); if (f) return variantName(f, athlete?.equipment_tier); }
+    if (block.exerciseName) { const f = exercises.find(e => e.name === block.exerciseName); if (f) return variantName(f, athlete?.equipment_tier); return block.exerciseName; }
     return block.exerciseName || "Unknown";
   };
 
