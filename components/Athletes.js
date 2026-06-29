@@ -15,7 +15,7 @@ const TIER_OPTIONS = [
 ];
 const TIER_LABEL = Object.fromEntries(TIER_OPTIONS.map(o => [o.value, o.label]));
 
-export default function Athletes({ athletes, addAthlete, updateAthlete, deleteAthlete, logs, colors, cats, isMobile, groups, groupAthletes, addAthleteToGroup, removeAthleteFromGroup, baselines, updateBaseline, addBaseline, deleteBaseline, videoSubs, updateVideoSub, deleteVideoSub, focusAthleteId, onFocusClear }) {
+export default function Athletes({ athletes, addAthlete, updateAthlete, deleteAthlete, logs, colors, cats, isMobile, groups, groupAthletes, addAthleteToGroup, removeAthleteFromGroup, baselines, updateBaseline, addBaseline, deleteBaseline, videoSubs, updateVideoSub, deleteVideoSub, viewAsAthlete, focusAthleteId, onFocusClear }) {
   const [modal, setModal] = useState(false);
   const [edit, setEdit] = useState(null);
   const [form, setForm] = useState({ name: "", age: "", sport: "", notes: "", equipment_tier: "full_gym" });
@@ -96,6 +96,7 @@ export default function Athletes({ athletes, addAthlete, updateAthlete, deleteAt
               {activeAthlete.notes && <p style={{ fontSize: 13, color: "#52525B", marginTop: 8, lineHeight: 1.5 }}>{activeAthlete.notes}</p>}
             </div>
             <div style={{ display: "flex", gap: 8 }}>
+              {viewAsAthlete && <Btn small onClick={() => viewAsAthlete(activeAthlete)}>👁 View as athlete</Btn>}
               <Btn small variant="secondary" onClick={() => openEdit(activeAthlete)}>Edit</Btn>
             </div>
           </div>
