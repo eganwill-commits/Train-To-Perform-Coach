@@ -453,6 +453,28 @@ export default function Programs({ programs, addProgram, updateProgram, deletePr
   );
 }
 
+// Read-only caption showing the four equipment-tier swaps for an exercise
+function VariantHint({ ex }) {
+  if (!ex || !ex.variants) return null;
+  const rows = [
+    ["Full gym", ex.variants.full_gym],
+    ["No barbell", ex.variants.no_barbell],
+    ["No machines", ex.variants.no_machine],
+    ["DB / bodyweight", ex.variants.db_bodyweight],
+  ].filter(r => r[1]);
+  if (!rows.length) return null;
+  return (
+    <div style={{ marginTop: 6, padding: "6px 8px", background: "#EFF6FF", border: "1px solid #BFDBFE", borderRadius: 6 }}>
+      <div style={{ fontSize: 9, fontWeight: 700, color: "#1E3A8A", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 3 }}>Equipment options</div>
+      {rows.map(r => (
+        <div key={r[0]} style={{ fontSize: 11, color: "#1E3A8A", lineHeight: 1.35 }}>
+          <span style={{ fontWeight: 700 }}>{r[0]}:</span> {r[1]}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function ProgramDetail({ program, programs, exercises, cats, colors, addBlock, updateBlock, removeBlock, moveBlock, onBack, athletes, isMobile, submitDay, unlogDay, logs, copyToAthletes, updateProgram, groups, setLogs }) {
   // Keep a ref to latest program to prevent stale closures in async handlers
   const programRef = useRef(program);
@@ -868,6 +890,7 @@ function ProgramDetail({ program, programs, exercises, cats, colors, addBlock, u
                               <label style={{ fontSize: 10, color: "#71717A", display: "block", marginTop: 4 }}>Notes
                                 <BlurInput value={block.notes || ""} onSave={v => updateBlock(aw, di, bi, "notes", v)} placeholder="Coaching cues, modifications…" multiline style={{ width: "100%", padding: "6px 5px", border: "1px solid #E4E4E7", borderRadius: 6, fontSize: 14, fontFamily: "inherit", marginTop: 1, boxSizing: "border-box", minHeight: block.notes && block.notes.length > 60 ? 60 : undefined }} />
                               </label>
+                              <VariantHint ex={resolvedEx} />
                               {block.notes && !expandedBlock && <div style={{ fontSize: 11, color: "#71717A", marginTop: 4, fontStyle: "italic", whiteSpace: "pre-wrap", lineHeight: 1.4, wordBreak: "break-word" }}>{block.notes}</div>}
 
                               {/* Athlete's logged results */}
@@ -938,6 +961,7 @@ function ProgramDetail({ program, programs, exercises, cats, colors, addBlock, u
                         <label style={{ fontSize: 10, color: "#71717A", display: "block", marginTop: 4 }}>Notes
                           <BlurInput value={block.notes || ""} onSave={v => updateBlock(aw, di, bi, "notes", v)} placeholder="Coaching cues, modifications…" multiline style={{ width: "100%", padding: "4px 5px", border: "1px solid #E4E4E7", borderRadius: 6, fontSize: 13, fontFamily: "inherit", marginTop: 1, boxSizing: "border-box", minHeight: block.notes && block.notes.length > 60 ? 60 : undefined }} />
                         </label>
+                        <VariantHint ex={resolvedEx} />
 
                         {/* Athlete's logged results */}
                         {(() => {
