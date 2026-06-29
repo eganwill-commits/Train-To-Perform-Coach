@@ -4,6 +4,7 @@ import { supabase } from "../lib/supabase";
 import { PILLAR_COLORS, GENERIC_COLORS, NAV_ITEMS } from "../lib/constants";
 import Dashboard from "./Dashboard";
 import Athletes from "./Athletes";
+import AthleteView from "./AthleteView";
 import Programs from "./Programs";
 import Library from "./Library";
 import LogPage from "./LogPage";
@@ -41,6 +42,7 @@ export default function CoachApp({ onLogout }) {
   const [loaded, setLoaded] = useState(false);
   const [navOpen, setNavOpen] = useState(false);
   const [unreadMsgCount, setUnreadMsgCount] = useState(0);
+  const [previewAthlete, setPreviewAthlete] = useState(null);
   const isMobile = useIsMobile();
 
   const cats = usePillars ? Object.keys(PILLAR_COLORS) : Object.keys(GENERIC_COLORS);
@@ -384,7 +386,24 @@ export default function CoachApp({ onLogout }) {
     updateBaseline, addBaseline, deleteBaseline,
     addVideoSub, updateVideoSub, deleteVideoSub,
     saveSettings, resetAll,
+    viewAsAthlete: setPreviewAthlete,
   };
+
+  // Coach previewing an athlete's app (read the same data the athlete sees)
+  if (previewAthlete) {
+    const TIER_LABELS = { full_gym: "Full Gym", no_barbell: "No Barbell", no_machine: "No Machines", db_bodyweight: "Dumbbells & Bodyweight" };
+    return (
+      <div style={{ height: "100vh", display: "flex", flexDirection: "column", fontFamily: "'DM Sans', sans-serif" }}>
+        <div style={{ background: "#1E3A8A", color: "#fff", padding: "8px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 13, fontWeight: 600, flexShrink: 0 }}>
+          <span>👁 Previewing as {previewAthlete.name}{previewAthlete.equipment_tier ? ` · ${TIER_LABELS[previewAthlete.equipment_tier] || previewAthlete.equipment_tier}` : ""}</span>
+          <button onClick={() => setPreviewAthlete(null)} style={{ background: "#fff", color: "#1E3A8A", border: "none", borderRadius: 6, padding: "5px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Exit preview</button>
+        </div>
+        <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
+          <AthleteView athlete={previewAthlete} onLogout={() => setPreviewAthlete(null)} />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="t2p-root" style={{ fontFamily: "'DM Sans', sans-serif", display: "flex", background: "#FAFAFA", overflow: "hidden", position: "relative" }}>
