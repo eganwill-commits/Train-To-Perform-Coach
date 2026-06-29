@@ -1196,19 +1196,22 @@ function ProgramDetail({ program, programs, exercises, cats, colors, addBlock, u
             </div>
           </div>
 
-          {copyTargets.length > 0 && (
-            <Btn onClick={async () => {
+          <div style={{ position: "sticky", bottom: 0, background: "#fff", paddingTop: 10, marginTop: 2, borderTop: "1px solid #F4F4F5" }}>
+            <Btn disabled={copyTargets.length === 0} onClick={async () => {
+              if (copyTargets.length === 0) return;
               await copyToAthletes(program, copyTargets, copyMode, aw, copyDayIndex);
               setCopyOpen(false);
               setCopyTargets([]);
               alert(copyMode === "program" ? "Program copied!" : `${copyMode === "week" ? week.label : week.days[copyDayIndex]?.label} copied into existing programs!`);
-            }} style={{ marginTop: 4 }}>
-              {copyMode === "program"
-                ? `Copy Full Program to ${copyTargets.length} Athlete${copyTargets.length !== 1 ? "s" : ""}`
-                : `Paste ${copyMode === "week" ? week.label : `${week.label} ${week.days[copyDayIndex]?.label}`} into ${copyTargets.length} Program${copyTargets.length !== 1 ? "s" : ""}`
+            }} style={{ width: "100%", marginTop: 0 }}>
+              {copyTargets.length === 0
+                ? "Select at least one athlete to copy to"
+                : (copyMode === "program"
+                  ? `Copy Full Program to ${copyTargets.length} Athlete${copyTargets.length !== 1 ? "s" : ""}`
+                  : `Paste ${copyMode === "week" ? week.label : `${week.label} ${week.days[copyDayIndex]?.label}`} into ${copyTargets.length} Program${copyTargets.length !== 1 ? "s" : ""}`)
               }
             </Btn>
-          )}
+          </div>
         </div>
       </Modal>
     </div>
