@@ -1,15 +1,24 @@
 "use client";
 import { useState, useEffect } from "react";
-import { Badge, Btn, Card, Input, Modal, EmptyState } from "./ui";
+import { Badge, Btn, Card, Input, Modal, Select, EmptyState } from "./ui";
 
 function formatDate(d) {
   return new Date(d + "T12:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
 }
 
+// Equipment access tiers — match the keys in exercises.variants (see t2p_seed.sql)
+const TIER_OPTIONS = [
+  { value: "full_gym", label: "Full Gym (barbell + machines)" },
+  { value: "no_barbell", label: "No Barbell (machines + DBs)" },
+  { value: "no_machine", label: "No Machines (CrossFit)" },
+  { value: "db_bodyweight", label: "Dumbbells & Bodyweight" },
+];
+const TIER_LABEL = Object.fromEntries(TIER_OPTIONS.map(o => [o.value, o.label]));
+
 export default function Athletes({ athletes, addAthlete, updateAthlete, deleteAthlete, logs, colors, cats, isMobile, groups, groupAthletes, addAthleteToGroup, removeAthleteFromGroup, baselines, updateBaseline, addBaseline, deleteBaseline, videoSubs, updateVideoSub, deleteVideoSub, focusAthleteId, onFocusClear }) {
   const [modal, setModal] = useState(false);
   const [edit, setEdit] = useState(null);
-  const [form, setForm] = useState({ name: "", age: "", sport: "", notes: "" });
+  const [form, setForm] = useState({ name: "", age: "", sport: "", notes: "", equipment_tier: "full_gym" });
   const [showCode, setShowCode] = useState(null);
   const [detail, setDetail] = useState(null);
   const [expandedDay, setExpandedDay] = useState(null);
@@ -26,8 +35,8 @@ export default function Athletes({ athletes, addAthlete, updateAthlete, deleteAt
     }
   }, [focusAthleteId]);
 
-  const openNew = () => { setForm({ name: "", age: "", sport: "", notes: "" }); setEdit(null); setModal(true); };
-  const openEdit = (a) => { setForm({ name: a.name, age: a.age || "", sport: a.sport || "", notes: a.notes || "" }); setEdit(a.id); setModal(true); };
+  const openNew = () => { setForm({ name: "", age: "", sport: "", notes: "", equipment_tier: "full_gym" }); setEdit(null); setModal(true); };
+  const openEdit = (a) => { setForm({ name: a.name, age: a.age || "", sport: a.sport || "", notes: a.notes || "", equipment_tier: a.equipment_tier || "full_gym" }); setEdit(a.id); setModal(true); };
 
   const save = async () => {
     if (!form.name.trim()) return;
@@ -83,7 +92,7 @@ export default function Athletes({ athletes, addAthlete, updateAthlete, deleteAt
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", flexWrap: "wrap", gap: 12 }}>
             <div>
               <h2 style={{ margin: 0, fontSize: isMobile ? 22 : 28, fontFamily: "'Space Mono', monospace" }}>{activeAthlete.name}</h2>
-              <div style={{ fontSize: 14, color: "#71717A", marginTop: 4 }}>{activeAthlete.sport}{activeAthlete.age ? ` · Age ${activeAthlete.age}` : ""}</div>
+              <div style={{ fontSize: 14, color: "#71717A", marginTop: 4 }}>{activeAthlete.sport}{activeAthlete.age ? ` · Age ${activeAthlete.age}` : ""}{activeAthlete.equipment_tier ? ` · ${TIER_LABEL[activeAthlete.equipment_tier] || activeAthlete.equipment_tier}` : ""}</div>
               {activeAthlete.notes && <p style={{ fontSize: 13, color: "#52525B", marginTop: 8, lineHeight: 1.5 }}>{activeAthlete.notes}</p>}
             </div>
             <div style={{ display: "flex", gap: 8 }}>
@@ -382,6 +391,7 @@ export default function Athletes({ athletes, addAthlete, updateAthlete, deleteAt
             <Input label="Name" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
             <div style={{ display: "flex", gap: 12 }}><div style={{ flex: 1 }}><Input label="Age" type="number" value={form.age} onChange={e => setForm({ ...form, age: e.target.value })} /></div><div style={{ flex: 1 }}><Input label="Sport" value={form.sport} onChange={e => setForm({ ...form, sport: e.target.value })} /></div></div>
             <Input label="Notes" value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} />
+            <Select label="Equipment access" value={form.equipment_tier} onChange={e => setForm({ ...form, equipment_tier: e.target.value })} options={TIER_OPTIONS} />
             <Btn onClick={save} style={{ marginTop: 8 }}>Save</Btn>
           </div>
         </Modal>
@@ -413,6 +423,7 @@ export default function Athletes({ athletes, addAthlete, updateAthlete, deleteAt
                 <div style={{ display: "flex", gap: 12, marginTop: 10, fontSize: 12, color: "#71717A" }}>
                   <span>{athleteLogCount} workout{athleteLogCount !== 1 ? "s" : ""} logged</span>
                   {a.access_code && <span style={{ color: "#A1A1AA" }}>Code: ••••••</span>}
+                  {a.equipment_tier && a.equipment_tier !== "full_gym" && <span style={{ color: "#A1A1AA" }}>{TIER_LABEL[a.equipment_tier] || a.equipment_tier}</span>}
                 </div>
                 {athleteSeasons.length > 0 && (
                   <div style={{ display: "flex", gap: 4, marginTop: 8, flexWrap: "wrap" }}>
@@ -429,6 +440,7 @@ export default function Athletes({ athletes, addAthlete, updateAthlete, deleteAt
           <Input label="Name" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="Athlete name" />
           <div style={{ display: "flex", gap: 12 }}><div style={{ flex: 1 }}><Input label="Age" type="number" value={form.age} onChange={e => setForm({ ...form, age: e.target.value })} /></div><div style={{ flex: 1 }}><Input label="Sport" value={form.sport} onChange={e => setForm({ ...form, sport: e.target.value })} /></div></div>
           <Input label="Notes" value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} placeholder="Injury history, goals…" />
+          <Select label="Equipment access" value={form.equipment_tier} onChange={e => setForm({ ...form, equipment_tier: e.target.value })} options={TIER_OPTIONS} />
           <Btn onClick={save} style={{ marginTop: 8 }}>{edit ? "Save" : "Add Athlete"}</Btn>
         </div>
       </Modal>
