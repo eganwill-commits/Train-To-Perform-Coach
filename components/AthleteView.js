@@ -39,6 +39,25 @@ function weekdayOffset(label) {
   return m ? A_WDAYS[m[1]] : 0;
 }
 
+const DAY_WARMUPS = {
+  lowerA: "2\u20133 min easy bike/row \u2192 lower-body mobility (leg swings, deep bodyweight squats, walking lunges, ankle rocks) \u2192 glute bridges + dead bugs \u2192 2\u20133 ramp-up sets building to your first working Back Squat.",
+  lowerB: "2\u20133 min easy bike/row \u2192 hinge mobility (leg swings, 90/90 hips, hamstring sweeps, cat-cow) \u2192 glute bridges + dead bugs to set your brace \u2192 2\u20133 ramp-up sets building to your first working Deadlift.",
+  upperA: "2\u20133 min easy cardio \u2192 upper-body mobility (arm circles, band pull-aparts, scap push-ups, band shoulder dislocates) \u2192 a few light face pulls \u2192 2\u20133 ramp-up sets building to your first working Bench Press.",
+  upperB: "2\u20133 min easy cardio \u2192 overhead mobility (band dislocates, wall slides, thoracic extensions, lat stretch) \u2192 scap pull-ups + band pull-aparts \u2192 2\u20133 ramp-up sets building to your first working Pull-Up / Overhead Press.",
+  generic: "2\u20133 min easy cardio \u2192 dynamic mobility for the joints you train today \u2192 glute/core (lower) or scap/cuff (upper) activation \u2192 2\u20133 ramp-up sets on the day\u2019s first big lift.",
+};
+const WARMUP_NOTE = "Train solo with rack pins/safeties; never go to true failure on barbell squat, bench, or overhead press alone.";
+function warmupForDay(label) {
+  const t = (label || "").toLowerCase();
+  if (t.includes("squat")) return DAY_WARMUPS.lowerA;
+  if (t.includes("hinge") || t.includes("deadlift")) return DAY_WARMUPS.lowerB;
+  if (t.includes("horizontal")) return DAY_WARMUPS.upperA;
+  if (t.includes("vertical")) return DAY_WARMUPS.upperB;
+  if (t.includes("lower")) return (t.includes(" b") || t.includes("(b")) ? DAY_WARMUPS.lowerB : DAY_WARMUPS.lowerA;
+  if (t.includes("upper")) return (t.includes(" b") || t.includes("(b")) ? DAY_WARMUPS.upperB : DAY_WARMUPS.upperA;
+  return DAY_WARMUPS.generic;
+}
+
 export default function AthleteView({ athlete, onLogout, readOnly }) {
   const [page, setPage] = useState("my-program");
   const [programs, setPrograms] = useState([]);
@@ -606,6 +625,15 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
               </div>
             </div>
 
+            {(() => { const wu = warmupForDay(day.label); if (!wu) return null; return (
+              <details style={{ marginBottom: 8 }}>
+                <summary style={{ cursor: "pointer", fontSize: 12, fontWeight: 700, color: "#1E3A8A" }}>🔥 Warm-up (8–10 min)</summary>
+                <div style={{ marginTop: 6, padding: "8px 10px", background: "#EFF6FF", border: "1px solid #BFDBFE", borderRadius: 8, fontSize: 12, color: "#1E3A8A", lineHeight: 1.5 }}>
+                  {wu}
+                  <div style={{ marginTop: 6, color: "#52525B", fontStyle: "italic" }}>{WARMUP_NOTE}</div>
+                </div>
+              </details>
+            ); })()}
             {day.blocks.map(block => {
               const cc = colors[block.category];
               const videoUrl = getVideoUrl(block);
