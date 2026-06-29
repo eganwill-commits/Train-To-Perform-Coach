@@ -12,7 +12,11 @@ const uid = () => Math.random().toString(36).slice(2, 10);
 // so existing programs are unaffected.
 const MONTHS = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 };
 const WDAYS = { mon: 0, tue: 1, wed: 2, thu: 3, fri: 4, sat: 5, sun: 6 };
-function weekStartFromLabel(label, idx) {
+function weekStartFromLabel(label, idx, startDate) {
+  if (startDate) {
+    const p = String(startDate).split("-").map(Number);
+    if (p[0] && p[1] && p[2]) { const d = new Date(p[0], p[1] - 1, p[2]); d.setDate(d.getDate() + idx * 7); return d; }
+  }
   const m = (label || "").match(/(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(\d{1,2})/i);
   if (m) return new Date(2026, MONTHS[m[1].slice(0, 3).toLowerCase()], parseInt(m[2], 10));
   return new Date(2026, 3, 6 + idx * 7);
@@ -24,7 +28,7 @@ function weekdayOffset(label) {
 
 export default function Programs({ programs, addProgram, updateProgram, deleteProgram, athletes, exercises, cats, colors, isMobile, submitDay, unlogDay, logs, groups, setLogs, addGroup, addAthleteToGroup, addSeasonMembership }) {
   const [modal, setModal] = useState(false);
-  const [form, setForm] = useState({ name: "", selectedAthletes: [], weeks: 4, description: "", group_id: "", trackAsSeason: false });
+  const [form, setForm] = useState({ name: "", selectedAthletes: [], weeks: 4, description: "", group_id: "", trackAsSeason: false, start_date: "" });
   const [detail, setDetail] = useState(null);
   const [folderKey, setFolderKey] = useState(null);
   const [addAthModal, setAddAthModal] = useState(false);
@@ -32,7 +36,7 @@ export default function Programs({ programs, addProgram, updateProgram, deletePr
   const [renameOpen, setRenameOpen] = useState(false);
   const [renameVal, setRenameVal] = useState("");
 
-  const openNew = () => { setForm({ name: "", selectedAthletes: [], weeks: 4, description: "", group_id: groups?.[0]?.id || "", trackAsSeason: false }); setModal(true); };
+  const openNew = () => { const t = new Date(); const add = ((8 - t.getDay()) % 7) || 7; const nm = new Date(t); nm.setDate(t.getDate() + add); const iso = `${nm.getFullYear()}-${String(nm.getMonth() + 1).padStart(2, "0")}-${String(nm.getDate()).padStart(2, "0")}`; setForm({ name: "", selectedAthletes: [], weeks: 4, description: "", group_id: groups?.[0]?.id || "", trackAsSeason: false, start_date: iso }); setModal(true); };
 
   const toggleAthlete = (id) => {
     setForm(prev => ({
@@ -65,7 +69,7 @@ export default function Programs({ programs, addProgram, updateProgram, deletePr
 
     let lastProg = null;
     for (const athId of targets) {
-      const prog = await addProgram({ name: form.name, athlete_id: athId, description: form.description, weeks: makeWeeks(), group_id: groupId });
+      const prog = await addProgram({ name: form.name, athlete_id: athId, description: form.description, weeks: makeWeeks(), group_id: groupId, start_date: form.start_date || null });
       if (prog) lastProg = prog;
     }
 
@@ -423,6 +427,7 @@ export default function Programs({ programs, addProgram, updateProgram, deletePr
             </div>
           )}
           <Input label="Weeks" type="number" value={form.weeks} onChange={e => setForm({ ...form, weeks: e.target.value })} min={1} max={52} />
+          <Input label="Start date (Week 1 Monday)" type="date" value={form.start_date} onChange={e => setForm({ ...form, start_date: e.target.value })} />
           <label style={{ display: "flex", alignItems: "start", gap: 10, padding: "10px 12px", border: `1px solid ${form.trackAsSeason ? "#16A34A" : "#E4E4E7"}`, borderRadius: 8, cursor: "pointer", background: form.trackAsSeason ? "#F0FDF4" : "#fff" }}>
             <input type="checkbox" checked={form.trackAsSeason} onChange={e => setForm({ ...form, trackAsSeason: e.target.checked })} style={{ accentColor: "#16A34A", marginTop: 2 }} />
             <div>
@@ -710,6 +715,12 @@ function ProgramDetail({ program, programs, exercises, cats, colors, addBlock, u
         </select>
       </div>
 
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
+        <span style={{ fontSize: 12, fontWeight: 600, color: "#71717A" }}>Start date:</span>
+        <input type="date" value={program.start_date || ""} onChange={e => updateProgram(program.id, { start_date: e.target.value || null })} style={{ padding: "4px 8px", border: "1px solid #E4E4E7", borderRadius: 6, fontSize: 13, fontFamily: "inherit", background: "#fff", cursor: "pointer" }} />
+        <span style={{ fontSize: 11, color: "#A1A1AA" }}>Week 1 Monday — sets every week/day date</span>
+      </div>
+
       {/* Notes Board */}
       <NotesBoard athleteId={program.athlete_id} authorName="Coach" authorRole="coach" isMobile={isMobile} />
 
@@ -720,7 +731,7 @@ function ProgramDetail({ program, programs, exercises, cats, colors, addBlock, u
           const bgColor = aw === i ? "#18181B" : st === "completed" ? "#16A34A" : st === "missed" ? "#DC2626" : "#fff";
           const textColor = aw === i ? "#fff" : st === "completed" || st === "missed" ? "#fff" : "#52525B";
           const borderColor = aw === i ? "#18181B" : isCurrent && aw !== i ? "#F59E0B" : st === "completed" ? "#16A34A" : st === "missed" ? "#DC2626" : "#E4E4E7";
-          const weekStart = weekStartFromLabel(w.label, i);
+          const weekStart = weekStartFromLabel(w.label, i, program.start_date);
           const weekEnd = new Date(weekStart); weekEnd.setDate(weekStart.getDate() + 4);
           const fmt = (d) => d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
           return (
@@ -763,7 +774,7 @@ function ProgramDetail({ program, programs, exercises, cats, colors, addBlock, u
                   {day.status === "missed" && <span style={{ color: "#DC2626", fontWeight: 700, fontSize: 14 }}>✗</span>}
                   <h4 style={{ margin: 0, fontSize: 15 }}>{day.label}
                     <span style={{ fontWeight: 400, fontSize: 12, color: "#71717A", marginLeft: 6 }}>
-                      {(() => { const ws = weekStartFromLabel(week.label, aw); const d = new Date(ws); d.setDate(ws.getDate() + weekdayOffset(day.label)); return d.toLocaleDateString("en-US", { month: "short", day: "numeric" }); })()}
+                      {(() => { const ws = weekStartFromLabel(week.label, aw, program.start_date); const d = new Date(ws); d.setDate(ws.getDate() + weekdayOffset(day.label)); return d.toLocaleDateString("en-US", { month: "short", day: "numeric" }); })()}
                     </span>
                   </h4>
                 </div>
