@@ -23,7 +23,7 @@ function variantName(ex, tier) {
   return (ex.variants && ex.variants[t]) || ex.name || "";
 }
 
-export default function AthleteView({ athlete, onLogout }) {
+export default function AthleteView({ athlete, onLogout, readOnly }) {
   const [page, setPage] = useState("my-program");
   const [programs, setPrograms] = useState([]);
   const [exercises, setExercises] = useState([]);
@@ -143,6 +143,14 @@ export default function AthleteView({ athlete, onLogout }) {
 
   const nav = (id) => { setPage(id); if (isMobile) setNavOpen(false); };
   const toastNav = (targetPage) => { setPage(targetPage === "messages" ? "messages" : "my-program"); if (isMobile) setNavOpen(false); };
+  // Coach preview is read-only: neutralize every write so nothing is saved
+  const ro = !!readOnly;
+  const addLogRO = ro ? null : addLog;
+  const addVideoSubRO = ro ? null : addVideoSub;
+  const deleteVideoSubRO = ro ? null : deleteVideoSub;
+  const deleteLogRO = ro ? null : deleteLog;
+  const deleteDayLogsRO = ro ? null : deleteDayLogs;
+  const updateBaselineRO = ro ? null : updateBaseline;
 
   if (!loaded) return <div className="t2p-root" style={{ display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'DM Sans', sans-serif" }}><p style={{ color: "#71717A" }}>Loading…</p></div>;
 
@@ -194,11 +202,11 @@ export default function AthleteView({ athlete, onLogout }) {
           </header>
         )}
         <main className="t2p-main" style={{ flex: 1, padding: isMobile ? "12px 10px" : 32, maxWidth: "100%", overflowX: "hidden" }}>
-          {page === "my-program" && <MyProgram programs={programs} setPrograms={setPrograms} exercises={exercises} colors={colors} cats={cats} isMobile={isMobile} athlete={athlete} addLog={addLog} logs={logs} groups={groups} addVideoSub={addVideoSub} videoSubs={videoSubs} deleteVideoSub={deleteVideoSub} />}
-          {page === "my-baselines" && <MyBaselines baselines={baselines} updateBaseline={updateBaseline} isMobile={isMobile} />}
-          {page === "my-logs" && <MyLogs logs={logs} colors={colors} cats={cats} isMobile={isMobile} deleteLog={deleteLog} deleteDayLogs={deleteDayLogs} />}
-          {page === "my-videos" && <MyVideos videoSubs={videoSubs} addVideoSub={addVideoSub} deleteVideoSub={deleteVideoSub} athlete={athlete} exercises={exercises} cats={cats} colors={colors} isMobile={isMobile} />}
-          {page === "messages" && <Messages currentUserId={athlete.id} currentUserName={athlete.name} isMobile={isMobile} />}
+          {page === "my-program" && <MyProgram programs={programs} setPrograms={setPrograms} exercises={exercises} colors={colors} cats={cats} isMobile={isMobile} athlete={athlete} addLog={addLogRO} logs={logs} groups={groups} addVideoSub={addVideoSubRO} videoSubs={videoSubs} deleteVideoSub={deleteVideoSubRO} />}
+          {page === "my-baselines" && <MyBaselines baselines={baselines} updateBaseline={updateBaselineRO} isMobile={isMobile} />}
+          {page === "my-logs" && <MyLogs logs={logs} colors={colors} cats={cats} isMobile={isMobile} deleteLog={deleteLogRO} deleteDayLogs={deleteDayLogsRO} />}
+          {page === "my-videos" && <MyVideos videoSubs={videoSubs} addVideoSub={addVideoSubRO} deleteVideoSub={deleteVideoSubRO} athlete={athlete} exercises={exercises} cats={cats} colors={colors} isMobile={isMobile} />}
+          {page === "messages" && (ro ? <div style={{ padding: 24, color: "#71717A", fontSize: 14 }}>Messaging is disabled in coach preview.</div> : <Messages currentUserId={athlete.id} currentUserName={athlete.name} isMobile={isMobile} />)}
           {page === "ai-chat" && <AIChat isMobile={isMobile} athleteName={athlete.name} athlete={athlete} programs={programs} logs={logs} baselines={baselines} videoSubs={videoSubs} />}
         </main>
       </div>
@@ -957,7 +965,7 @@ function MyLogs({ logs, colors, cats, isMobile, deleteLog, deleteDayLogs }) {
                                   </div>
                                   <div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0 }}>
                                     <span style={{ fontSize: 12, color: "#A1A1AA" }}>{isExOpen ? "▲" : "▸"}</span>
-                                    <button onClick={(e) => { e.stopPropagation(); if (confirm("Delete this exercise?")) deleteLog(l.id); }} style={{ background: "none", border: "none", cursor: "pointer", color: "#D4D4D8", fontSize: 14 }} title="Delete">✕</button>
+                                    <button onClick={(e) => { e.stopPropagation(); if (!deleteLog) return; if (confirm("Delete this exercise?")) deleteLog(l.id); }} style={{ background: "none", border: "none", cursor: "pointer", color: "#D4D4D8", fontSize: 14 }} title="Delete">✕</button>
                                   </div>
                                 </div>
                                 {isExOpen && (
@@ -996,7 +1004,7 @@ function MyLogs({ logs, colors, cats, isMobile, deleteLog, deleteDayLogs }) {
                       );
                     })}
                     <div style={{ marginTop: 8, paddingTop: 10, borderTop: "1px solid #E4E4E7" }}>
-                      <button onClick={(e) => { e.stopPropagation(); if (confirm(`Delete all ${day.entries.length} exercises for this workout?`)) { deleteDayLogs(day.date, day.day_label); setExpandedDay(null); } }} style={{ width: "100%", padding: "8px", background: "#FEE2E2", color: "#DC2626", border: "none", borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>
+                      <button onClick={(e) => { e.stopPropagation(); if (!deleteDayLogs) return; if (confirm(`Delete all ${day.entries.length} exercises for this workout?`)) { deleteDayLogs(day.date, day.day_label); setExpandedDay(null); } }} style={{ width: "100%", padding: "8px", background: "#FEE2E2", color: "#DC2626", border: "none", borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>
                         Delete Entire Workout ({day.entries.length} exercises)
                       </button>
                     </div>
@@ -1031,6 +1039,7 @@ function MyVideos({ videoSubs, addVideoSub, deleteVideoSub, athlete, exercises, 
   };
 
   const uploadAndSubmit = async () => {
+    if (!addVideoSub) return;
     if (uploadMode === "link") {
       if (!form.video_url.trim()) return;
       await addVideoSub({
@@ -1074,7 +1083,7 @@ function MyVideos({ videoSubs, addVideoSub, deleteVideoSub, athlete, exercises, 
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24, gap: 12 }}>
         <h2 style={{ margin: 0, fontSize: isMobile ? 22 : 28, fontFamily: "'Space Mono', monospace" }}>My Videos</h2>
-        <Btn onClick={() => { setForm({ exercise_name: exercises[0]?.name || "", video_url: "", notes: "" }); setSelectedFile(null); setUploadMode("upload"); setModal(true); }} small={isMobile}>+ Submit Video</Btn>
+        {addVideoSub && <Btn onClick={() => { setForm({ exercise_name: exercises[0]?.name || "", video_url: "", notes: "" }); setSelectedFile(null); setUploadMode("upload"); setModal(true); }} small={isMobile}>+ Submit Video</Btn>}
       </div>
 
       <Card style={{ marginBottom: 20, padding: 16, background: "#F9FAFB" }}>
@@ -1188,11 +1197,13 @@ function MyBaselines({ baselines, updateBaseline, isMobile }) {
   const [form, setForm] = useState({});
 
   const startEdit = (b) => {
+    if (!updateBaseline) return;
     setEditing(b.id);
     setForm({ week1_result: b.week1_result || "", week1_notes: b.week1_notes || "", week12_result: b.week12_result || "", week12_notes: b.week12_notes || "" });
   };
 
   const save = async (id) => {
+    if (!updateBaseline) return;
     await updateBaseline(id, form);
     setEditing(null);
   };
@@ -1217,7 +1228,7 @@ function MyBaselines({ baselines, updateBaseline, isMobile }) {
                     <div style={{ fontWeight: 700, fontSize: 16 }}>{b.movement}</div>
                     <div style={{ fontSize: 12, color: "#71717A", marginTop: 2 }}>Target: <strong>{b.target}</strong> <span style={{ color: "#A1A1AA" }}>({b.units})</span></div>
                   </div>
-                  {!isEditing && (
+                  {!isEditing && updateBaseline && (
                     <button onClick={() => startEdit(b)} style={{ background: "none", border: "1px solid #E4E4E7", borderRadius: 6, padding: "4px 12px", fontSize: 12, cursor: "pointer", fontFamily: "inherit", color: "#52525B", fontWeight: 600 }}>
                       {hasW1 || hasW12 ? "Edit" : "Add Results"}
                     </button>
