@@ -26,6 +26,25 @@ function weekdayOffset(label) {
   return m ? WDAYS[m[1]] : 0;
 }
 
+const DAY_WARMUPS = {
+  lowerA: "2–3 min easy bike/row → lower-body mobility (leg swings, deep bodyweight squats, walking lunges, ankle rocks) → glute bridges + dead bugs → 2–3 ramp-up sets building to your first working Back Squat.",
+  lowerB: "2–3 min easy bike/row → hinge mobility (leg swings, 90/90 hips, hamstring sweeps, cat-cow) → glute bridges + dead bugs to set your brace → 2–3 ramp-up sets building to your first working Deadlift.",
+  upperA: "2–3 min easy cardio → upper-body mobility (arm circles, band pull-aparts, scap push-ups, band shoulder dislocates) → a few light face pulls → 2–3 ramp-up sets building to your first working Bench Press.",
+  upperB: "2–3 min easy cardio → overhead mobility (band dislocates, wall slides, thoracic extensions, lat stretch) → scap pull-ups + band pull-aparts → 2–3 ramp-up sets building to your first working Pull-Up / Overhead Press.",
+  generic: "2–3 min easy cardio → dynamic mobility for the joints you train today → glute/core (lower) or scap/cuff (upper) activation → 2–3 ramp-up sets on the day\u2019s first big lift.",
+};
+const WARMUP_NOTE = "Train solo with rack pins/safeties; never go to true failure on barbell squat, bench, or overhead press alone.";
+function warmupForDay(label) {
+  const t = (label || "").toLowerCase();
+  if (t.includes("squat")) return DAY_WARMUPS.lowerA;
+  if (t.includes("hinge") || t.includes("deadlift")) return DAY_WARMUPS.lowerB;
+  if (t.includes("horizontal")) return DAY_WARMUPS.upperA;
+  if (t.includes("vertical")) return DAY_WARMUPS.upperB;
+  if (t.includes("lower")) return (t.includes(" b") || t.includes("(b")) ? DAY_WARMUPS.lowerB : DAY_WARMUPS.lowerA;
+  if (t.includes("upper")) return (t.includes(" b") || t.includes("(b")) ? DAY_WARMUPS.upperB : DAY_WARMUPS.upperA;
+  return DAY_WARMUPS.generic;
+}
+
 export default function Programs({ programs, addProgram, updateProgram, deleteProgram, athletes, exercises, cats, colors, isMobile, submitDay, unlogDay, logs, groups, setLogs, addGroup, addAthleteToGroup, addSeasonMembership }) {
   const [modal, setModal] = useState(false);
   const [form, setForm] = useState({ name: "", selectedAthletes: [], weeks: 4, description: "", group_id: "", trackAsSeason: false, start_date: "" });
@@ -795,6 +814,15 @@ function ProgramDetail({ program, programs, exercises, cats, colors, addBlock, u
                   </div>
                 </div>
               </div>
+              {(() => { const wu = warmupForDay(day.label); if (!wu) return null; return (
+                <details style={{ marginBottom: 8 }}>
+                  <summary style={{ cursor: "pointer", fontSize: 12, fontWeight: 700, color: "#1E3A8A" }}>🔥 Warm-up (8–10 min)</summary>
+                  <div style={{ marginTop: 6, padding: "8px 10px", background: "#EFF6FF", border: "1px solid #BFDBFE", borderRadius: 8, fontSize: 12, color: "#1E3A8A", lineHeight: 1.5 }}>
+                    {wu}
+                    <div style={{ marginTop: 6, color: "#52525B", fontStyle: "italic" }}>{WARMUP_NOTE}</div>
+                  </div>
+                </details>
+              ); })()}
               {day.blocks.length === 0 && <p style={{ color: "#A1A1AA", fontSize: 13, textAlign: "center", padding: 12 }}>Empty</p>}
               {(() => {
                 // STRICT: Only match logs for this exact week+day
