@@ -303,10 +303,34 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
     }
   }, [selectedProg]);
 
+  // Per-exercise equipment choice — defaults to the athlete's tier, remembered per device
+  const EQUIP_OPTIONS = [
+    { value: "full_gym", label: "Full gym" },
+    { value: "no_barbell", label: "No barbell" },
+    { value: "no_machine", label: "No machines" },
+    { value: "db_bodyweight", label: "DB / bodyweight" },
+  ];
+  const equipKey = `t2p_equip_${athlete?.id || "x"}`;
+  const canPersist = !!addLog; // false in coach preview (read-only)
+  const [blockTier, setBlockTier] = useState(() => {
+    if (typeof window === "undefined") return {};
+    try { return JSON.parse(window.localStorage.getItem(equipKey) || "{}"); } catch { return {}; }
+  });
+  const tierFor = (block) => blockTier[block.id] || athlete?.equipment_tier || "full_gym";
+  const setTier = (blockId, tier) => setBlockTier(prev => {
+    const next = { ...prev, [blockId]: tier };
+    if (canPersist && typeof window !== "undefined") { try { window.localStorage.setItem(equipKey, JSON.stringify(next)); } catch (e) {} }
+    return next;
+  });
+  const exerciseFor = (block) => {
+    if (block.exerciseId) { const f = exercises.find(e => e.id === block.exerciseId); if (f) return f; }
+    if (block.exerciseName) { const f = exercises.find(e => e.name === block.exerciseName); if (f) return f; }
+    return null;
+  };
   const getDisplayName = (block) => {
-    if (block.exerciseId) { const f = exercises.find(e => e.id === block.exerciseId); if (f) return variantName(f, athlete?.equipment_tier); }
-    if (block.exerciseName) { const f = exercises.find(e => e.name === block.exerciseName); if (f) return variantName(f, athlete?.equipment_tier); return block.exerciseName; }
-    return "—";
+    const f = exerciseFor(block);
+    if (f) return variantName(f, tierFor(block));
+    return block.exerciseName || "—";
   };
   const getVideoUrl = (block) => {
     if (block.exerciseId) { const f = exercises.find(e => e.id === block.exerciseId); if (f && f.video_url) return f.video_url; }
@@ -625,6 +649,28 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
                   {/* Expanded */}
                   {isOpen && (
                     <div style={{ padding: "0 8px 10px", borderTop: `1px solid ${cc?.border || "#E4E4E7"}` }}>
+                      {/* Equipment options — athlete picks what they have today */}
+                      {(() => {
+                        const exo = exerciseFor(block);
+                        if (!exo || !exo.variants) return null;
+                        const cur = tierFor(block);
+                        const opts = EQUIP_OPTIONS.filter(o => exo.variants[o.value]);
+                        if (opts.length <= 1) return null;
+                        return (
+                          <div style={{ marginTop: 8, padding: "8px", background: "#fff", border: "1px solid #E4E4E7", borderRadius: 8 }}>
+                            <div style={{ fontSize: 10, fontWeight: 700, color: "#71717A", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 6 }}>Equipment — pick what you have today</div>
+                            <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                              {opts.map(o => {
+                                const active = cur === o.value;
+                                return (
+                                  <button key={o.value} onClick={() => setTier(block.id, o.value)} style={{ padding: "4px 10px", borderRadius: 999, border: active ? "2px solid #2563EB" : "1px solid #D4D4D8", background: active ? "#EFF6FF" : "#fff", color: active ? "#1E3A8A" : "#52525B", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>{o.label}</button>
+                                );
+                              })}
+                            </div>
+                            <div style={{ fontSize: 13, color: "#18181B", marginTop: 6, fontWeight: 600 }}>{exo.variants[cur] || exo.name}</div>
+                          </div>
+                        );
+                      })()}
                       {/* Programmed values */}
                       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 4, marginTop: 8 }}>
                         {block.sets && <div><div style={{ fontSize: 9, color: "#71717A", fontWeight: 700 }}>SETS</div><div style={{ fontSize: 16, fontWeight: 700 }}>{block.sets}</div></div>}
