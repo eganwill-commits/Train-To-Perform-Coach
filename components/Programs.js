@@ -814,7 +814,7 @@ function ProgramDetail({ program, programs, exercises, cats, colors, addBlock, u
                   </div>
                 </div>
               </div>
-              {(() => { const wu = warmupForDay(day.label); if (!wu) return null; return (
+              {(() => { const wu = warmupForDay(day.label); if (!wu || !/hypertroph/i.test((program && program.name) || "")) return null; return (
                 <details style={{ marginBottom: 8 }}>
                   <summary style={{ cursor: "pointer", fontSize: 12, fontWeight: 700, color: "#1E3A8A" }}>🔥 Warm-up (8–10 min)</summary>
                   <div style={{ marginTop: 6, padding: "8px 10px", background: "#EFF6FF", border: "1px solid #BFDBFE", borderRadius: 8, fontSize: 12, color: "#1E3A8A", lineHeight: 1.5 }}>
