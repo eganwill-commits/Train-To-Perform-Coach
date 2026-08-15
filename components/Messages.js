@@ -157,7 +157,17 @@ export default function Messages({ isCoach, currentUserId, currentUserName, athl
         setPendingFile({ file, name: file.name, size: file.size, type, preview });
       }
     } else {
-      setPendingFile({ file, name: file.name, size: file.size, type, preview });
+      // Materialise the bytes now. On iOS a File is a reference to an OS-managed asset
+      // that goes stale once the picker closes; because this uploads via raw XHR, a stale
+      // reference sends an EMPTY body and still returns 200 — a silently corrupt upload.
+      try {
+        const blob = new Blob([await file.arrayBuffer()], { type: file.type || "video/mp4" });
+        if (!blob.size) { alert("That video came back empty. Try again, or paste a link instead."); e.target.value = ""; return; }
+        setPendingFile({ file: blob, name: file.name, size: blob.size, type, preview });
+      } catch {
+        alert("Could not read that video. Try again, or paste a link instead.");
+        e.target.value = ""; return;
+      }
     }
     e.target.value = "";
   };
@@ -191,6 +201,7 @@ export default function Messages({ isCoach, currentUserId, currentUserName, athl
       xhr.setRequestHeader("apikey", supabaseAnonKey);
       xhr.setRequestHeader("x-upsert", "false");
       xhr.setRequestHeader("Cache-Control", "max-age=3600");
+      if (!file || !file.size) { reject(new Error("File is empty — nothing to upload")); return; }
       xhr.send(file);
     });
   };

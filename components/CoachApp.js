@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect, useCallback, useRef } from "react";
-import { supabase } from "../lib/supabase";
+import { supabase, supabaseUrl, supabaseAnonKey } from "../lib/supabase";
 import { PILLAR_COLORS, GENERIC_COLORS, NAV_ITEMS } from "../lib/constants";
 import Dashboard from "./Dashboard";
 import Athletes from "./Athletes";
@@ -132,15 +132,36 @@ export default function CoachApp({ onLogout }) {
     setAthletes(newAthletes);
   }, []);
 
+  // Give an athlete (or every athlete) a real login behind their access code.
+  // Runs server-side via the provision-athlete edge function, which is coach-only.
+  const provisionLogin = useCallback(async (payload) => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return { ok: false, error: "Not signed in" };
+    const res = await fetch(`${supabaseUrl}/functions/v1/provision-athlete`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}`, apikey: supabaseAnonKey },
+      body: JSON.stringify(payload),
+    });
+    try { return await res.json(); } catch { return { ok: false, error: `HTTP ${res.status}` }; }
+  }, []);
+
   const addAthlete = useCallback(async (athlete) => {
     const { data, error } = await supabase.from("athletes").insert(athlete).select().single();
-    if (!error && data) setAthletes(prev => [...prev, data]);
-  }, []);
+    if (!error && data) {
+      setAthletes(prev => [...prev, data]);
+      const r = await provisionLogin({ athlete_id: data.id });   // login ready immediately
+      if (!r?.ok) alert("Athlete saved, but their login could not be set up: " + (r?.error || r?.results?.[0]?.error || "unknown error"));
+    }
+  }, [provisionLogin]);
 
   const updateAthlete = useCallback(async (id, updates) => {
     const { error } = await supabase.from("athletes").update(updates).eq("id", id);
-    if (!error) setAthletes(prev => prev.map(a => a.id === id ? { ...a, ...updates } : a));
-  }, []);
+    if (!error) {
+      setAthletes(prev => prev.map(a => a.id === id ? { ...a, ...updates } : a));
+      // Changing the code changes the credential, so refresh the login behind it.
+      if (updates.access_code) await provisionLogin({ athlete_id: id });
+    }
+  }, [provisionLogin]);
 
   const deleteAthlete = useCallback(async (id) => {
     await supabase.from("athletes").delete().eq("id", id);
@@ -377,7 +398,7 @@ export default function CoachApp({ onLogout }) {
   const pp = {
     athletes, programs, exercises, logs, setLogs, cats, colors, usePillars, isMobile, setPage: nav,
     groups, groupAthletes, baselines, videoSubs,
-    addAthlete, updateAthlete, deleteAthlete,
+    addAthlete, updateAthlete, deleteAthlete, provisionLogin,
     addProgram, updateProgram, deleteProgram,
     addExercise, deleteExercise, updateExercise,
     addLog, deleteLog, submitDay, unlogDay,

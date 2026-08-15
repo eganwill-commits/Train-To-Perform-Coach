@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { supabase } from "../lib/supabase";
+import { supabase, supabaseUrl, supabaseAnonKey } from "../lib/supabase";
 import { Btn, Input } from "./ui";
 import T2PLogo from "./T2PLogo";
 
@@ -40,10 +40,33 @@ export default function LoginPage({ onCoachLogin, onAthleteLogin }) {
 
   const handleAthleteLogin = async () => {
     setError(""); setLoading(true);
+    const entered = code.toUpperCase().trim();
+
+    // Preferred path: the code is validated server-side and we get a real session,
+    // so every request afterwards carries an identity the database can enforce against.
+    try {
+      const res = await fetch(`${supabaseUrl}/functions/v1/athlete-login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", apikey: supabaseAnonKey },
+        body: JSON.stringify({ access_code: entered }),
+      });
+      const out = await res.json();
+      if (res.ok && out?.ok && out.access_token) {
+        await supabase.auth.setSession({ access_token: out.access_token, refresh_token: out.refresh_token });
+        const { data: full } = await supabase.from("athletes").select("*").eq("id", out.athlete.id).single();
+        onAthleteLogin(full || out.athlete);
+        setLoading(false);
+        return;
+      }
+    } catch {
+      // network/function problem — fall through to the legacy path below
+    }
+
+    // Fallback for athletes whose login has not been provisioned yet.
     const { data: athlete, error: err } = await supabase
       .from("athletes")
       .select("*")
-      .eq("access_code", code.toUpperCase().trim())
+      .eq("access_code", entered)
       .single();
     if (err || !athlete) { setError("Invalid access code. Check with your coach."); setLoading(false); return; }
     onAthleteLogin(athlete);

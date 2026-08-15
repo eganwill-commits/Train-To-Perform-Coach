@@ -16,9 +16,23 @@ const TIER_OPTIONS = [
 ];
 const TIER_LABEL = Object.fromEntries(TIER_OPTIONS.map(o => [o.value, o.label]));
 
-export default function Athletes({ athletes, addAthlete, updateAthlete, deleteAthlete, logs, colors, cats, isMobile, groups, groupAthletes, addAthleteToGroup, removeAthleteFromGroup, baselines, updateBaseline, addBaseline, deleteBaseline, videoSubs, updateVideoSub, deleteVideoSub, viewAsAthlete, focusAthleteId, onFocusClear }) {
+// 8 characters: 3 from the name + 5 random. Alphabet excludes I/O/0/1 so a code
+// can be read aloud or typed from a text message without ambiguity.
+const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+function makeAccessCode(name) {
+  const prefix = (name || "ATH").replace(/[^a-zA-Z]/g, "").slice(0, 3).toUpperCase().padEnd(3, "X");
+  let rest = "";
+  const buf = new Uint32Array(5);
+  (globalThis.crypto || window.crypto).getRandomValues(buf);
+  for (let i = 0; i < 5; i++) rest += CODE_ALPHABET[buf[i] % CODE_ALPHABET.length];
+  return prefix + rest;
+}
+
+export default function Athletes({ athletes, addAthlete, updateAthlete, deleteAthlete, logs, colors, cats, isMobile, groups, groupAthletes, addAthleteToGroup, removeAthleteFromGroup, baselines, updateBaseline, addBaseline, deleteBaseline, videoSubs, updateVideoSub, deleteVideoSub, viewAsAthlete, focusAthleteId, onFocusClear, provisionLogin }) {
   const [modal, setModal] = useState(false);
   const [edit, setEdit] = useState(null);
+  const [backfilling, setBackfilling] = useState(false);
+  const needLogin = (athletes || []).filter(a => !a.auth_user_id);
   const [form, setForm] = useState({ name: "", age: "", sport: "", notes: "", equipment_tier: "full_gym" });
   const [showCode, setShowCode] = useState(null);
   const [detail, setDetail] = useState(null);
@@ -42,7 +56,7 @@ export default function Athletes({ athletes, addAthlete, updateAthlete, deleteAt
   const save = async () => {
     if (!form.name.trim()) return;
     if (edit) { await updateAthlete(edit, form); }
-    else { await addAthlete({ ...form, access_code: form.name.slice(0, 3).toUpperCase() + Math.random().toString(36).slice(2, 5).toUpperCase() }); }
+    else { await addAthlete({ ...form, access_code: makeAccessCode(form.name) }); }
     setModal(false);
   };
 
@@ -404,6 +418,24 @@ export default function Athletes({ athletes, addAthlete, updateAthlete, deleteAt
   // Athletes list view
   return (
     <div>
+      {provisionLogin && needLogin.length > 0 && (
+        <div style={{ marginBottom: 14, padding: "10px 14px", background: "#FFF7ED", border: "1px solid #FDBA74", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+          <div style={{ fontSize: 13, color: "#9A3412" }}>
+            <b>{needLogin.length}</b> athlete{needLogin.length !== 1 ? "s" : ""} still sign in the old way. Set up their logins so their data is protected.
+          </div>
+          <button
+            disabled={backfilling}
+            onClick={async () => {
+              setBackfilling(true);
+              const r = await provisionLogin({ all: true });
+              setBackfilling(false);
+              const failed = (r?.results || []).filter(x => !x.ok);
+              alert(failed.length ? "Some logins could not be set up:\n" + failed.map(f => `${f.name}: ${f.error}`).join("\n") : "All athlete logins are set up. Ask them to sign in with the same code as before.");
+            }}
+            style={{ padding: "7px 14px", background: "#9A3412", color: "#fff", border: "none", borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: backfilling ? "default" : "pointer", fontFamily: "inherit", opacity: backfilling ? 0.6 : 1 }}
+          >{backfilling ? "Setting up…" : "Set up logins"}</button>
+        </div>
+      )}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24, gap: 12 }}>
         <h2 style={{ margin: 0, fontSize: isMobile ? 22 : 28, fontFamily: "'Space Mono', monospace" }}>Athletes</h2>
         <Btn onClick={openNew} small={isMobile}>+ Add</Btn>
