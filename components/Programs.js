@@ -4,6 +4,7 @@ import { Badge, Btn, Card, Input, Select, Modal, EmptyState, SearchableSelect, B
 import { supabase } from "../lib/supabase";
 import { printDay } from "./printHelper";
 import NotesBoard from "./NotesBoard";
+import ProgramBrief, { briefSummary } from "./ProgramBrief";
 
 const uid = () => Math.random().toString(36).slice(2, 10);
 
@@ -377,7 +378,7 @@ export default function Programs({ programs, addProgram, updateProgram, deletePr
                     </div>
                     <Btn variant="danger" small onClick={(e) => { e.stopPropagation(); if (confirm(`Delete "${folder.name}" for ${ath?.name || "this athlete"}?`)) { deleteProgram(p.id); if (detail === p.id) setDetail(null); } }}>✕</Btn>
                   </div>
-                  {p.description && <p style={{ fontSize: 13, color: "#52525B", marginTop: 8 }}>{p.description}</p>}
+                  {p.description && <p style={{ fontSize: 13, color: "#52525B", marginTop: 8 }}>{briefSummary(p.description)}</p>}
                   {wks.length > 0 && (
                     <div style={{ marginTop: 10 }}>
                       <div style={{ display: "flex", gap: 3, marginBottom: 4 }}>
@@ -484,6 +485,7 @@ function VariantHint({ ex }) {
     ["Full gym", ex.variants.full_gym],
     ["No barbell", ex.variants.no_barbell],
     ["No machines", ex.variants.no_machine],
+    ["Hotel gym", ex.variants.hotel_gym],
     ["DB / bodyweight", ex.variants.db_bodyweight],
   ].filter(r => r[1]);
   if (!rows.length) return null;
@@ -719,7 +721,7 @@ function ProgramDetail({ program, programs, exercises, cats, colors, addBlock, u
           <button onClick={() => { setCopyOpen(true); setCopyMode("program"); setCopyTargets([]); }} style={{ background: "none", border: "1px solid #E4E4E7", borderRadius: 6, padding: "5px 12px", fontSize: 12, cursor: "pointer", fontFamily: "inherit", color: "#52525B", fontWeight: 600 }}>⧉ Copy</button>
         </div>
       </div>
-      {program.description && <p style={{ color: "#71717A", fontSize: 14, margin: "0 0 12px" }}>{program.description}</p>}
+      {program.description && <ProgramBrief text={program.description} />}
 
       {/* Season link */}
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>

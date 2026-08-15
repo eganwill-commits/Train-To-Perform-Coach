@@ -9,6 +9,7 @@ import AIChat from "./AIChat";
 import Messages from "./Messages";
 import NotesBoard from "./NotesBoard";
 import ToastNotifications from "./ToastNotifications";
+import ProgramBrief, { briefSummary } from "./ProgramBrief";
 
 function useIsMobile(bp = 768) {
   const [m, setM] = useState(false);
@@ -266,9 +267,19 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
     if (file.size > maxSize) { alert("Video must be under 100MB"); return; }
     setUploadingVideo(block.id);
     try {
+      // Read the bytes immediately. On iOS the File is a reference to an OS-managed
+      // asset that can go stale once the picker closes — uploading the reference then
+      // sends an empty body and Storage replies "No content provided".
+      const contentType = file.type || "video/mp4";
+      const blob = new Blob([await file.arrayBuffer()], { type: contentType });
+      if (!blob.size) {
+        alert("That video came back empty. Try recording again, or use Submit Video → Link.");
+        setUploadingVideo(null);
+        return;
+      }
       const ext = file.name.split(".").pop() || "mp4";
       const fileName = `${athlete.id}_${Date.now()}.${ext}`;
-      const { error: upErr } = await supabase.storage.from("videos").upload(fileName, file);
+      const { error: upErr } = await supabase.storage.from("videos").upload(fileName, blob, { contentType });
       if (upErr) { alert("Upload failed: " + upErr.message); setUploadingVideo(null); return; }
       const { data: urlData } = supabase.storage.from("videos").getPublicUrl(fileName);
       const exName = getDisplayName(block);
@@ -327,6 +338,7 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
     { value: "full_gym", label: "Full gym" },
     { value: "no_barbell", label: "No barbell" },
     { value: "no_machine", label: "No machines" },
+    { value: "hotel_gym", label: "Hotel gym" },
     { value: "db_bodyweight", label: "DB / bodyweight" },
   ];
   const equipKey = `t2p_equip_${athlete?.id || "x"}`;
@@ -456,7 +468,7 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
                     <span style={{ fontSize: 13, color: "#71717A" }}>{wks.length} weeks</span>
                     {grp && <Badge color="#16A34A">{grp.name}</Badge>}
                   </div>
-                  {p.description && <p style={{ fontSize: 13, color: "#52525B", marginTop: 8 }}>{p.description}</p>}
+                  {p.description && <p style={{ fontSize: 13, color: "#52525B", marginTop: 8 }}>{briefSummary(p.description)}</p>}
                   {/* Stats row */}
                   {totalSessions > 0 && (
                     <div style={{ display: "flex", gap: 12, marginTop: 10 }}>
@@ -498,7 +510,7 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
       <button onClick={() => setSelectedProg(null)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 14, color: "#71717A", marginBottom: 8, fontFamily: "inherit" }}>← Back</button>
       <h2 style={{ margin: "0 0 6px", fontSize: isMobile ? 16 : 24, fontFamily: "'Space Mono', monospace", wordBreak: "break-word", lineHeight: 1.3 }}>{prog.name}</h2>
       {(() => { const grp = (groups || []).find(g => g.id === prog.group_id); return grp ? <div style={{ marginBottom: 6 }}><Badge color="#16A34A">{grp.name}</Badge></div> : null; })()}
-      {prog.description && <p style={{ color: "#71717A", fontSize: 12, margin: "0 0 10px" }}>{prog.description}</p>}
+      {prog.description && <ProgramBrief text={prog.description} compact />}
 
       {/* Attendance & Completion stats */}
       {(() => {
@@ -742,7 +754,7 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
                           ) : (
                             <label style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "10px", border: "1px dashed #BFDBFE", borderRadius: 8, background: "#F8FAFF", cursor: "pointer", fontSize: 13, fontWeight: 600, color: "#2563EB" }}>
                               <span>🎥</span> Record or Choose Video
-                              <input type="file" accept="video/*" onChange={e => { const f = e.target.files?.[0]; if (f) handleVideoUpload(f, block); e.target.value = ""; }} style={{ display: "none" }} />
+                              <input type="file" accept="video/*" onChange={e => { const inp = e.target; const f = inp.files?.[0]; if (f) handleVideoUpload(f, block).finally(() => { inp.value = ""; }); }} style={{ display: "none" }} />
                             </label>
                           )}
                         </div>
@@ -1115,14 +1127,27 @@ function MyVideos({ videoSubs, addVideoSub, deleteVideoSub, athlete, exercises, 
   const [uploadMode, setUploadMode] = useState("upload"); // "upload" or "link"
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState("");
+  const [selectedBlob, setSelectedBlob] = useState(null);
   const [selectedFile, setSelectedFile] = useState(null);
 
-  const handleFileSelect = (e) => {
+  const handleFileSelect = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
     const maxSize = 100 * 1024 * 1024; // 100MB
     if (file.size > maxSize) {
       alert("Video must be under 100MB. Try trimming the clip or lowering the resolution.");
+      return;
+    }
+    // Materialise the bytes now — see handleVideoUpload for why.
+    try {
+      const blob = new Blob([await file.arrayBuffer()], { type: file.type || "video/mp4" });
+      if (!blob.size) {
+        alert("That video came back empty. Try again, or switch to the Link tab.");
+        return;
+      }
+      setSelectedBlob(blob);
+    } catch {
+      alert("Could not read that video. Try again, or switch to the Link tab.");
       return;
     }
     setSelectedFile(file);
@@ -1144,7 +1169,8 @@ function MyVideos({ videoSubs, addVideoSub, deleteVideoSub, athlete, exercises, 
       try {
         const ext = selectedFile.name.split(".").pop()?.toLowerCase() || "mp4";
         const fileName = `${athlete.id}/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`;
-        const { data, error } = await supabase.storage.from("videos").upload(fileName, selectedFile, { cacheControl: "3600", upsert: false });
+        const body = selectedBlob || selectedFile;
+        const { data, error } = await supabase.storage.from("videos").upload(fileName, body, { cacheControl: "3600", upsert: false, contentType: body.type || "video/mp4" });
         if (error) { alert("Upload failed: " + error.message); setUploading(false); setUploadProgress(""); return; }
         const { data: urlData } = supabase.storage.from("videos").getPublicUrl(data.path);
         const publicUrl = urlData.publicUrl;
@@ -1162,6 +1188,7 @@ function MyVideos({ videoSubs, addVideoSub, deleteVideoSub, athlete, exercises, 
     }
     setForm({ exercise_name: "", video_url: "", notes: "" });
     setSelectedFile(null);
+    setSelectedBlob(null);
     setModal(false);
   };
 

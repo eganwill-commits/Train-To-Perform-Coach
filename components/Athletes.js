@@ -11,6 +11,7 @@ const TIER_OPTIONS = [
   { value: "full_gym", label: "Full Gym (barbell + machines)" },
   { value: "no_barbell", label: "No Barbell (machines + DBs)" },
   { value: "no_machine", label: "No Machines (CrossFit)" },
+  { value: "hotel_gym", label: "Hotel Gym (DBs + cardio)" },
   { value: "db_bodyweight", label: "Dumbbells & Bodyweight" },
 ];
 const TIER_LABEL = Object.fromEntries(TIER_OPTIONS.map(o => [o.value, o.label]));
