@@ -356,7 +356,10 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
     if (typeof window === "undefined") return {};
     try { return JSON.parse(window.localStorage.getItem(dayEquipKey) || "{}"); } catch { return {}; }
   });
-  const defaultTier = athlete?.equipment_tier || "full_gym";
+  // Always start on Full gym. The athlete's profile `equipment_tier` deliberately does NOT
+  // seed this — a coach-set tier used to silently decide the day for them. Anyone who trains
+  // somewhere else picks their room once and it sticks (persisted per day, per device).
+  const defaultTier = "full_gym";
   const tierForDay = (dayId) => dayTier[dayId] || defaultTier;
   const tierFor = (block, dayId) => blockTier[block.id] || tierForDay(dayId);
   const setTier = (blockId, tier) => setBlockTier(prev => {
@@ -954,7 +957,7 @@ function AthleteLog({ addLog, athlete, exercises, cats, colors, isMobile, progra
     if (typeof window === "undefined" || !selected) return null;
     try { return (JSON.parse(window.localStorage.getItem(`t2p_equip_day_${athlete?.id || "x"}`) || "{}"))[selected.day.id] || null; } catch { return null; }
   })();
-  const logTier = loggedDayTier || athlete?.equipment_tier || "full_gym";
+  const logTier = loggedDayTier || "full_gym";
   const getDisplayName = (block) => {
     if (block.exerciseId) { const f = exercises.find(e => e.id === block.exerciseId); if (f) return variantName(f, logTier); }
     if (block.exerciseName) { const f = exercises.find(e => e.name === block.exerciseName); if (f) return variantName(f, logTier); return block.exerciseName; }
