@@ -261,7 +261,7 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
   const [uploadingVideo, setUploadingVideo] = useState(null); // block.id being uploaded
   const [videoSuccess, setVideoSuccess] = useState(null); // block.id that succeeded
 
-  const handleVideoUpload = async (file, block) => {
+  const handleVideoUpload = async (file, block, dayId) => {
     if (!file || !addVideoSub) return;
     const maxSize = 100 * 1024 * 1024;
     if (file.size > maxSize) { alert("Video must be under 100MB"); return; }
@@ -282,7 +282,7 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
       const { error: upErr } = await supabase.storage.from("videos").upload(fileName, blob, { contentType });
       if (upErr) { alert("Upload failed: " + upErr.message); setUploadingVideo(null); return; }
       const { data: urlData } = supabase.storage.from("videos").getPublicUrl(fileName);
-      const exName = getDisplayName(block);
+      const exName = getDisplayName(block, dayId);
       await addVideoSub({
         athlete_id: athlete.id,
         athlete_name: athlete.name,
@@ -333,7 +333,10 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
     }
   }, [selectedProg]);
 
-  // Per-exercise equipment choice — defaults to the athlete's tier, remembered per device
+  // Equipment room. The DAY-level choice is the primary control: one pick covers every
+  // exercise in that session, because an athlete who is travelling is in that room all day.
+  // A per-exercise override still exists for the one-off case (rack busy, no box free) and
+  // is cleared whenever the day-level room changes.
   const EQUIP_OPTIONS = [
     { value: "full_gym", label: "Full gym" },
     { value: "no_barbell", label: "No barbell" },
@@ -341,26 +344,54 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
     { value: "hotel_gym", label: "Hotel gym" },
     { value: "db_bodyweight", label: "DB / bodyweight" },
   ];
+  const EQUIP_LABEL = Object.fromEntries(EQUIP_OPTIONS.map(o => [o.value, o.label]));
   const equipKey = `t2p_equip_${athlete?.id || "x"}`;
+  const dayEquipKey = `t2p_equip_day_${athlete?.id || "x"}`;
   const canPersist = !!addLog; // false in coach preview (read-only)
   const [blockTier, setBlockTier] = useState(() => {
     if (typeof window === "undefined") return {};
     try { return JSON.parse(window.localStorage.getItem(equipKey) || "{}"); } catch { return {}; }
   });
-  const tierFor = (block) => blockTier[block.id] || athlete?.equipment_tier || "full_gym";
+  const [dayTier, setDayTierState] = useState(() => {
+    if (typeof window === "undefined") return {};
+    try { return JSON.parse(window.localStorage.getItem(dayEquipKey) || "{}"); } catch { return {}; }
+  });
+  const defaultTier = athlete?.equipment_tier || "full_gym";
+  const tierForDay = (dayId) => dayTier[dayId] || defaultTier;
+  const tierFor = (block, dayId) => blockTier[block.id] || tierForDay(dayId);
   const setTier = (blockId, tier) => setBlockTier(prev => {
     const next = { ...prev, [blockId]: tier };
     if (canPersist && typeof window !== "undefined") { try { window.localStorage.setItem(equipKey, JSON.stringify(next)); } catch (e) {} }
     return next;
   });
+  const clearTier = (blockId) => setBlockTier(prev => {
+    const next = { ...prev }; delete next[blockId];
+    if (canPersist && typeof window !== "undefined") { try { window.localStorage.setItem(equipKey, JSON.stringify(next)); } catch (e) {} }
+    return next;
+  });
+  // Changing the room for a day resets every per-exercise override in that day, so the
+  // session genuinely follows the new room instead of keeping stale one-off swaps.
+  const setDayTier = (day, tier) => {
+    setDayTierState(prev => {
+      const next = { ...prev, [day.id]: tier };
+      if (canPersist && typeof window !== "undefined") { try { window.localStorage.setItem(dayEquipKey, JSON.stringify(next)); } catch (e) {} }
+      return next;
+    });
+    setBlockTier(prev => {
+      const next = { ...prev };
+      (day.blocks || []).forEach(b => { delete next[b.id]; });
+      if (canPersist && typeof window !== "undefined") { try { window.localStorage.setItem(equipKey, JSON.stringify(next)); } catch (e) {} }
+      return next;
+    });
+  };
   const exerciseFor = (block) => {
     if (block.exerciseId) { const f = exercises.find(e => e.id === block.exerciseId); if (f) return f; }
     if (block.exerciseName) { const f = exercises.find(e => e.name === block.exerciseName); if (f) return f; }
     return null;
   };
-  const getDisplayName = (block) => {
+  const getDisplayName = (block, dayId) => {
     const f = exerciseFor(block);
-    if (f) return variantName(f, tierFor(block));
+    if (f) return variantName(f, tierFor(block, dayId));
     return block.exerciseName || "—";
   };
   const getVideoUrl = (block) => {
@@ -394,7 +425,7 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
     const remainingLogs = (logs || []).filter(l => l.athlete_id === athlete.id && l.day_label === day.label && l.week_label === weekLabel2);
     for (const block of day.blocks) {
       const result = blockResults[block.id] || {};
-      const dn = getDisplayName(block);
+      const dn = getDisplayName(block, day.id);
       const existingLog = remainingLogs.find(l =>
         (l.exercise_id && block.exerciseId && l.exercise_id === block.exerciseId) ||
         l.exercise_name === dn || (block.exerciseName && l.exercise_name === block.exerciseName) ||
@@ -604,7 +635,7 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
         const blockLogMap = {};
         const usedIds = new Set();
         const matchByName = (log, block) => {
-          const dn = getDisplayName(block);
+          const dn = getDisplayName(block, day.id);
           if (log.exercise_id && block.exerciseId && log.exercise_id === block.exerciseId) return true;
           if (log.exercise_name === dn) return true;
           if (block.exerciseName && log.exercise_name === block.exerciseName) return true;
@@ -636,6 +667,48 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
                 <span style={{ fontSize: 11, color: "#A1A1AA" }}>{day.blocks.length} exercises</span>
               </div>
             </div>
+
+            {/* Where are you training today? One pick re-writes every exercise in this session. */}
+            {(() => {
+              const dayOpts = EQUIP_OPTIONS.filter(o =>
+                (day.blocks || []).some(b => { const e = exerciseFor(b); return e && e.variants && e.variants[o.value]; })
+              );
+              if (dayOpts.length <= 1) return null;
+              const cur = tierForDay(day.id);
+              const overridden = (day.blocks || []).filter(b => blockTier[b.id] && blockTier[b.id] !== cur).length;
+              return (
+                <div style={{ marginBottom: 8, padding: isMobile ? "8px 9px" : "9px 11px", background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: 9 }}>
+                  <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
+                    <span style={{ fontSize: 10, fontWeight: 700, color: "#64748B", textTransform: "uppercase", letterSpacing: ".07em" }}>
+                      Where are you training today?
+                    </span>
+                    <span style={{ fontSize: 11, color: "#94A3B8" }}>Sets every exercise below</span>
+                  </div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                    {dayOpts.map(o => {
+                      const active = cur === o.value;
+                      return (
+                        <button key={o.value} onClick={() => setDayTier(day, o.value)} style={{
+                          padding: isMobile ? "6px 11px" : "5px 12px", borderRadius: 999,
+                          border: active ? "2px solid #2563EB" : "1px solid #CBD5E1",
+                          background: active ? "#2563EB" : "#fff",
+                          color: active ? "#fff" : "#475569",
+                          fontSize: 11.5, fontWeight: 600, cursor: "pointer", fontFamily: "inherit",
+                        }}>{o.label}</button>
+                      );
+                    })}
+                  </div>
+                  {overridden > 0 && (
+                    <div style={{ fontSize: 11, color: "#92400E", marginTop: 6 }}>
+                      {overridden} exercise{overridden === 1 ? " is" : "s are"} swapped individually.{" "}
+                      <button onClick={() => setDayTier(day, cur)} style={{ background: "none", border: "none", padding: 0, color: "#B45309", fontSize: 11, fontWeight: 700, textDecoration: "underline", cursor: "pointer", fontFamily: "inherit" }}>
+                        Reset all to {EQUIP_LABEL[cur] || cur}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
 
             {(() => { const wu = warmupForDay(day.label); if (!wu || !/hypertroph/i.test((prog && prog.name) || "")) return null; return (
               <details style={{ marginBottom: 8 }}>
@@ -676,7 +749,7 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
                     <div onClick={() => setExpandedBlock(isOpen ? null : block.id)} style={{ display: "flex", alignItems: "center", flex: 1, minWidth: 0, cursor: "pointer", gap: 6 }}>
                       <Badge color={cc?.bg || "#999"}>{block.category}</Badge>
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontWeight: 600, fontSize: 13, lineHeight: 1.3, textDecoration: exStatus === "missed" ? "line-through" : "none", wordBreak: "break-word" }}>{getDisplayName(block)}</div>
+                        <div style={{ fontWeight: 600, fontSize: 13, lineHeight: 1.3, textDecoration: exStatus === "missed" ? "line-through" : "none", wordBreak: "break-word" }}>{getDisplayName(block, day.id)}</div>
                         {!isOpen && <div style={{ fontSize: 11, color: "#71717A" }}>{[block.sets && block.reps ? `${block.sets}×${block.reps}` : null, block.load ? `@ ${block.load}` : null].filter(Boolean).join(" ") || ""}</div>}
                       </div>
                       {hasInput && <span style={{ width: 7, height: 7, borderRadius: 4, background: "#16A34A", flexShrink: 0 }} />}
@@ -693,22 +766,38 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
                       {(() => {
                         const exo = exerciseFor(block);
                         if (!exo || !exo.variants) return null;
-                        const cur = tierFor(block);
+                        const dayCur = tierForDay(day.id);
+                        const cur = tierFor(block, day.id);
                         const opts = EQUIP_OPTIONS.filter(o => exo.variants[o.value]);
                         if (opts.length <= 1) return null;
+                        const isOverride = !!blockTier[block.id] && blockTier[block.id] !== dayCur;
                         return (
-                          <div style={{ marginTop: 8, padding: "8px", background: "#fff", border: "1px solid #E4E4E7", borderRadius: 8 }}>
-                            <div style={{ fontSize: 10, fontWeight: 700, color: "#71717A", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 6 }}>Equipment — pick what you have today</div>
-                            <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-                              {opts.map(o => {
-                                const active = cur === o.value;
-                                return (
-                                  <button key={o.value} onClick={() => setTier(block.id, o.value)} style={{ padding: "4px 10px", borderRadius: 999, border: active ? "2px solid #2563EB" : "1px solid #D4D4D8", background: active ? "#EFF6FF" : "#fff", color: active ? "#1E3A8A" : "#52525B", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>{o.label}</button>
-                                );
-                              })}
+                          <details style={{ marginTop: 8 }} open={isOverride}>
+                            <summary style={{ cursor: "pointer", fontSize: 11, fontWeight: 700, color: isOverride ? "#B45309" : "#71717A", listStyle: "revert" }}>
+                              {isOverride ? `Swapped — ${EQUIP_LABEL[cur] || cur}` : "Swap just this exercise"}
+                            </summary>
+                            <div style={{ marginTop: 6, padding: "8px", background: "#fff", border: `1px solid ${isOverride ? "#FDE68A" : "#E4E4E7"}`, borderRadius: 8 }}>
+                              <div style={{ fontSize: 10.5, color: "#71717A", marginBottom: 6, lineHeight: 1.45 }}>
+                                Your day is set to <b>{EQUIP_LABEL[dayCur] || dayCur}</b>. Change this one only if a single piece of kit is unavailable.
+                              </div>
+                              <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                                {opts.map(o => {
+                                  const active = cur === o.value;
+                                  return (
+                                    <button key={o.value} onClick={() => (o.value === dayCur ? clearTier(block.id) : setTier(block.id, o.value))} style={{ padding: "4px 10px", borderRadius: 999, border: active ? "2px solid #2563EB" : "1px solid #D4D4D8", background: active ? "#EFF6FF" : "#fff", color: active ? "#1E3A8A" : "#52525B", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>
+                                      {o.label}{o.value === dayCur ? " ·" : ""}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                              <div style={{ fontSize: 13, color: "#18181B", marginTop: 6, fontWeight: 600 }}>{exo.variants[cur] || exo.name}</div>
+                              {isOverride && (
+                                <button onClick={() => clearTier(block.id)} style={{ marginTop: 6, background: "none", border: "none", padding: 0, color: "#B45309", fontSize: 11, fontWeight: 700, textDecoration: "underline", cursor: "pointer", fontFamily: "inherit" }}>
+                                  Back to {EQUIP_LABEL[dayCur] || dayCur}
+                                </button>
+                              )}
                             </div>
-                            <div style={{ fontSize: 13, color: "#18181B", marginTop: 6, fontWeight: 600 }}>{exo.variants[cur] || exo.name}</div>
-                          </div>
+                          </details>
                         );
                       })()}
                       {/* Programmed values */}
@@ -754,7 +843,7 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
                           ) : (
                             <label style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "10px", border: "1px dashed #BFDBFE", borderRadius: 8, background: "#F8FAFF", cursor: "pointer", fontSize: 13, fontWeight: 600, color: "#2563EB" }}>
                               <span>🎥</span> Record or Choose Video
-                              <input type="file" accept="video/*" onChange={e => { const inp = e.target; const f = inp.files?.[0]; if (f) handleVideoUpload(f, block).finally(() => { inp.value = ""; }); }} style={{ display: "none" }} />
+                              <input type="file" accept="video/*" onChange={e => { const inp = e.target; const f = inp.files?.[0]; if (f) handleVideoUpload(f, block, day.id).finally(() => { inp.value = ""; }); }} style={{ display: "none" }} />
                             </label>
                           )}
                         </div>
@@ -762,7 +851,7 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
 
                       {/* Previous video submissions for this exercise */}
                       {(() => {
-                        const exName = getDisplayName(block);
+                        const exName = getDisplayName(block, day.id);
                         const exVideos = (videoSubs || []).filter(v => v.exercise_name === exName);
                         if (exVideos.length === 0) return null;
                         const statusColors = { pending: { bg: "#FFF7ED", color: "#F97316", label: "Pending Review" }, reviewed: { bg: "#F0FDF4", color: "#16A34A", label: "Reviewed ✓" }, "needs-work": { bg: "#FEF2F2", color: "#DC2626", label: "Needs Work" } };
@@ -859,9 +948,16 @@ function AthleteLog({ addLog, athlete, exercises, cats, colors, isMobile, progra
 
   const selected = workoutOptions.find(o => o.value === selectedWorkout);
 
+  // Mirror the day-level equipment room chosen over in My Program, so a manual log shows
+  // the same movement names the athlete actually trained.
+  const loggedDayTier = (() => {
+    if (typeof window === "undefined" || !selected) return null;
+    try { return (JSON.parse(window.localStorage.getItem(`t2p_equip_day_${athlete?.id || "x"}`) || "{}"))[selected.day.id] || null; } catch { return null; }
+  })();
+  const logTier = loggedDayTier || athlete?.equipment_tier || "full_gym";
   const getDisplayName = (block) => {
-    if (block.exerciseId) { const f = exercises.find(e => e.id === block.exerciseId); if (f) return variantName(f, athlete?.equipment_tier); }
-    if (block.exerciseName) { const f = exercises.find(e => e.name === block.exerciseName); if (f) return variantName(f, athlete?.equipment_tier); return block.exerciseName; }
+    if (block.exerciseId) { const f = exercises.find(e => e.id === block.exerciseId); if (f) return variantName(f, logTier); }
+    if (block.exerciseName) { const f = exercises.find(e => e.name === block.exerciseName); if (f) return variantName(f, logTier); return block.exerciseName; }
     return block.exerciseName || "Unknown";
   };
 
