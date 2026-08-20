@@ -54,7 +54,9 @@ export default function LoginPage({ onCoachLogin, onAthleteLogin }) {
       if (res.ok && out?.ok && out.access_token) {
         await supabase.auth.setSession({ access_token: out.access_token, refresh_token: out.refresh_token });
         const { data: full } = await supabase.from("athletes").select("*").eq("id", out.athlete.id).single();
-        onAthleteLogin(full || out.athlete);
+        // "session" tells the shell this athlete is backed by a real Supabase
+        // session, so it knows to send them to the code screen if it ever expires.
+        onAthleteLogin(full || out.athlete, { mode: "session" });
         setLoading(false);
         return;
       }
@@ -69,7 +71,8 @@ export default function LoginPage({ onCoachLogin, onAthleteLogin }) {
       .eq("access_code", entered)
       .single();
     if (err || !athlete) { setError("Invalid access code. Check with your coach."); setLoading(false); return; }
-    onAthleteLogin(athlete);
+    // No Supabase session on this path — the cached athlete row is the session.
+    onAthleteLogin(athlete, { mode: "legacy" });
     setLoading(false);
   };
 
