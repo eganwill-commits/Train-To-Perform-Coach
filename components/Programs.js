@@ -22,6 +22,13 @@ function weekStartFromLabel(label, idx, startDate) {
   if (m) return new Date(2026, MONTHS[m[1].slice(0, 3).toLowerCase()], parseInt(m[2], 10));
   return new Date(2026, 3, 6 + idx * 7);
 }
+// The chip shows the week's own number, not its position in the array. Mac's program
+// opens with Week 0 (the benchmark), so position+1 labelled every week one higher than
+// the program, the workbook and the PDF call it - W1 was really Week 0, W13 was Week 12.
+function weekNumberLabel(label, idx) {
+  const m = (label || "").match(/week\s+(\d+)/i);
+  return "W" + (m ? m[1] : idx + 1);
+}
 function weekdayOffset(label) {
   const m = (label || "").toLowerCase().match(/\b(mon|tue|wed|thu|fri|sat|sun)[a-z]*\b/);
   return m ? WDAYS[m[1]] : 0;
@@ -759,7 +766,7 @@ function ProgramDetail({ program, programs, exercises, cats, colors, addBlock, u
             <button key={w.id} onClick={() => setAw(i)} style={{ padding: "4px 10px", borderRadius: 8, border: `2px solid ${borderColor}`, background: bgColor, color: textColor, fontWeight: 600, fontSize: 12, cursor: "pointer", fontFamily: "inherit", position: "relative", textAlign: "center", lineHeight: 1.2 }}>
               {st === "completed" && "✓ "}
               {st === "missed" && "✗ "}
-              W{i + 1}
+              {weekNumberLabel(w.label, i)}
               <div style={{ fontSize: 9, fontWeight: 500, opacity: 0.75, marginTop: 1 }}>{fmt(weekStart)}–{fmt(weekEnd)}</div>
             </button>
           );
@@ -767,7 +774,7 @@ function ProgramDetail({ program, programs, exercises, cats, colors, addBlock, u
       </div>
       {aw !== currentWeekIndex && (
         <button onClick={() => setAw(currentWeekIndex)} style={{ marginBottom: 6, padding: "4px 12px", background: "#FEF3C7", color: "#92400E", border: "1px solid #FDE68A", borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>
-          ← Back to Current Week (W{currentWeekIndex + 1})
+          ← Back to Current Week ({weekNumberLabel(weeks[currentWeekIndex]?.label, currentWeekIndex)})
         </button>
       )}
       {/* Week status controls */}
@@ -786,6 +793,18 @@ function ProgramDetail({ program, programs, exercises, cats, colors, addBlock, u
           const date = getDateForDay(day.id);
           const dayLogs = getDayLogs(date, day.label);
           const isLogged = dayLogs.length > 0;
+          // ONE map from block -> the athlete's log for it, built once at day level so the
+          // results summary below and the per-block cards can never disagree about whether
+          // a number exists.
+          const blockLogMap = {};
+          {
+            const usedIds = new Set();
+            day.blocks.forEach(block => {
+              const dn = getDisplayName(block);
+              const m = dayLogs.find(l => !usedIds.has(l.id) && logMatchesBlock(l, block, dn));
+              if (m) { blockLogMap[block.id] = m; usedIds.add(m.id); }
+            });
+          }
 
           return (
             <Card key={day.id} style={{ padding: 14, border: day.status === "completed" ? "2px solid #16A34A" : day.status === "missed" ? "2px solid #DC2626" : "1px solid #E4E4E7", background: day.status === "completed" ? "#F0FDF418" : day.status === "missed" ? "#FEF2F218" : "#fff" }}>
@@ -827,35 +846,7 @@ function ProgramDetail({ program, programs, exercises, cats, colors, addBlock, u
               ); })()}
               {day.blocks.length === 0 && <p style={{ color: "#A1A1AA", fontSize: 13, textAlign: "center", padding: 12 }}>Empty</p>}
               {(() => {
-                // STRICT: Only match logs for this exact week+day
-                const normalize = (s) => (s || "").toLowerCase().replace(/[-–—]/g, " ").replace(/\s+/g, " ").trim();
-                const weekLabel = week.label || "";
-                const dayLabel = day.label || "";
-                const athId = program.athlete_id;
-                if (!athId) return day.blocks.map(() => null);
-
-                const scopedLogs = logs.filter(l =>
-                  l.athlete_id === athId && l.day_label === dayLabel && l.week_label === weekLabel
-                );
-
-                const blockLogMap = {};
-                const usedIds = new Set();
-
-                const matchByName = (log, block) => {
-                  const dn = getDisplayName(block);
-                  if (log.exercise_id && block.exerciseId && log.exercise_id === block.exerciseId) return true;
-                  if (log.exercise_name === dn) return true;
-                  if (block.exerciseName && log.exercise_name === block.exerciseName) return true;
-                  if (normalize(log.exercise_name) === normalize(dn)) return true;
-                  if (block.exerciseName && normalize(log.exercise_name) === normalize(block.exerciseName)) return true;
-                  return false;
-                };
-
-                day.blocks.forEach(block => {
-                  const m = scopedLogs.find(l => !usedIds.has(l.id) && matchByName(l, block));
-                  if (m) { blockLogMap[block.id] = m; usedIds.add(m.id); }
-                });
-
+                // blockLogMap is built once at day level, above.
                 return day.blocks.map((block, bi) => {
                 const cc = colors[block.category];
                 const resolvedId = resolveExerciseId(block);
@@ -1040,6 +1031,27 @@ function ProgramDetail({ program, programs, exercises, cats, colors, addBlock, u
                     <label style={{ fontSize: 11, color: "#71717A", fontWeight: 600 }}>Date:</label>
                     <input type="date" value={date} onChange={e => setSubmitDates(prev => ({ ...prev, [day.id]: e.target.value }))} style={{ flex: 1, padding: "3px 6px", border: "1px solid #E4E4E7", borderRadius: 6, fontSize: 12, fontFamily: "inherit", boxSizing: "border-box" }} />
                   </div>
+                  {isLogged && (
+                    <div style={{ marginBottom: 8, background: "#fff", border: "1px solid #BBF7D0", borderRadius: 8, overflow: "hidden" }}>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: "#16A34A", textTransform: "uppercase", letterSpacing: 0.5, padding: "6px 8px", background: "#F0FDF4" }}>
+                        What {(ath?.name || "the athlete").split(" ")[0]} actually did
+                      </div>
+                      {day.blocks.filter(b => blockLogMap[b.id]).map(b => {
+                        const ml = blockLogMap[b.id];
+                        const val = [
+                          ml.sets && ml.reps ? `${ml.sets}\u00d7${ml.reps}` : (ml.reps || ml.sets || ""),
+                          ml.load ? `@ ${ml.load}` : "",
+                          ml.rpe ? `RPE ${ml.rpe}` : "",
+                        ].filter(Boolean).join(" \u00b7 ");
+                        return (
+                          <div key={b.id} style={{ display: "flex", justifyContent: "space-between", gap: 10, padding: "4px 8px", borderTop: "1px solid #F0FDF4", fontSize: 12 }}>
+                            <span style={{ color: "#52525B", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ml.exercise_name || getDisplayName(b)}</span>
+                            <span style={{ fontWeight: 700, whiteSpace: "nowrap" }}>{val || "\u2014"}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                   {isLogged && day.status === "completed" ? (
                     <div>
                       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>

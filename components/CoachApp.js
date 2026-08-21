@@ -27,6 +27,30 @@ function useIsMobile(bp = 768) {
   return m;
 }
 
+// PostgREST returns at most 1000 rows per select. There are already more log rows
+// than that, so a single select silently dropped the oldest ones and the coach saw a
+// truncated history with no error. Page through until a short page comes back.
+// The id tiebreaker keeps the ordering stable across pages.
+async function fetchAllLogs() {
+  const PAGE = 1000;
+  let from = 0;
+  let all = [];
+  for (let guard = 0; guard < 50; guard++) {
+    const { data, error } = await supabase
+      .from("logs")
+      .select("*")
+      .order("date", { ascending: false })
+      .order("id", { ascending: false })
+      .range(from, from + PAGE - 1);
+    if (error) { console.error("fetchAllLogs page failed", error); break; }
+    if (!data || data.length === 0) break;
+    all = all.concat(data);
+    if (data.length < PAGE) break;
+    from += PAGE;
+  }
+  return all;
+}
+
 export default function CoachApp({ onLogout }) {
   const [page, setPage] = useState("dashboard");
   const [focusAthleteId, setFocusAthleteId] = useState(null);
@@ -61,7 +85,7 @@ export default function CoachApp({ onLogout }) {
         supabase.from("athletes").select("*").order("created_at", { ascending: true }),
         supabase.from("programs").select("*").order("created_at", { ascending: true }),
         supabase.from("exercises").select("*"),
-        supabase.from("logs").select("*").order("date", { ascending: false }),
+        fetchAllLogs(),
         supabase.from("settings").select("*").eq("id", 1).single(),
         supabase.from("program_groups").select("*").order("created_at", { ascending: false }),
         supabase.from("group_athletes").select("*"),
@@ -71,7 +95,7 @@ export default function CoachApp({ onLogout }) {
       setAthletes(aRes.data || []);
       setPrograms(pRes.data || []);
       setExercises(eRes.data || []);
-      setLogs(lRes.data || []);
+      setLogs(lRes || []);
       setGroups(gRes.data || []);
       setGroupAthletes(gaRes.data || []);
       setBaselines(bRes.data || []);
