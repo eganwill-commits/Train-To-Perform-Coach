@@ -214,23 +214,34 @@ export default function CoachApp({ onLogout }) {
       l.athlete_id === program.athlete_id && l.day_label === (day.label || "") && l.week_label === (weekLabel || "")
     );
 
+    // What the athlete actually logged wins over what was prescribed. Marking a day
+    // complete from the coach side must never overwrite their numbers with the
+    // programmed ones - those numbers are what progression is calculated from.
+    const normalize = (s) => (s || "").toLowerCase().replace(/[-\u2013\u2014]/g, " ").replace(/\s+/g, " ").trim();
     const logEntries = day.blocks.map(block => {
       const exName = block.exerciseName || exercises.find(e => e.id === block.exerciseId)?.name || "Unknown";
+      const logged = existing.find(l =>
+        (l.exercise_id && block.exerciseId && l.exercise_id === block.exerciseId) ||
+        l.exercise_name === exName ||
+        normalize(l.exercise_name) === normalize(exName)
+      );
       return {
         athlete_id: program.athlete_id || "",
         athlete_name: athleteName,
         exercise_id: block.exerciseId || "",
         exercise_name: exName,
         category: block.category || "",
-        sets: block.sets || "",
-        reps: block.reps || "",
-        load: block.load || "",
-        rpe: "",
-        notes: block.notes || "",
+        sets: logged?.sets ?? block.sets ?? "",
+        reps: logged?.reps ?? block.reps ?? "",
+        load: logged?.load ?? block.load ?? "",
+        rpe: logged?.rpe ?? "",
+        // logs.notes belongs to the athlete. The coach's programming note lives on the
+        // block and must not be copied in here - it reads back as if they wrote it.
+        notes: logged?.notes ?? "",
         date: date || new Date().toISOString().slice(0, 10),
         week_label: weekLabel || "",
         day_label: day.label || "",
-        exercise_status: "completed",
+        exercise_status: logged?.exercise_status ?? "completed",
       };
     });
     const { data, error } = await supabase.from("logs").insert(logEntries).select();
