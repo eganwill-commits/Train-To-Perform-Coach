@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { Badge, Btn, Card, Input, Select, Modal, EmptyState, SearchableSelect } from "./ui";
+import { roomLabel } from "../lib/constants";
 
 function formatDate(d) {
   return new Date(d + "T12:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
@@ -46,10 +47,11 @@ export default function LogPage({ logs, addLog, deleteLog, unlogDay, athletes, e
   filteredLogs.forEach(l => {
     const key = `${l.athlete_id || l.athlete_name}-${l.date}-${l.day_label || ""}-${l.week_label || ""}`;
     if (!grouped[key]) {
-      grouped[key] = { key, athlete_name: l.athlete_name, athlete_id: l.athlete_id, date: l.date, logged_at: l.logged_at, week_label: l.week_label || "", day_label: l.day_label || "", entries: [], categories: new Set() };
+      grouped[key] = { key, athlete_name: l.athlete_name, athlete_id: l.athlete_id, date: l.date, logged_at: l.logged_at, week_label: l.week_label || "", day_label: l.day_label || "", entries: [], categories: new Set(), rooms: new Set() };
     }
     grouped[key].entries.push(l);
     if (l.category) grouped[key].categories.add(l.category);
+    if (l.equipment_tier) grouped[key].rooms.add(l.equipment_tier);
     if (l.logged_at && (!grouped[key].logged_at || new Date(l.logged_at) > new Date(grouped[key].logged_at))) {
       grouped[key].logged_at = l.logged_at;
     }
@@ -176,6 +178,11 @@ export default function LogPage({ logs, addLog, deleteLog, unlogDay, athletes, e
                               {day.week_label ? day.week_label.replace(/WEEK\s*/i, "W").split("—")[0].trim() : ""}{day.day_label ? ` ${day.day_label}` : ""}
                             </span>
                           )}
+                          {(() => {
+                            const rooms = Array.from(day.rooms || []).map(roomLabel).filter(Boolean);
+                            if (!rooms.length) return null;
+                            return <span style={{ fontSize: 11, fontWeight: 700, color: "#0F766E", background: "#F0FDFA", border: "1px solid #99F6E4", padding: "1px 8px", borderRadius: 4 }}>{rooms.join(" \u00b7 ")}</span>;
+                          })()}
                         </div>
                         <div style={{ fontSize: 12, color: "#71717A", marginTop: 2 }}>
                           {day.entries.length} exercise{day.entries.length !== 1 ? "s" : ""}
