@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "../lib/supabase";
-import { PILLAR_COLORS, ATHLETE_NAV } from "../lib/constants";
+import { PILLAR_COLORS, ATHLETE_NAV, EQUIP_OPTIONS, EQUIP_LABEL, roomLabel } from "../lib/constants";
 import { Badge, Btn, Card, Input, Select, Modal, EmptyState, SearchableSelect } from "./ui";
 import { printDay } from "./printHelper";
 import T2PLogo from "./T2PLogo";
@@ -238,7 +238,7 @@ export default function AthleteView({ athlete, onLogout, readOnly }) {
           </header>
         )}
         <main className="t2p-main" style={{ flex: 1, padding: isMobile ? "12px 10px" : 32, maxWidth: "100%", overflowX: "hidden" }}>
-          {page === "my-program" && <MyProgram programs={programs} setPrograms={setPrograms} exercises={exercises} colors={colors} cats={cats} isMobile={isMobile} athlete={athlete} addLog={addLogRO} logs={logs} groups={groups} addVideoSub={addVideoSubRO} videoSubs={videoSubs} deleteVideoSub={deleteVideoSubRO} />}
+          {page === "my-program" && <MyProgram programs={programs} setPrograms={setPrograms} exercises={exercises} colors={colors} cats={cats} isMobile={isMobile} athlete={athlete} addLog={addLogRO} logs={logs} groups={groups} addVideoSub={addVideoSubRO} videoSubs={videoSubs} deleteVideoSub={deleteVideoSubRO} setLogs={setLogs} />}
           {page === "my-baselines" && <MyBaselines baselines={baselines} updateBaseline={updateBaselineRO} isMobile={isMobile} />}
           {page === "my-logs" && <MyLogs logs={logs} colors={colors} cats={cats} isMobile={isMobile} deleteLog={deleteLogRO} deleteDayLogs={deleteDayLogsRO} />}
           {page === "my-videos" && <MyVideos videoSubs={videoSubs} addVideoSub={addVideoSubRO} deleteVideoSub={deleteVideoSubRO} athlete={athlete} exercises={exercises} cats={cats} colors={colors} isMobile={isMobile} />}
@@ -251,7 +251,7 @@ export default function AthleteView({ athlete, onLogout, readOnly }) {
 }
 
 
-function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, athlete, addLog, logs, groups, addVideoSub, videoSubs, deleteVideoSub }) {
+function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, athlete, addLog, logs, groups, addVideoSub, videoSubs, deleteVideoSub, setLogs }) {
   const [selectedProg, setSelectedProg] = useState(null);
   const [expandedBlock, setExpandedBlock] = useState(null);
   const [aw, setAw] = useState(0);
@@ -337,14 +337,6 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
   // exercise in that session, because an athlete who is travelling is in that room all day.
   // A per-exercise override still exists for the one-off case (rack busy, no box free) and
   // is cleared whenever the day-level room changes.
-  const EQUIP_OPTIONS = [
-    { value: "full_gym", label: "Full gym" },
-    { value: "no_barbell", label: "No barbell" },
-    { value: "no_machine", label: "No machines" },
-    { value: "hotel_gym", label: "Hotel gym" },
-    { value: "db_bodyweight", label: "DB / bodyweight" },
-  ];
-  const EQUIP_LABEL = Object.fromEntries(EQUIP_OPTIONS.map(o => [o.value, o.label]));
   const equipKey = `t2p_equip_${athlete?.id || "x"}`;
   const dayEquipKey = `t2p_equip_day_${athlete?.id || "x"}`;
   const canPersist = !!addLog; // false in coach preview (read-only)
@@ -410,63 +402,75 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
     if (!addLog || !athlete) return;
     const date = new Date().toISOString().slice(0, 10);
     setSubmitting(day.id);
-
-    // Delete existing logs for this week+day to prevent duplicates
-    const existing = (logs || []).filter(l =>
-      l.athlete_id === athlete.id && l.day_label === day.label && l.week_label === weekLabel
-    );
-    for (const old of existing) {
-      await supabase.from("logs").delete().eq("id", old.id);
-    }
-    if (existing.length > 0) {
-      setLogs(prev => prev.filter(l => !existing.some(e => e.id === l.id)));
-    }
-
-    // Insert fresh logs with effective values (user edits > existing logged > programmed)
-    const weekLabel2 = weekLabel;
-    const normalize = (s) => (s || "").toLowerCase().replace(/[-–—]/g, " ").replace(/\s+/g, " ").trim();
-    const remainingLogs = (logs || []).filter(l => l.athlete_id === athlete.id && l.day_label === day.label && l.week_label === weekLabel2);
-    for (const block of day.blocks) {
-      const result = blockResults[block.id] || {};
-      const dn = getDisplayName(block, day.id);
-      const existingLog = remainingLogs.find(l =>
-        (l.exercise_id && block.exerciseId && l.exercise_id === block.exerciseId) ||
-        l.exercise_name === dn || (block.exerciseName && l.exercise_name === block.exerciseName) ||
-        normalize(l.exercise_name) === normalize(dn)
-      );
-      await addLog({
-        athlete_id: athlete.id, athlete_name: athlete.name,
-        exercise_id: block.exerciseId || "", exercise_name: dn,
-        category: block.category || "",
-        sets: result.sets ?? existingLog?.sets ?? block.sets ?? "",
-        reps: result.reps ?? existingLog?.reps ?? block.reps ?? "",
-        load: result.load ?? existingLog?.load ?? block.load ?? "",
-        rpe: result.rpe ?? existingLog?.rpe ?? "",
-        notes: result.notes ?? existingLog?.notes ?? "",
-        exercise_status: result.status ?? existingLog?.exercise_status ?? "completed",
-        date, week_label: weekLabel, day_label: day.label,
-      });
-    }
-    // Auto-mark day as completed in the program
     try {
-      const freshProg = programs.find(p => p.id === prog.id);
-      if (freshProg) {
-        const updatedWeeks = JSON.parse(JSON.stringify(freshProg.weeks || []));
-        const wi = updatedWeeks.findIndex(w => w.label === weekLabel);
-        if (wi >= 0) {
-          const di = updatedWeeks[wi].days.findIndex(d => d.id === day.id);
-          if (di >= 0) {
-            updatedWeeks[wi].days[di].status = "completed";
-            await supabase.from("programs").update({ weeks: updatedWeeks }).eq("id", freshProg.id);
-            setPrograms(prev => prev.map(p => p.id === freshProg.id ? { ...p, weeks: updatedWeeks } : p));
+
+      // Rows already logged for this week+day. They are deleted AFTER the replacements
+      // are written, never before: a failure between the two left the day with nothing.
+      const existing = (logs || []).filter(l =>
+        l.athlete_id === athlete.id && l.day_label === day.label && l.week_label === weekLabel
+      );
+
+      // Insert fresh logs with effective values (user edits > existing logged > programmed)
+      const weekLabel2 = weekLabel;
+      const normalize = (s) => (s || "").toLowerCase().replace(/[-–—]/g, " ").replace(/\s+/g, " ").trim();
+      const remainingLogs = (logs || []).filter(l => l.athlete_id === athlete.id && l.day_label === day.label && l.week_label === weekLabel2);
+      for (const block of day.blocks) {
+        const result = blockResults[block.id] || {};
+        const dn = getDisplayName(block, day.id);
+        const existingLog = remainingLogs.find(l =>
+          (l.exercise_id && block.exerciseId && l.exercise_id === block.exerciseId) ||
+          l.exercise_name === dn || (block.exerciseName && l.exercise_name === block.exerciseName) ||
+          normalize(l.exercise_name) === normalize(dn)
+        );
+        await addLog({
+          athlete_id: athlete.id, athlete_name: athlete.name,
+          exercise_id: block.exerciseId || "", exercise_name: dn,
+          category: block.category || "",
+          equipment_tier: tierFor(block, day.id),
+          sets: result.sets ?? existingLog?.sets ?? block.sets ?? "",
+          reps: result.reps ?? existingLog?.reps ?? block.reps ?? "",
+          load: result.load ?? existingLog?.load ?? block.load ?? "",
+          rpe: result.rpe ?? existingLog?.rpe ?? "",
+          notes: result.notes ?? existingLog?.notes ?? "",
+          exercise_status: result.status ?? existingLog?.exercise_status ?? "completed",
+          date, week_label: weekLabel, day_label: day.label,
+        });
+      }
+      // Only now that every replacement row is written is it safe to drop the old ones.
+      for (const old of existing) {
+        await supabase.from("logs").delete().eq("id", old.id);
+      }
+      if (existing.length > 0) {
+        setLogs(prev => prev.filter(l => !existing.some(e => e.id === l.id)));
+      }
+
+      // Auto-mark day as completed in the program
+      try {
+        const freshProg = programs.find(p => p.id === prog.id);
+        if (freshProg) {
+          const updatedWeeks = JSON.parse(JSON.stringify(freshProg.weeks || []));
+          const wi = updatedWeeks.findIndex(w => w.label === weekLabel);
+          if (wi >= 0) {
+            const di = updatedWeeks[wi].days.findIndex(d => d.id === day.id);
+            if (di >= 0) {
+              updatedWeeks[wi].days[di].status = "completed";
+              await supabase.from("programs").update({ weeks: updatedWeeks }).eq("id", freshProg.id);
+              setPrograms(prev => prev.map(p => p.id === freshProg.id ? { ...p, weeks: updatedWeeks } : p));
+            }
           }
         }
-      }
-    } catch (e) { /* silent — logging succeeded even if status update fails */ }
-    setSubmitting(null);
-    setSaved(true);
-    setBlockResults({});
-    setTimeout(() => setSaved(false), 3000);
+      } catch (e) { /* silent — logging succeeded even if status update fails */ }
+      setSaved(true);
+      setBlockResults({});
+      setTimeout(() => setSaved(false), 3000);
+    } catch (err) {
+      // A throw here used to leave the button stuck on "Saving..." and the day
+      // half-written. Surface it, and always release the button.
+      console.error("submitDay failed", err);
+      alert("Could not save this session. Please try again - nothing was lost.");
+    } finally {
+      setSubmitting(null);
+    }
   };
 
   if (!prog) {
@@ -979,6 +983,7 @@ function AthleteLog({ addLog, athlete, exercises, cats, colors, isMobile, progra
         exercise_id: block.exerciseId || "",
         exercise_name: getDisplayName(block),
         category: block.category || "",
+        equipment_tier: logTier,
         sets: result.sets || block.sets || "",
         reps: result.reps || block.reps || "",
         load: result.load || block.load || "",
@@ -1095,8 +1100,9 @@ function MyLogs({ logs, colors, cats, isMobile, deleteLog, deleteDayLogs }) {
   const grouped = {};
   logs.forEach(l => {
     const key = `${l.date}-${l.day_label || ""}-${l.week_label || ""}`;
-    if (!grouped[key]) { grouped[key] = { date: l.date, week_label: l.week_label || "", day_label: l.day_label || "", entries: [], categories: new Set() }; }
+    if (!grouped[key]) { grouped[key] = { date: l.date, week_label: l.week_label || "", day_label: l.day_label || "", entries: [], categories: new Set(), rooms: new Set() }; }
     grouped[key].entries.push(l);
+    if (l.equipment_tier) grouped[key].rooms.add(l.equipment_tier);
     if (l.category) grouped[key].categories.add(l.category);
   });
   // Deduplicate: keep most recent per exercise within each day
@@ -1131,6 +1137,11 @@ function MyLogs({ logs, colors, cats, isMobile, deleteLog, deleteDayLogs }) {
                           {day.week_label ? day.week_label.replace(/WEEK\s*/i, "W").split("—")[0].trim() : ""}{day.day_label ? ` ${day.day_label}` : ""}
                         </span>
                       )}
+                      {(() => {
+                        const rooms = Array.from(day.rooms || []).map(roomLabel).filter(Boolean);
+                        if (!rooms.length) return null;
+                        return <span style={{ fontSize: 11, fontWeight: 700, color: "#0F766E", background: "#F0FDFA", border: "1px solid #99F6E4", padding: "1px 8px", borderRadius: 4 }}>{rooms.join(" \u00b7 ")}</span>;
+                      })()}
                     </div>
                     <div style={{ fontSize: 12, color: "#71717A", marginTop: 2 }}>{day.entries.length} exercise{day.entries.length !== 1 ? "s" : ""}</div>
                   </div>

@@ -208,16 +208,11 @@ export default function CoachApp({ onLogout }) {
     const athlete = athletes.find(a => a.id === program.athlete_id);
     const athleteName = athlete?.name || "Unknown";
 
-    // Delete existing logs for this athlete+week+day to prevent duplicates
+    // Rows already logged for this athlete+week+day. Deleted only AFTER the
+    // replacements are written, so a failure can never leave the day empty.
     const existing = logs.filter(l =>
       l.athlete_id === program.athlete_id && l.day_label === (day.label || "") && l.week_label === (weekLabel || "")
     );
-    if (existing.length > 0) {
-      for (const old of existing) {
-        await supabase.from("logs").delete().eq("id", old.id);
-      }
-      setLogs(prev => prev.filter(l => !existing.some(e => e.id === l.id)));
-    }
 
     const logEntries = day.blocks.map(block => {
       const exName = block.exerciseName || exercises.find(e => e.id === block.exerciseId)?.name || "Unknown";
@@ -239,8 +234,15 @@ export default function CoachApp({ onLogout }) {
       };
     });
     const { data, error } = await supabase.from("logs").insert(logEntries).select();
-    if (!error && data) setLogs(prev => [...data.reverse(), ...prev]);
-    return !error;
+    if (error) return false;
+    if (data) setLogs(prev => [...data.reverse(), ...prev]);
+    if (existing.length > 0) {
+      for (const old of existing) {
+        await supabase.from("logs").delete().eq("id", old.id);
+      }
+      setLogs(prev => prev.filter(l => !existing.some(e => e.id === l.id)));
+    }
+    return true;
   }, [athletes, exercises, logs]);
 
   const deleteLog = useCallback(async (id) => {
