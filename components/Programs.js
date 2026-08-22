@@ -807,7 +807,7 @@ function ProgramDetail({ program, programs, exercises, cats, colors, addBlock, u
           }
 
           return (
-            <Card key={day.id} style={{ padding: 14, border: day.status === "completed" ? "2px solid #16A34A" : day.status === "missed" ? "2px solid #DC2626" : "1px solid #E4E4E7", background: day.status === "completed" ? "#F0FDF418" : day.status === "missed" ? "#FEF2F218" : "#fff" }}>
+            <Card key={day.id} style={{ padding: 14, minWidth: 0, border: day.status === "completed" ? "2px solid #16A34A" : day.status === "missed" ? "2px solid #DC2626" : "1px solid #E4E4E7", background: day.status === "completed" ? "#F0FDF418" : day.status === "missed" ? "#FEF2F218" : "#fff" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                   {day.status === "completed" && <span style={{ color: "#16A34A", fontWeight: 700, fontSize: 14 }}>✓</span>}
@@ -1032,7 +1032,7 @@ function ProgramDetail({ program, programs, exercises, cats, colors, addBlock, u
                     <input type="date" value={date} onChange={e => setSubmitDates(prev => ({ ...prev, [day.id]: e.target.value }))} style={{ flex: 1, padding: "3px 6px", border: "1px solid #E4E4E7", borderRadius: 6, fontSize: 12, fontFamily: "inherit", boxSizing: "border-box" }} />
                   </div>
                   {isLogged && (
-                    <div style={{ marginBottom: 8, background: "#fff", border: "1px solid #BBF7D0", borderRadius: 8, overflow: "hidden" }}>
+                    <div style={{ marginBottom: 8, minWidth: 0, background: "#fff", border: "1px solid #BBF7D0", borderRadius: 8, overflow: "hidden" }}>
                       <div style={{ fontSize: 10, fontWeight: 700, color: "#16A34A", textTransform: "uppercase", letterSpacing: 0.5, padding: "6px 8px", background: "#F0FDF4" }}>
                         What {(ath?.name || "the athlete").split(" ")[0]} actually did
                       </div>
@@ -1044,9 +1044,9 @@ function ProgramDetail({ program, programs, exercises, cats, colors, addBlock, u
                           ml.rpe ? `RPE ${ml.rpe}` : "",
                         ].filter(Boolean).join(" \u00b7 ");
                         return (
-                          <div key={b.id} style={{ display: "flex", justifyContent: "space-between", gap: 10, padding: "4px 8px", borderTop: "1px solid #F0FDF4", fontSize: 12 }}>
-                            <span style={{ color: "#52525B", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ml.exercise_name || getDisplayName(b)}</span>
-                            <span style={{ fontWeight: 700, whiteSpace: "nowrap" }}>{val || "\u2014"}</span>
+                          <div key={b.id} style={{ display: "flex", flexWrap: "wrap", alignItems: "baseline", columnGap: 10, padding: "4px 8px", borderTop: "1px solid #F0FDF4", fontSize: 12 }}>
+                            <span style={{ color: "#52525B", flex: "1 1 auto", minWidth: 110, wordBreak: "break-word" }}>{ml.exercise_name || getDisplayName(b)}</span>
+                            <span style={{ fontWeight: 700, flex: "0 0 auto", marginLeft: "auto", whiteSpace: "nowrap" }}>{val || "\u2014"}</span>
                           </div>
                         );
                       })}
