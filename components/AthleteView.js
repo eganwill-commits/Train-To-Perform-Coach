@@ -143,8 +143,12 @@ export default function AthleteView({ athlete, onLogout, readOnly }) {
   }, [athlete.id]);
 
   const addLog = useCallback(async (log) => {
+    // A rejected insert used to be swallowed here, so the athlete saw "Saved!" while
+    // nothing was written. Throw, and let the caller's catch tell them the truth.
     const { data, error } = await supabase.from("logs").insert(log).select().single();
-    if (!error && data) setLogs(prev => [data, ...prev]);
+    if (error) throw error;
+    if (data) setLogs(prev => [data, ...prev]);
+    return data;
   }, []);
 
   const addVideoSub = useCallback(async (sub) => {
@@ -1034,6 +1038,7 @@ function AthleteLog({ addLog, athlete, exercises, cats, colors, isMobile, progra
       if (!window.confirm("You haven't entered any numbers for this session.\n\nLog it as complete without them?")) return;
     }
     setSubmitting(true);
+    try {
     for (const block of selected.day.blocks) {
       const result = blockResults[block.id] || {};
       await addLog({
@@ -1053,6 +1058,12 @@ function AthleteLog({ addLog, athlete, exercises, cats, colors, isMobile, progra
         week_label: selected.weekLabel,
         day_label: selected.day.label,
       });
+    }
+    } catch (err) {
+      console.error("submitAll failed", err);
+      alert("Could not save this session. Please try again - nothing was lost.");
+      setSubmitting(false);
+      return;
     }
     setSubmitting(false);
     setSaved(true);
