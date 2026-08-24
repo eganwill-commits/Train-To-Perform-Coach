@@ -255,7 +255,18 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
   const [selectedProg, setSelectedProg] = useState(null);
   const [expandedBlock, setExpandedBlock] = useState(null);
   const [aw, setAw] = useState(0);
-  const [blockResults, setBlockResults] = useState({});
+  // What the athlete has typed, keyed by block id.
+  //
+  // This MUST survive a page reload. On a phone the browser discards the tab while they
+  // train - lock the screen, do the session, come back an hour later and React state is
+  // gone. It used to be held in memory only, so "Log day" then ran with nothing in hand
+  // and (before the fix above) wrote the prescription instead. Persisting on every
+  // keystroke is what makes the numbers actually theirs.
+  const resultsKey = `t2p_results_${athlete?.id || "x"}`;
+  const [blockResults, setBlockResults] = useState(() => {
+    if (typeof window === "undefined") return {};
+    try { return JSON.parse(window.localStorage.getItem(`t2p_results_${athlete?.id || "x"}`) || "{}"); } catch { return {}; }
+  });
   const [submitting, setSubmitting] = useState(null);
   const [saved, setSaved] = useState(false);
   const [uploadingVideo, setUploadingVideo] = useState(null); // block.id being uploaded
@@ -329,7 +340,9 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
       });
       setAw(currentWi >= 0 ? currentWi : weeks.length - 1);
       setExpandedBlock(null);
-      setBlockResults({});
+      // Deliberately NOT clearing blockResults here. It is keyed by block id, so it is
+      // already program-scoped, and clearing it threw away unsaved numbers on every
+      // re-select of a program.
     }
   }, [selectedProg]);
 
@@ -340,6 +353,11 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
   const equipKey = `t2p_equip_${athlete?.id || "x"}`;
   const dayEquipKey = `t2p_equip_day_${athlete?.id || "x"}`;
   const canPersist = !!addLog; // false in coach preview (read-only)
+  // Persist on every change. Coach preview is read-only and never writes.
+  useEffect(() => {
+    if (typeof window === "undefined" || !canPersist) return;
+    try { window.localStorage.setItem(resultsKey, JSON.stringify(blockResults)); } catch (e) {}
+  }, [blockResults, resultsKey, canPersist]);
   const [blockTier, setBlockTier] = useState(() => {
     if (typeof window === "undefined") return {};
     try { return JSON.parse(window.localStorage.getItem(equipKey) || "{}"); } catch { return {}; }
@@ -400,6 +418,21 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
 
   const submitDay = async (day, weekLabel) => {
     if (!addLog || !athlete) return;
+
+    // Refuse to write a whole session of blanks by accident. If nothing was typed and
+    // nothing was logged for this day before, ask first - the silent version of this is
+    // how a full day of fabricated rows got written.
+    const filled = (r) => !!(r && ((r.sets ?? "") !== "" || (r.reps ?? "") !== "" || (r.load ?? "") !== "" ||
+                                   (r.rpe ?? "") !== "" || (r.notes ?? "") !== "" || r.status));
+    const typedAny = (day.blocks || []).some(b => filled(blockResults[b.id]));
+    const priorAny = (logs || []).some(l =>
+      l.athlete_id === athlete.id && l.day_label === day.label && l.week_label === weekLabel &&
+      ((l.sets ?? "") !== "" || (l.reps ?? "") !== "" || (l.load ?? "") !== "" || (l.rpe ?? "") !== "")
+    );
+    if (!typedAny && !priorAny && typeof window !== "undefined") {
+      if (!window.confirm("You haven't entered any numbers for this session.\n\nMark it complete without them?")) return;
+    }
+
     const date = new Date().toISOString().slice(0, 10);
     setSubmitting(day.id);
     try {
@@ -427,9 +460,14 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
           exercise_id: block.exerciseId || "", exercise_name: dn,
           category: block.category || "",
           equipment_tier: tierFor(block, day.id),
-          sets: result.sets ?? existingLog?.sets ?? block.sets ?? "",
-          reps: result.reps ?? existingLog?.reps ?? block.reps ?? "",
-          load: result.load ?? existingLog?.load ?? block.load ?? "",
+          // THE LOGS TABLE HOLDS WHAT THE ATHLETE ACTUALLY DID - NOTHING ELSE.
+          // Never fall back to block.sets/reps/load here. A prescription written into a log
+          // is indistinguishable from a real result: it reads back as if the athlete hit it,
+          // and every progression decision downstream is then made from a number nobody lifted.
+          // If we don't have their value, the field stays empty.
+          sets: result.sets ?? existingLog?.sets ?? "",
+          reps: result.reps ?? existingLog?.reps ?? "",
+          load: result.load ?? existingLog?.load ?? "",
           rpe: result.rpe ?? existingLog?.rpe ?? "",
           notes: result.notes ?? existingLog?.notes ?? "",
           exercise_status: result.status ?? existingLog?.exercise_status ?? "completed",
@@ -461,7 +499,13 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
         }
       } catch (e) { /* silent — logging succeeded even if status update fails */ }
       setSaved(true);
-      setBlockResults({});
+      // Clear only the blocks that were just saved - never the whole draft, which may hold
+      // numbers for a different day the athlete has part-filled.
+      setBlockResults(prev => {
+        const next = { ...prev };
+        (day.blocks || []).forEach(b => { delete next[b.id]; });
+        return next;
+      });
       setTimeout(() => setSaved(false), 3000);
     } catch (err) {
       // A throw here used to leave the button stuck on "Saving..." and the day
@@ -935,7 +979,16 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
 function AthleteLog({ addLog, athlete, exercises, cats, colors, isMobile, programs, logs }) {
   const [selectedWorkout, setSelectedWorkout] = useState("");
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
-  const [blockResults, setBlockResults] = useState({});
+  // Same rule as MyProgram: typed numbers survive a reload. See the comment there.
+  const logResultsKey = `t2p_logpage_${athlete?.id || "x"}`;
+  const [blockResults, setBlockResults] = useState(() => {
+    if (typeof window === "undefined") return {};
+    try { return JSON.parse(window.localStorage.getItem(`t2p_logpage_${athlete?.id || "x"}`) || "{}"); } catch { return {}; }
+  });
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try { window.localStorage.setItem(`t2p_logpage_${athlete?.id || "x"}`, JSON.stringify(blockResults)); } catch (e) {}
+  }, [blockResults, athlete]);
   const [submitting, setSubmitting] = useState(false);
   const [saved, setSaved] = useState(false);
   const [expandedEx, setExpandedEx] = useState(null);
@@ -974,6 +1027,12 @@ function AthleteLog({ addLog, athlete, exercises, cats, colors, isMobile, progra
 
   const submitAll = async () => {
     if (!selected) return;
+    const filled = (r) => !!(r && ((r.sets ?? "") !== "" || (r.reps ?? "") !== "" || (r.load ?? "") !== "" ||
+                                   (r.rpe ?? "") !== "" || (r.notes ?? "") !== ""));
+    const typedAny = (selected.day.blocks || []).some(b => filled(blockResults[b.id]));
+    if (!typedAny && typeof window !== "undefined") {
+      if (!window.confirm("You haven't entered any numbers for this session.\n\nLog it as complete without them?")) return;
+    }
     setSubmitting(true);
     for (const block of selected.day.blocks) {
       const result = blockResults[block.id] || {};
@@ -984,9 +1043,10 @@ function AthleteLog({ addLog, athlete, exercises, cats, colors, isMobile, progra
         exercise_name: getDisplayName(block),
         category: block.category || "",
         equipment_tier: logTier,
-        sets: result.sets || block.sets || "",
-        reps: result.reps || block.reps || "",
-        load: result.load || block.load || "",
+        // Athlete's numbers only - never the prescription. See MyProgram.submitDay.
+        sets: result.sets || "",
+        reps: result.reps || "",
+        load: result.load || "",
         rpe: result.rpe || "",
         notes: result.notes || "",
         date,
@@ -996,7 +1056,11 @@ function AthleteLog({ addLog, athlete, exercises, cats, colors, isMobile, progra
     }
     setSubmitting(false);
     setSaved(true);
-    setBlockResults({});
+    setBlockResults(prev => {
+      const next = { ...prev };
+      (selected.day.blocks || []).forEach(b => { delete next[b.id]; });
+      return next;
+    });
     setTimeout(() => setSaved(false), 3000);
   };
 
@@ -1012,7 +1076,7 @@ function AthleteLog({ addLog, athlete, exercises, cats, colors, isMobile, progra
           <Input label="Date" type="date" value={date} onChange={e => setDate(e.target.value)} />
           <div>
             <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>Select Workout</div>
-            <select value={selectedWorkout} onChange={e => { setSelectedWorkout(e.target.value); setBlockResults({}); setExpandedEx(null); }} style={{ width: "100%", padding: "9px 12px", border: "1px solid #E4E4E7", borderRadius: 8, fontSize: 14, fontFamily: "inherit", boxSizing: "border-box" }}>
+            <select value={selectedWorkout} onChange={e => { setSelectedWorkout(e.target.value); setExpandedEx(null); }} style={{ width: "100%", padding: "9px 12px", border: "1px solid #E4E4E7", borderRadius: 8, fontSize: 14, fontFamily: "inherit", boxSizing: "border-box" }}>
               <option value="">— Choose a workout —</option>
               {workoutOptions.map(o => <option key={o.value} value={o.value}>{o.label} ({o.day.blocks.length} exercises)</option>)}
             </select>

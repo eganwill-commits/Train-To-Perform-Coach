@@ -255,9 +255,12 @@ export default function CoachApp({ onLogout }) {
         exercise_id: block.exerciseId || "",
         exercise_name: exName,
         category: block.category || "",
-        sets: logged?.sets ?? block.sets ?? "",
-        reps: logged?.reps ?? block.reps ?? "",
-        load: logged?.load ?? block.load ?? "",
+        // Marking a day complete from the coach side records that it happened. It does NOT
+        // invent numbers: if the athlete logged nothing, these stay empty rather than
+        // back-filling the prescription as if they had hit it.
+        sets: logged?.sets ?? "",
+        reps: logged?.reps ?? "",
+        load: logged?.load ?? "",
         rpe: logged?.rpe ?? "",
         // logs.notes belongs to the athlete. The coach's programming note lives on the
         // block and must not be copied in here - it reads back as if they wrote it.

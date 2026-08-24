@@ -689,9 +689,11 @@ function ProgramDetail({ program, programs, exercises, cats, colors, addBlock, u
         exercise_id: block.exerciseId || "",
         exercise_name: exName,
         category: block.category || "",
-        sets: block.sets || "",
-        reps: block.reps || "",
-        load: block.load || "",
+        // Coach ticking an exercise complete records status only. The numbers belong to
+        // the athlete; copying the prescription here would fabricate their session.
+        sets: "",
+        reps: "",
+        load: "",
         rpe: "",
         notes: "",
         exercise_status: newStatus,
@@ -1036,6 +1038,22 @@ function ProgramDetail({ program, programs, exercises, cats, colors, addBlock, u
                       <div style={{ fontSize: 10, fontWeight: 700, color: "#16A34A", textTransform: "uppercase", letterSpacing: 0.5, padding: "6px 8px", background: "#F0FDF4" }}>
                         What {(ath?.name || "the athlete").split(" ")[0]} actually did
                       </div>
+                      {(() => {
+                        // A day can now be logged with no numbers at all (the app no longer
+                        // back-fills the prescription). Say so plainly rather than showing a
+                        // column of dashes the coach has to interpret.
+                        const rows = day.blocks.filter(b => blockLogMap[b.id]);
+                        const anyNumbers = rows.some(b => {
+                          const m = blockLogMap[b.id];
+                          return (m.sets || m.reps || m.load || m.rpe);
+                        });
+                        if (rows.length > 0 && !anyNumbers) return (
+                          <div style={{ padding: "6px 8px", fontSize: 12, color: "#B45309", background: "#FFFBEB", borderTop: "1px solid #FDE68A" }}>
+                            Logged as complete, but no sets, reps, load or RPE were entered.
+                          </div>
+                        );
+                        return null;
+                      })()}
                       {day.blocks.filter(b => blockLogMap[b.id]).map(b => {
                         const ml = blockLogMap[b.id];
                         const val = [
