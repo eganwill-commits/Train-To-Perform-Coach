@@ -2,23 +2,33 @@
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "../lib/supabase";
 
-const LS_KEY = "t2p_last_checked";
+/*
+  Read state lives in `coach_alert_reads`, not localStorage.
 
-function getLastChecked() {
-  if (typeof window === "undefined") return new Date().toISOString();
-  return localStorage.getItem(LS_KEY) || new Date(Date.now() - 86400000).toISOString();
-}
+  It used to be a single "last checked" timestamp in the browser. That meant hitting
+  "Mark all read" buried an athlete note the coach had never actually opened, the list
+  only ever looked back 24 hours, and signing in on another device produced a different
+  set of alerts. An athlete writing "knee felt off on set 3" deserves better than a
+  marker that lives in one browser's storage.
 
-function setLastChecked() {
-  if (typeof window !== "undefined") localStorage.setItem(LS_KEY, new Date().toISOString());
-}
+  Now every alert is dismissed individually and durably, keyed by the row it came from.
+  LOOKBACK bounds the window so the bell can never surface months of history at once.
+*/
+const COACH_ID = "coach";
+const LOOKBACK_DAYS = 21;
+
+// Stable key for a day's worth of logs, which are alerted as one grouped entry.
+const dayKey = (l) => `${l.athlete_id}|${l.week_label || ""}|${l.day_label || ""}`;
 
 export default function AlertsBell({ logs, videoSubs, athletes, isMobile, onNavigate }) {
   const [open, setOpen] = useState(false);
-  const [lastChecked, setLC] = useState(getLastChecked);
+  // Set of "<source_table>:<source_id>" the coach has already dismissed.
+  const [readKeys, setReadKeys] = useState(() => new Set());
   const [unreadMsgs, setUnreadMsgs] = useState([]);
   const [recentNotes, setRecentNotes] = useState([]);
   const ref = useRef(null);
+  const since = new Date(Date.now() - LOOKBACK_DAYS * 86400000).toISOString();
+  const isRead = (table, id) => readKeys.has(`${table}:${id}`);
 
   useEffect(() => {
     const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
@@ -26,20 +36,30 @@ export default function AlertsBell({ logs, videoSubs, athletes, isMobile, onNavi
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
-  // Fetch unread messages and recent notes
   useEffect(() => {
-    const fetch = async () => {
-      const [msgRes, noteRes] = await Promise.all([
+    const pull = async () => {
+      const [msgRes, noteRes, readRes] = await Promise.all([
         supabase.from("messages").select("*").eq("sender_role", "athlete").is("read_at", null).order("created_at", { ascending: false }).limit(10),
-        supabase.from("athlete_notes").select("*").eq("author_role", "athlete").gt("created_at", lastChecked).order("created_at", { ascending: false }).limit(10),
+        supabase.from("athlete_notes").select("*").eq("author_role", "athlete").gt("created_at", since).order("created_at", { ascending: false }).limit(30),
+        supabase.from("coach_alert_reads").select("source_table,source_id").eq("coach_id", COACH_ID),
       ]);
-      setUnreadMsgs(msgRes.data || []);
-      setRecentNotes(noteRes.data || []);
+      if (msgRes.error) console.error("alerts: messages", msgRes.error); else setUnreadMsgs(msgRes.data || []);
+      if (noteRes.error) console.error("alerts: notes", noteRes.error); else setRecentNotes(noteRes.data || []);
+      if (readRes.error) console.error("alerts: reads", readRes.error);
+      else setReadKeys(new Set((readRes.data || []).map(r => `${r.source_table}:${r.source_id}`)));
     };
-    fetch();
-    const iv = setInterval(fetch, 15000);
+    pull();
+    const iv = setInterval(pull, 15000);
     return () => clearInterval(iv);
-  }, [lastChecked]);
+  }, [since]);
+
+  // Dismiss one alert, durably. Optimistic so the list responds immediately.
+  const dismiss = async (table, id) => {
+    setReadKeys(prev => new Set(prev).add(`${table}:${id}`));
+    const { error } = await supabase.from("coach_alert_reads")
+      .upsert({ coach_id: COACH_ID, source_table: table, source_id: String(id) }, { onConflict: "coach_id,source_table,source_id" });
+    if (error) console.error("dismiss alert failed", error);
+  };
 
   const getAthleteName = (id) => (athletes || []).find(a => a.id === id)?.name || "Unknown";
   const getInitials = (name) => {
@@ -48,8 +68,8 @@ export default function AlertsBell({ logs, videoSubs, athletes, isMobile, onNavi
     return (parts[0]?.[0] || "?").toUpperCase();
   };
 
-  // New logs since last checked
-  const newLogs = (logs || []).filter(l => l.logged_at && l.logged_at > lastChecked);
+  // Within the lookback window and not yet dismissed.
+  const newLogs = (logs || []).filter(l => l.logged_at && l.logged_at > since && !isRead("log_day", dayKey(l)));
 
   /*
     Notes the athlete wrote on an individual exercise inside their workout.
@@ -60,26 +80,46 @@ export default function AlertsBell({ logs, videoSubs, athletes, isMobile, onNavi
     A note is the athlete telling you something; it gets its own alert.
   */
   const newLogNotes = (logs || [])
-    .filter(l => l.logged_at && l.logged_at > lastChecked && (l.notes || "").trim())
+    .filter(l => l.logged_at && l.logged_at > since && (l.notes || "").trim() && !isRead("logs", l.id))
     .sort((a, b) => String(b.logged_at).localeCompare(String(a.logged_at)));
-  const newVideos = (videoSubs || []).filter(v => v.created_at && v.created_at > lastChecked);
+  const newVideos = (videoSubs || []).filter(v => v.created_at && v.created_at > since && !isRead("video_submissions", v.id));
+  const freshNotes = (recentNotes || []).filter(n => !isRead("athlete_notes", n.id));
 
   // Group logs by athlete + date + day
   const logGroups = {};
   newLogs.forEach(l => {
-    const key = `${l.athlete_id}-${l.date}-${l.day_label || ""}`;
-    if (!logGroups[key]) logGroups[key] = { athlete_id: l.athlete_id, date: l.date, week_label: l.week_label, day_label: l.day_label, count: 0, latest: l.logged_at };
+    const key = dayKey(l);
+    if (!logGroups[key]) logGroups[key] = { key, athlete_id: l.athlete_id, date: l.date, week_label: l.week_label, day_label: l.day_label, count: 0, latest: l.logged_at };
     logGroups[key].count++;
     if (l.logged_at > logGroups[key].latest) logGroups[key].latest = l.logged_at;
   });
   const logAlerts = Object.values(logGroups).sort((a, b) => b.latest.localeCompare(a.latest));
 
-  const totalNew = logAlerts.length + newVideos.length + unreadMsgs.length + recentNotes.length + newLogNotes.length;
+  const totalNew = logAlerts.length + newVideos.length + unreadMsgs.length + freshNotes.length + newLogNotes.length;
 
-  const markRead = () => {
-    setLastChecked();
-    setLC(new Date().toISOString());
+  /*
+    Marking all read now records each visible alert individually rather than moving one
+    timestamp forward. Messages are untouched - they carry their own read_at and are
+    cleared by opening the thread, not by tidying the bell.
+  */
+  const markRead = async () => {
+    const rows = [
+      ...logAlerts.map(g => ({ source_table: "log_day", source_id: g.key })),
+      ...newLogNotes.map(l => ({ source_table: "logs", source_id: String(l.id) })),
+      ...newVideos.map(v => ({ source_table: "video_submissions", source_id: String(v.id) })),
+      ...freshNotes.map(n => ({ source_table: "athlete_notes", source_id: String(n.id) })),
+    ].map(r => ({ coach_id: COACH_ID, ...r }));
+    setReadKeys(prev => {
+      const next = new Set(prev);
+      rows.forEach(r => next.add(`${r.source_table}:${r.source_id}`));
+      return next;
+    });
     setOpen(false);
+    if (rows.length) {
+      const { error } = await supabase.from("coach_alert_reads")
+        .upsert(rows, { onConflict: "coach_id,source_table,source_id" });
+      if (error) console.error("mark all read failed", error);
+    }
   };
 
   const timeAgo = (ts) => {
@@ -128,7 +168,7 @@ export default function AlertsBell({ logs, videoSubs, athletes, isMobile, onNavi
                   const name = l.athlete_name || getAthleteName(l.athlete_id);
                   const initials = getInitials(name);
                   return (
-                  <div key={"ln-" + l.id} onClick={() => { if (onNavigate) { onNavigate(l.athlete_id); setOpen(false); } }} style={{ display: "flex", gap: 10, padding: "12px 16px", borderBottom: "1px solid #F4F4F5", alignItems: "start", cursor: onNavigate ? "pointer" : "default" }}>
+                  <div key={"ln-" + l.id} onClick={() => { dismiss("logs", l.id); if (onNavigate) { onNavigate(l.athlete_id, "programs", { weekLabel: l.week_label, dayLabel: l.day_label, logId: l.id }); setOpen(false); } }} style={{ display: "flex", gap: 10, padding: "12px 16px", borderBottom: "1px solid #F4F4F5", alignItems: "start", cursor: onNavigate ? "pointer" : "default" }}>
                     <div style={{ width: 36, height: 36, borderRadius: 18, background: "#FEF2F2", color: "#DC2626", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 13, flexShrink: 0 }}>{initials}</div>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
@@ -152,7 +192,7 @@ export default function AlertsBell({ logs, videoSubs, athletes, isMobile, onNavi
                   const name = v.athlete_name || getAthleteName(v.athlete_id);
                   const initials = getInitials(name);
                   return (
-                  <div key={v.id} onClick={() => { if (onNavigate) { onNavigate(v.athlete_id); setOpen(false); } }} style={{ display: "flex", gap: 10, padding: "12px 16px", borderBottom: "1px solid #F4F4F5", alignItems: "start", cursor: onNavigate ? "pointer" : "default" }}>
+                  <div key={v.id} onClick={() => { dismiss("video_submissions", v.id); if (onNavigate) { onNavigate(v.athlete_id); setOpen(false); } }} style={{ display: "flex", gap: 10, padding: "12px 16px", borderBottom: "1px solid #F4F4F5", alignItems: "start", cursor: onNavigate ? "pointer" : "default" }}>
                     <div style={{ width: 36, height: 36, borderRadius: 18, background: "#DBEAFE", color: "#2563EB", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 13, flexShrink: 0 }}>{initials}</div>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -172,7 +212,7 @@ export default function AlertsBell({ logs, videoSubs, athletes, isMobile, onNavi
                   const name = getAthleteName(g.athlete_id);
                   const initials = getInitials(name);
                   return (
-                  <div key={i} onClick={() => { if (onNavigate) { onNavigate(g.athlete_id); setOpen(false); } }} style={{ display: "flex", gap: 10, padding: "12px 16px", borderBottom: "1px solid #F4F4F5", alignItems: "start", cursor: onNavigate ? "pointer" : "default" }}>
+                  <div key={g.key || i} onClick={() => { dismiss("log_day", g.key); if (onNavigate) { onNavigate(g.athlete_id, "programs", { weekLabel: g.week_label, dayLabel: g.day_label }); setOpen(false); } }} style={{ display: "flex", gap: 10, padding: "12px 16px", borderBottom: "1px solid #F4F4F5", alignItems: "start", cursor: onNavigate ? "pointer" : "default" }}>
                     <div style={{ width: 36, height: 36, borderRadius: 18, background: "#F0FDF4", color: "#16A34A", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 13, flexShrink: 0 }}>{initials}</div>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -211,11 +251,11 @@ export default function AlertsBell({ logs, videoSubs, athletes, isMobile, onNavi
                 })}
 
                 {/* Notes */}
-                {recentNotes.map(note => {
+                {freshNotes.map(note => {
                   const name = note.author_name || "Unknown";
                   const initials = getInitials(name);
                   return (
-                  <div key={note.id} onClick={() => { if (onNavigate) { onNavigate(note.athlete_id, "programs"); setOpen(false); } }} style={{ display: "flex", gap: 10, padding: "12px 16px", borderBottom: "1px solid #F4F4F5", alignItems: "start", cursor: onNavigate ? "pointer" : "default" }}>
+                  <div key={note.id} onClick={() => { dismiss("athlete_notes", note.id); if (onNavigate) { onNavigate(note.athlete_id, "programs"); setOpen(false); } }} style={{ display: "flex", gap: 10, padding: "12px 16px", borderBottom: "1px solid #F4F4F5", alignItems: "start", cursor: onNavigate ? "pointer" : "default" }}>
                     <div style={{ width: 36, height: 36, borderRadius: 18, background: "#FFFBEB", color: "#D97706", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 13, flexShrink: 0 }}>{initials}</div>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>

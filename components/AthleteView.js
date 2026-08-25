@@ -896,6 +896,14 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
                         </div>
                         <label style={{ fontSize: 10, color: "#71717A", display: "block", marginTop: 6 }}>Notes<input value={effNotes} onChange={e => updateResult(block.id, "notes", e.target.value)} placeholder="How did it feel?" style={inputStyle} /></label>
                         {loggedResult && <div style={{ fontSize: 10, color: "#A1A1AA", marginTop: 4 }}>Logged {new Date(loggedResult.date + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}</div>}
+                        {/* The coach answering a note the athlete left here. Shown on the
+                            exercise it belongs to, so the reply sits next to what it is about. */}
+                        {loggedResult?.coach_reply && (
+                          <div style={{ marginTop: 8, padding: "8px 10px", background: "#EFF6FF", borderRadius: 8, border: "1px solid #BFDBFE" }}>
+                            <div style={{ fontSize: 10, fontWeight: 700, color: "#1E40AF", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 2 }}>Coach Reply</div>
+                            <div style={{ fontSize: 13, color: "#18181B", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{loggedResult.coach_reply}</div>
+                          </div>
+                        )}
                       </div>
 
                       {/* Submit Video */}

@@ -54,10 +54,24 @@ function warmupForDay(label) {
   return DAY_WARMUPS.generic;
 }
 
-export default function Programs({ programs, addProgram, updateProgram, deleteProgram, athletes, exercises, cats, colors, isMobile, submitDay, unlogDay, logs, groups, setLogs, addGroup, addAthleteToGroup, addSeasonMembership }) {
+export default function Programs({ programs, addProgram, updateProgram, deleteProgram, athletes, exercises, cats, colors, isMobile, submitDay, unlogDay, logs, groups, setLogs, addGroup, addAthleteToGroup, addSeasonMembership, focusAthleteId, focusTarget, onFocusClear }) {
   const [modal, setModal] = useState(false);
   const [form, setForm] = useState({ name: "", selectedAthletes: [], weeks: 4, description: "", group_id: "", trackAsSeason: false, start_date: "" });
   const [detail, setDetail] = useState(null);
+
+  // Arriving from an alert: open the athlete's program straight away. Prefer the program
+  // that actually contains the week the alert names, so an athlete with more than one
+  // program does not land in the wrong book.
+  useEffect(() => {
+    if (!focusAthleteId) return;
+    const mine = (programs || []).filter(p => p.athlete_id === focusAthleteId);
+    if (mine.length === 0) return;
+    const wanted = focusTarget?.weekLabel;
+    const match = wanted
+      ? mine.find(p => (p.weeks || []).some(w => w.label === wanted))
+      : null;
+    setDetail((match || mine[0]).id);
+  }, [focusAthleteId, focusTarget, programs]);
   const [folderKey, setFolderKey] = useState(null);
   const [addAthModal, setAddAthModal] = useState(false);
   const [addAthTargets, setAddAthTargets] = useState([]);
@@ -265,7 +279,7 @@ export default function Programs({ programs, addProgram, updateProgram, deletePr
     await updateProgram(ap.id, { weeks });
   };
 
-  if (detail && ap) return <ProgramDetail program={ap} programs={programs} exercises={exercises} cats={cats} colors={colors} addBlock={addBlock} updateBlock={updateBlock} removeBlock={removeBlock} moveBlock={moveBlock} onBack={() => setDetail(null)} athletes={athletes} isMobile={isMobile} submitDay={submitDay} unlogDay={unlogDay} logs={logs || []} copyToAthletes={copyToAthletes} updateProgram={updateProgram} groups={groups} setLogs={setLogs} />;
+  if (detail && ap) return <ProgramDetail focusTarget={focusTarget} onFocusClear={onFocusClear} program={ap} programs={programs} exercises={exercises} cats={cats} colors={colors} addBlock={addBlock} updateBlock={updateBlock} removeBlock={removeBlock} moveBlock={moveBlock} onBack={() => setDetail(null)} athletes={athletes} isMobile={isMobile} submitDay={submitDay} unlogDay={unlogDay} logs={logs || []} copyToAthletes={copyToAthletes} updateProgram={updateProgram} groups={groups} setLogs={setLogs} />;
 
   // ---- Folder detail: the athletes inside one program folder ----
   const activeFolder = folderKey ? folders.find(f => f.key === folderKey) : null;
@@ -509,7 +523,7 @@ function VariantHint({ ex }) {
   );
 }
 
-function ProgramDetail({ program, programs, exercises, cats, colors, addBlock, updateBlock, removeBlock, moveBlock, onBack, athletes, isMobile, submitDay, unlogDay, logs, copyToAthletes, updateProgram, groups, setLogs }) {
+function ProgramDetail({ program, programs, exercises, cats, colors, addBlock, updateBlock, removeBlock, moveBlock, onBack, athletes, isMobile, submitDay, unlogDay, logs, copyToAthletes, updateProgram, groups, setLogs, focusTarget, onFocusClear }) {
   // Keep a ref to latest program to prevent stale closures in async handlers
   const programRef = useRef(program);
   programRef.current = program;
@@ -537,6 +551,61 @@ function ProgramDetail({ program, programs, exercises, cats, colors, addBlock, u
   const [copyTargets, setCopyTargets] = useState([]);
   const [expandedBlock, setExpandedBlock] = useState(null);
   const [recapSaved, setRecapSaved] = useState(false);
+
+  /*
+    Deep link from the alert bell. Jump to the week the alert names, scroll that day into
+    view and ring it. Without this, "View" dropped the coach on the athlete's dashboard
+    and left them to find the session and the note by hand - which is the same hunting
+    problem the bell is supposed to remove.
+  */
+  const focusDayRef = useRef(null);
+  const [dayGlow, setDayGlow] = useState(null);
+  useEffect(() => {
+    if (!focusTarget?.dayLabel) return;
+    const weeks = program.weeks || [];
+    const wi = focusTarget.weekLabel ? weeks.findIndex(w => w.label === focusTarget.weekLabel) : -1;
+    if (wi >= 0) setAw(wi);
+    setDayGlow(focusTarget.dayLabel);
+    const t1 = setTimeout(() => focusDayRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 220);
+    const t2 = setTimeout(() => { setDayGlow(null); if (onFocusClear) onFocusClear(); }, 5000);
+    return () => { clearTimeout(t1); clearTimeout(t2); };
+  }, [focusTarget, program.id]);
+
+  /*
+    Replying to a note the athlete left on an exercise. Same contract as video feedback:
+    it is stored on the row it answers, and it raises an alert so the athlete is told
+    rather than left to stumble on it.
+  */
+  const [replyingTo, setReplyingTo] = useState(null);
+  const replyToNote = async (logRow, athleteName) => {
+    const existing = logRow.coach_reply || "";
+    const text = window.prompt(existing ? "Update your reply:" : `Reply to ${(athleteName || "the athlete").split(" ")[0]}'s note:`, existing);
+    if (text === null) return;
+    setReplyingTo(logRow.id);
+    try {
+      const nowIso = new Date().toISOString();
+      const { data, error } = await supabase.from("logs")
+        .update({ coach_reply: text, coach_reply_at: nowIso })
+        .eq("id", logRow.id).select().single();
+      if (error) throw error;
+      if (data && setLogs) setLogs(prev => prev.map(l => (l.id === data.id ? data : l)));
+      const raised = await raiseAlertReplacing({
+        athleteId: logRow.athlete_id,
+        kind: ALERT_KIND.NOTE_REPLY,
+        title: `Coach replied about ${logRow.exercise_name || "your note"}`,
+        body: text,
+        refTable: "log_replies",
+        refId: logRow.id,
+        linkPage: ALERT_PAGE.PROGRAM,
+      });
+      if (!raised) window.alert("Reply saved, but the notification to the athlete could not be sent.");
+    } catch (e) {
+      console.error("replyToNote failed", e);
+      window.alert("That reply could not be saved. Please try again.");
+    } finally {
+      setReplyingTo(null);
+    }
+  };
 
   // Compute current week (for the "back to current" button) but don't auto-navigate
   const currentWeekIndex = (() => {
@@ -837,8 +906,12 @@ function ProgramDetail({ program, programs, exercises, cats, colors, addBlock, u
             });
           }
 
+          const isFocusDay = dayGlow && day.label === dayGlow;
           return (
-            <Card key={day.id} style={{ padding: 14, minWidth: 0, border: day.status === "completed" ? "2px solid #16A34A" : day.status === "missed" ? "2px solid #DC2626" : "1px solid #E4E4E7", background: day.status === "completed" ? "#F0FDF418" : day.status === "missed" ? "#FEF2F218" : "#fff" }}>
+            // Wrapper carries the scroll ref - Card is a plain function component and
+            // does not forward refs.
+            <div key={day.id} ref={isFocusDay ? focusDayRef : undefined} style={{ minWidth: 0, scrollMarginTop: 70 }}>
+            <Card style={{ padding: 14, minWidth: 0, border: isFocusDay ? "2px solid #2563EB" : day.status === "completed" ? "2px solid #16A34A" : day.status === "missed" ? "2px solid #DC2626" : "1px solid #E4E4E7", boxShadow: isFocusDay ? "0 0 0 4px rgba(37,99,235,.15)" : undefined, transition: "box-shadow .4s ease, border-color .4s ease", background: day.status === "completed" ? "#F0FDF418" : day.status === "missed" ? "#FEF2F218" : "#fff" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                   {day.status === "completed" && <span style={{ color: "#16A34A", fontWeight: 700, fontSize: 14 }}>✓</span>}
@@ -1045,6 +1118,29 @@ function ProgramDetail({ program, programs, exercises, cats, colors, addBlock, u
                                   <div style={{ fontSize: 12, color: "#18181B", whiteSpace: "pre-wrap" }}>{ml.notes}</div>
                                 </div>
                               )}
+                              {/* Reply to the note. Same contract as video feedback:
+                                  stored on the row it answers, and the athlete is told. */}
+                              {ml.notes && (
+                                <div style={{ marginTop: 6 }}>
+                                  {ml.coach_reply ? (
+                                    <div style={{ padding: "6px 8px", background: "#EFF6FF", borderRadius: 4, border: "1px solid #BFDBFE" }}>
+                                      <div style={{ fontSize: 9, color: "#1E40AF", fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.4 }}>Your Reply</div>
+                                      <div style={{ fontSize: 12, color: "#18181B", whiteSpace: "pre-wrap" }}>{ml.coach_reply}</div>
+                                      <button
+                                        onClick={() => replyToNote(ml, ath?.name)}
+                                        disabled={replyingTo === ml.id}
+                                        style={{ marginTop: 3, background: "none", border: "none", padding: 0, color: "#2563EB", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}
+                                      >{replyingTo === ml.id ? "Saving…" : "Edit reply"}</button>
+                                    </div>
+                                  ) : (
+                                    <button
+                                      onClick={() => replyToNote(ml, ath?.name)}
+                                      disabled={replyingTo === ml.id}
+                                      style={{ padding: "5px 10px", background: "#18181B", color: "#fff", border: "none", borderRadius: 6, fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}
+                                    >{replyingTo === ml.id ? "Saving…" : "Reply to note"}</button>
+                                  )}
+                                </div>
+                              )}
                             </div>
                           );
                         })()}
@@ -1189,6 +1285,7 @@ function ProgramDetail({ program, programs, exercises, cats, colors, addBlock, u
                 </button>
               </div>
             </Card>
+            </div>
           );
         })}
       </div>

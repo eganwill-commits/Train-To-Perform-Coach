@@ -54,6 +54,9 @@ async function fetchAllLogs() {
 export default function CoachApp({ onLogout }) {
   const [page, setPage] = useState("dashboard");
   const [focusAthleteId, setFocusAthleteId] = useState(null);
+  // What inside the athlete's program the alert pointed at (week/day/log), so "View"
+  // lands on the thing itself instead of the athlete's dashboard.
+  const [focusTarget, setFocusTarget] = useState(null);
   const [athletes, setAthletes] = useState([]);
   const [programs, setPrograms] = useState([]);
   const [exercises, setExercises] = useState([]);
@@ -431,7 +434,7 @@ export default function CoachApp({ onLogout }) {
   }, []);
 
   const nav = (id) => { setPage(id); setFocusAthleteId(null); if (isMobile) setNavOpen(false); };
-  const navToAthlete = (athleteId, targetPage) => { setFocusAthleteId(athleteId); setPage(targetPage || "athletes"); if (isMobile) setNavOpen(false); };
+  const navToAthlete = (athleteId, targetPage, target) => { setFocusAthleteId(athleteId); setFocusTarget(target || null); setPage(targetPage || "athletes"); if (isMobile) setNavOpen(false); };
 
   if (!loaded) return (
     <div className="t2p-root" style={{ display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'DM Sans', sans-serif" }}>
@@ -527,7 +530,7 @@ export default function CoachApp({ onLogout }) {
           {page === "dashboard" && <Dashboard {...pp} />}
           {page === "seasons" && <Seasons {...pp} />}
           {page === "athletes" && <Athletes {...pp} focusAthleteId={focusAthleteId} onFocusClear={() => setFocusAthleteId(null)} />}
-          {page === "programs" && <Programs {...pp} />}
+          {page === "programs" && <Programs {...pp} focusAthleteId={focusAthleteId} focusTarget={focusTarget} onFocusClear={() => { setFocusAthleteId(null); setFocusTarget(null); }} />}
           {page === "library" && <Library {...pp} />}
           {page === "log" && <LogPage {...pp} />}
           {page === "messages" && <Messages isCoach currentUserId="coach" currentUserName="Coach" athletes={pp.athletes} isMobile={isMobile} />}

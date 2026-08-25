@@ -20,6 +20,7 @@ const ICON = {
   video_feedback: "\u{1F3A5}",
   note: "\u{1F4CB}",
   day_note: "\u{1F4DD}",
+  note_reply: "\u{1F4AC}",
   message: "✉",
 };
 
@@ -27,6 +28,7 @@ const TINT = {
   video_feedback: { bg: "#F0FDF4", fg: "#16A34A" },
   note: { bg: "#FFFBEB", fg: "#D97706" },
   day_note: { bg: "#EFF6FF", fg: "#2563EB" },
+  note_reply: { bg: "#EFF6FF", fg: "#1E40AF" },
   message: { bg: "#EFF6FF", fg: "#2563EB" },
 };
 
