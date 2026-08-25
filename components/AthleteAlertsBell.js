@@ -82,6 +82,9 @@ export default function AthleteAlertsBell({ athlete, isMobile, onNavigate }) {
     ...alerts.map(a => ({
       key: `a-${a.id}`, id: a.id, source: "alert", kind: a.kind,
       title: a.title, body: a.body, at: a.created_at, page: a.link_page,
+      // The exact row the alert is about, so the page can scroll straight to it
+      // instead of dropping the athlete on a list to hunt through.
+      focus: a.ref_table === "video_submissions" ? a.ref_id : null,
     })),
     ...msgs.map(m => ({
       key: `m-${m.id}`, id: m.id, source: "message", kind: "message",
@@ -100,7 +103,7 @@ export default function AthleteAlertsBell({ athlete, isMobile, onNavigate }) {
     }
     // Messages are marked read by the Messages page itself when it opens the thread.
     setOpen(false);
-    if (onNavigate && item.page) onNavigate(item.page);
+    if (onNavigate && item.page) onNavigate(item.page, item.focus || null);
   };
 
   const markAll = async () => {

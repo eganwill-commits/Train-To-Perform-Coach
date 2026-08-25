@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "../lib/supabase";
 import { PILLAR_COLORS, ATHLETE_NAV, EQUIP_OPTIONS, EQUIP_LABEL, roomLabel } from "../lib/constants";
 import { Badge, Btn, Card, Input, Select, Modal, EmptyState, SearchableSelect } from "./ui";
@@ -71,6 +71,10 @@ export default function AthleteView({ athlete, onLogout, readOnly }) {
   const [loaded, setLoaded] = useState(false);
   const [navOpen, setNavOpen] = useState(false);
   const [unreadMsgCount, setUnreadMsgCount] = useState(0);
+  // What a tapped alert should land on. The page alone is not enough - the coach's
+  // feedback is on ONE video, and making the athlete hunt for it in a list is the
+  // same "go and look for it" problem the bell exists to remove.
+  const [focusRef, setFocusRef] = useState(null);
   const isMobile = useIsMobile();
   const colors = PILLAR_COLORS;
   const cats = Object.keys(colors);
@@ -182,7 +186,7 @@ export default function AthleteView({ athlete, onLogout, readOnly }) {
     if (!error) setBaselines(prev => prev.map(b => b.id === id ? { ...b, ...updates } : b));
   }, []);
 
-  const nav = (id) => { setPage(id); if (isMobile) setNavOpen(false); };
+  const nav = (id, ref) => { setPage(id); setFocusRef(ref || null); if (isMobile) setNavOpen(false); };
   const toastNav = (targetPage) => { setPage(targetPage === "messages" ? "messages" : "my-program"); if (isMobile) setNavOpen(false); };
   // Coach preview is read-only: neutralize every write so nothing is saved
   const ro = !!readOnly;
@@ -252,7 +256,7 @@ export default function AthleteView({ athlete, onLogout, readOnly }) {
           {page === "my-program" && <MyProgram programs={programs} setPrograms={setPrograms} exercises={exercises} colors={colors} cats={cats} isMobile={isMobile} athlete={athlete} addLog={addLogRO} logs={logs} groups={groups} addVideoSub={addVideoSubRO} videoSubs={videoSubs} deleteVideoSub={deleteVideoSubRO} setLogs={setLogs} />}
           {page === "my-baselines" && <MyBaselines baselines={baselines} updateBaseline={updateBaselineRO} isMobile={isMobile} />}
           {page === "my-logs" && <MyLogs logs={logs} colors={colors} cats={cats} isMobile={isMobile} deleteLog={deleteLogRO} deleteDayLogs={deleteDayLogsRO} />}
-          {page === "my-videos" && <MyVideos videoSubs={videoSubs} addVideoSub={addVideoSubRO} deleteVideoSub={deleteVideoSubRO} athlete={athlete} exercises={exercises} cats={cats} colors={colors} isMobile={isMobile} />}
+          {page === "my-videos" && <MyVideos videoSubs={videoSubs} addVideoSub={addVideoSubRO} deleteVideoSub={deleteVideoSubRO} athlete={athlete} exercises={exercises} cats={cats} colors={colors} isMobile={isMobile} focusId={focusRef} onFocusDone={() => setFocusRef(null)} />}
           {page === "messages" && (ro ? <div style={{ padding: 24, color: "#71717A", fontSize: 14 }}>Messaging is disabled in coach preview.</div> : <Messages currentUserId={athlete.id} currentUserName={athlete.name} isMobile={isMobile} />)}
           {page === "ai-chat" && <AIChat isMobile={isMobile} athleteName={athlete.name} athlete={athlete} programs={programs} logs={logs} baselines={baselines} videoSubs={videoSubs} />}
         </main>
@@ -1313,7 +1317,21 @@ function MyLogs({ logs, colors, cats, isMobile, deleteLog, deleteDayLogs }) {
   );
 }
 
-function MyVideos({ videoSubs, addVideoSub, deleteVideoSub, athlete, exercises, cats, colors, isMobile }) {
+function MyVideos({ videoSubs, addVideoSub, deleteVideoSub, athlete, exercises, cats, colors, isMobile, focusId, onFocusDone }) {
+  // Deep link from the notification bell: scroll the named submission into view and
+  // ring it, so the coach's feedback is the thing on screen rather than something to
+  // scroll for. The ring fades after a few seconds.
+  const focusRefEl = useRef(null);
+  const [glow, setGlow] = useState(null);
+  useEffect(() => {
+    if (!focusId) return;
+    setGlow(focusId);
+    const t1 = setTimeout(() => {
+      focusRefEl.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 60);
+    const t2 = setTimeout(() => { setGlow(null); if (onFocusDone) onFocusDone(); }, 4000);
+    return () => { clearTimeout(t1); clearTimeout(t2); };
+  }, [focusId, onFocusDone]);
   const [modal, setModal] = useState(false);
   const [form, setForm] = useState({ exercise_name: "", video_url: "", notes: "" });
   const [uploadMode, setUploadMode] = useState("upload"); // "upload" or "link"
@@ -1406,7 +1424,17 @@ function MyVideos({ videoSubs, addVideoSub, deleteVideoSub, athlete, exercises, 
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           {videoSubs.map(v => (
-            <Card key={v.id} style={{ padding: 16 }}>
+            // Wrapper div carries the ref: Card is a plain function component and does
+            // not forward refs, so a ref on it would silently do nothing.
+            <div key={v.id} ref={v.id === focusId ? focusRefEl : undefined} style={{ scrollMarginTop: 80 }}>
+            <Card
+              style={{
+                padding: 16,
+                border: glow === v.id ? "2px solid #16A34A" : undefined,
+                boxShadow: glow === v.id ? "0 0 0 4px rgba(22,163,74,.15)" : undefined,
+                transition: "box-shadow .4s ease, border-color .4s ease",
+              }}
+            >
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", flexWrap: "wrap", gap: 8 }}>
                 <div>
                   <div style={{ fontWeight: 700, fontSize: 15 }}>{v.exercise_name || "Movement Video"}</div>
@@ -1428,6 +1456,7 @@ function MyVideos({ videoSubs, addVideoSub, deleteVideoSub, athlete, exercises, 
                 </div>
               )}
             </Card>
+            </div>
           ))}
         </div>
       )}
