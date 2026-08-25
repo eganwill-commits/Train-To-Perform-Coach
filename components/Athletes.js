@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import { Badge, Btn, Card, Input, Modal, Select, EmptyState } from "./ui";
+import { raiseAlertReplacing, fetchAlertReceipts, ALERT_KIND, ALERT_PAGE } from "../lib/alerts";
 
 function formatDate(d) {
   return new Date(d + "T12:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
@@ -49,6 +50,42 @@ export default function Athletes({ athletes, addAthlete, updateAthlete, deleteAt
       if (onFocusClear) onFocusClear();
     }
   }, [focusAthleteId]);
+
+  // Read receipts for video feedback: { [video_submission_id]: alert row }.
+  // Lets the coach see whether the athlete has actually opened what was sent.
+  const [videoReceipts, setVideoReceipts] = useState({});
+  useEffect(() => {
+    let cancelled = false;
+    if (!detail) { setVideoReceipts({}); return; }
+    fetchAlertReceipts(detail, "video_submissions").then(m => { if (!cancelled) setVideoReceipts(m); });
+    const iv = setInterval(() => {
+      fetchAlertReceipts(detail, "video_submissions").then(m => { if (!cancelled) setVideoReceipts(m); });
+    }, 20000);
+    return () => { cancelled = true; clearInterval(iv); };
+  }, [detail]);
+
+  /*
+    Saving feedback is two things: the feedback itself, and telling the athlete it
+    exists. Before this, only the first happened - the athlete found out by chance.
+    If the alert fails we say so rather than let the coach believe it was delivered.
+  */
+  const saveFeedback = async (v, fb) => {
+    await updateVideoSub(v.id, { coach_feedback: fb, status: "reviewed" });
+    const alert_ = await raiseAlertReplacing({
+      athleteId: v.athlete_id,
+      kind: ALERT_KIND.VIDEO_FEEDBACK,
+      title: `Coach feedback on your ${v.exercise_name || "video"}`,
+      body: fb,
+      refTable: "video_submissions",
+      refId: v.id,
+      linkPage: ALERT_PAGE.VIDEOS,
+    });
+    if (!alert_) {
+      window.alert("Feedback saved, but the notification to the athlete could not be sent. They will not see a bell for it.");
+      return;
+    }
+    setVideoReceipts(prev => ({ ...prev, [v.id]: alert_ }));
+  };
 
   const openNew = () => { setForm({ name: "", age: "", sport: "", notes: "", equipment_tier: "full_gym" }); setEdit(null); setModal(true); };
   const openEdit = (a) => { setForm({ name: a.name, age: a.age || "", sport: a.sport || "", notes: a.notes || "", equipment_tier: a.equipment_tier || "full_gym" }); setEdit(a.id); setModal(true); };
@@ -325,11 +362,20 @@ export default function Athletes({ athletes, addAthlete, updateAthlete, deleteAt
                         <div style={{ padding: "8px 12px", background: "#F0FDF4", borderRadius: 6, border: "1px solid #4ADE80" }}>
                           <div style={{ fontSize: 11, fontWeight: 700, color: "#16A34A", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 2 }}>Your Feedback</div>
                           <div style={{ fontSize: 13 }}>{v.coach_feedback}</div>
-                          <button onClick={() => { const fb = prompt("Update feedback:", v.coach_feedback); if (fb !== null) updateVideoSub(v.id, { coach_feedback: fb, status: "reviewed" }); }} style={{ fontSize: 11, color: "#16A34A", background: "none", border: "none", cursor: "pointer", fontFamily: "inherit", marginTop: 4, fontWeight: 600 }}>Edit</button>
+                          {(() => {
+                            // Did the athlete actually open it? This is the whole point of
+                            // storing read state in the database rather than on their device.
+                            const rc = videoReceipts[v.id];
+                            if (!rc) return <div style={{ fontSize: 11, color: "#B45309", marginTop: 3, fontWeight: 600 }}>No alert on record</div>;
+                            return rc.read_at
+                              ? <div style={{ fontSize: 11, color: "#16A34A", marginTop: 3, fontWeight: 600 }}>Seen {new Date(rc.read_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })} at {new Date(rc.read_at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}</div>
+                              : <div style={{ fontSize: 11, color: "#A1A1AA", marginTop: 3, fontWeight: 600 }}>Sent — not opened yet</div>;
+                          })()}
+                          <button onClick={() => { const fb = prompt("Update feedback:", v.coach_feedback); if (fb !== null) saveFeedback(v, fb); }} style={{ fontSize: 11, color: "#16A34A", background: "none", border: "none", cursor: "pointer", fontFamily: "inherit", marginTop: 4, fontWeight: 600 }}>Edit</button>
                         </div>
                       ) : (
                         <div style={{ display: "flex", gap: 6 }}>
-                          <button onClick={() => { const fb = prompt("Add feedback for this video:"); if (fb) updateVideoSub(v.id, { coach_feedback: fb, status: "reviewed" }); }} style={{ padding: "6px 12px", background: "#18181B", color: "#fff", border: "none", borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>Add Feedback</button>
+                          <button onClick={() => { const fb = prompt("Add feedback for this video:"); if (fb) saveFeedback(v, fb); }} style={{ padding: "6px 12px", background: "#18181B", color: "#fff", border: "none", borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>Add Feedback</button>
                           <button onClick={() => updateVideoSub(v.id, { status: "reviewed" })} style={{ padding: "6px 12px", background: "#F0FDF4", color: "#16A34A", border: "1px solid #4ADE80", borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>Mark Reviewed</button>
                           <button onClick={() => updateVideoSub(v.id, { status: "needs-work" })} style={{ padding: "6px 12px", background: "#FEF2F2", color: "#DC2626", border: "1px solid #FCA5A5", borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>Needs Work</button>
                         </div>

@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Badge, Btn, Card, Input, Select, Modal, EmptyState, SearchableSelect, BlurInput } from "./ui";
 import { supabase } from "../lib/supabase";
+import { raiseAlertReplacing, ALERT_KIND, ALERT_PAGE } from "../lib/alerts";
 import { printDay } from "./printHelper";
 import NotesBoard from "./NotesBoard";
 import ProgramBrief, { briefSummary } from "./ProgramBrief";
@@ -596,8 +597,36 @@ function ProgramDetail({ program, programs, exercises, cats, colors, addBlock, u
 
   const updateDayField = async (wi, di, field, value) => {
     const weeks = JSON.parse(JSON.stringify(programRef.current.weeks));
+    const before = weeks[wi].days[di][field];
     weeks[wi].days[di][field] = value;
     await updateProgram(programRef.current.id, { weeks });
+
+    /*
+      A coach note on a day is only visible to the athlete once "Share with athlete" is
+      ticked, and until now nothing told them it existed. Alert when the note becomes
+      shared, or when shared note text changes - but never on an empty note, and never
+      for the un-share.
+    */
+    try {
+      const day = weeks[wi].days[di];
+      const athleteId = programRef.current.athlete_id;
+      const noteText = (day.coachNotes || "").trim();
+      const isShared = !!day.coachNotesShared;
+      const becameShared = field === "coachNotesShared" && value === true && !before;
+      const textChangedWhileShared = field === "coachNotes" && isShared && (before || "") !== value;
+      if (athleteId && noteText && (becameShared || textChangedWhileShared)) {
+        const raised = await raiseAlertReplacing({
+          athleteId,
+          kind: ALERT_KIND.DAY_NOTE,
+          title: `Coach note on ${day.label || "your session"}`,
+          body: noteText,
+          refTable: "program_day_notes",
+          refId: `${programRef.current.id}:${day.id}`,
+          linkPage: ALERT_PAGE.PROGRAM,
+        });
+        if (!raised) window.alert("Note saved, but the notification to the athlete could not be sent.");
+      }
+    } catch (e) { console.error("day note alert failed", e); }
   };
 
   const ath = athletes.find(a => a.id === program.athlete_id);

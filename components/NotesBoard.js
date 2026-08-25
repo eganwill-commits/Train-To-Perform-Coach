@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "../lib/supabase";
+import { raiseAlert, ALERT_KIND, ALERT_PAGE } from "../lib/alerts";
 
 const timeAgo = (d) => {
   const s = Math.floor((Date.now() - new Date(d).getTime()) / 1000);
@@ -48,6 +49,20 @@ export default function NotesBoard({ athleteId, authorName, authorRole, isMobile
     const note = { athlete_id: athleteId, author_name: authorName, author_role: authorRole, content: text, pinned: false };
     const { data, error } = await supabase.from("athlete_notes").insert([note]).select().single();
     if (!error && data) setNotes(prev => [data, ...prev]);
+    // A note from the coach rings the athlete's bell. A note from the athlete does not -
+    // the coach already has their own alerts feed watching athlete_notes.
+    if (!error && data && authorRole === "coach") {
+      const raised = await raiseAlert({
+        athleteId,
+        kind: ALERT_KIND.NOTE,
+        title: `New note from ${authorName || "your coach"}`,
+        body: text,
+        refTable: "athlete_notes",
+        refId: data.id,
+        linkPage: ALERT_PAGE.PROGRAM,
+      });
+      if (!raised) window.alert("Note posted, but the notification to the athlete could not be sent.");
+    }
     setInput("");
     inputRef.current?.focus();
   };

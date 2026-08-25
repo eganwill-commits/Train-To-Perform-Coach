@@ -10,6 +10,7 @@ import Messages from "./Messages";
 import NotesBoard from "./NotesBoard";
 import ToastNotifications from "./ToastNotifications";
 import ProgramBrief, { briefSummary } from "./ProgramBrief";
+import AthleteAlertsBell from "./AthleteAlertsBell";
 
 function useIsMobile(bp = 768) {
   const [m, setM] = useState(false);
@@ -211,6 +212,9 @@ export default function AthleteView({ athlete, onLogout, readOnly }) {
           <T2PLogo />
           <p style={{ margin: "6px 0 0", fontSize: 14, color: "#F97316", fontWeight: 600 }}>{athlete.name}</p>
           <p style={{ margin: "2px 0 0", fontSize: 11, color: "#71717A" }}>{athlete.sport} · Age {athlete.age}</p>
+          <div style={{ marginTop: 8 }}>
+            <AthleteAlertsBell athlete={athlete} isMobile={isMobile} onNavigate={nav} />
+          </div>
         </div>
         <div style={{ flex: 1, padding: "12px 10px", display: "flex", flexDirection: "column", gap: 2 }}>
           {ATHLETE_NAV.map(n => (
@@ -238,7 +242,10 @@ export default function AthleteView({ athlete, onLogout, readOnly }) {
               <span style={{ display: "block", width: 22, height: 2, background: "#18181B", borderRadius: 2 }} />
             </button>
             <T2PLogo size="small" variant="dark" />
-            <span style={{ fontSize: 13, color: "#F97316", marginLeft: "auto", fontWeight: 600 }}>{athlete.name}</span>
+            <div style={{ marginLeft: "auto", display: "flex", gap: 10, alignItems: "center" }}>
+              <AthleteAlertsBell athlete={athlete} isMobile={isMobile} onNavigate={nav} />
+              <span style={{ fontSize: 13, color: "#F97316", fontWeight: 600 }}>{athlete.name}</span>
+            </div>
           </header>
         )}
         <main className="t2p-main" style={{ flex: 1, padding: isMobile ? "12px 10px" : 32, maxWidth: "100%", overflowX: "hidden" }}>
