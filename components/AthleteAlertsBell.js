@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, Component } from "react";
 import { supabase } from "../lib/supabase";
 import { markAlertRead, markAllAlertsRead } from "../lib/alerts";
 
@@ -42,12 +42,30 @@ function timeAgo(ts) {
   return `${Math.floor(hrs / 24)}d ago`;
 }
 
-export default function AthleteAlertsBell({ athlete, isMobile, onNavigate }) {
+/*
+  The bell renders in two places at once - the sidebar and the mobile header. Both
+  instances mount, so anything keyed by athlete id alone collides between them.
+
+  That collision took the whole athlete app down: supabase.channel(name) returns the
+  SAME channel for the same name, and calling .on() on a channel that has already
+  subscribed throws ("cannot add postgres_changes callbacks after subscribe"). The throw
+  happened during mount of the second instance, so React tore down the tree and every
+  athlete got "a client-side exception has occurred" instead of their program. The coach
+  bell was untouched because it polls rather than subscribing.
+
+  Two defences: a per-instance channel name, and a boundary so a fault in notifications
+  can never again cost an athlete access to their training.
+*/
+function AthleteAlertsBellInner({ athlete, isMobile, onNavigate }) {
   const [open, setOpen] = useState(false);
   const [alerts, setAlerts] = useState([]);
   const [msgs, setMsgs] = useState([]);
   const ref = useRef(null);
   const athleteId = athlete?.id;
+  // Unique per mounted instance, so the sidebar and mobile-header bells never share a
+  // realtime channel.
+  const instanceId = useRef(null);
+  if (instanceId.current === null) instanceId.current = Math.random().toString(36).slice(2, 10);
 
   useEffect(() => {
     const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
@@ -73,11 +91,21 @@ export default function AthleteAlertsBell({ athlete, isMobile, onNavigate }) {
     // Realtime, so feedback lands on the athlete's screen while they are in the app.
     // The poll is the backstop for a dropped socket - the coach must not be able to
     // leave feedback that simply never surfaces.
-    const ch = supabase.channel(`athlete-alerts-${athleteId}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "athlete_alerts", filter: `athlete_id=eq.${athleteId}` }, load)
-      .subscribe();
+    let ch = null;
+    try {
+      ch = supabase.channel(`athlete-alerts-${athleteId}-${instanceId.current}`)
+        .on("postgres_changes", { event: "*", schema: "public", table: "athlete_alerts", filter: `athlete_id=eq.${athleteId}` }, load)
+        .subscribe();
+    } catch (e) {
+      // Live updates are a convenience; the poll below is the guarantee. Never let a
+      // realtime problem reach the render tree.
+      console.error("alerts realtime subscribe failed", e);
+    }
     const iv = setInterval(load, 20000);
-    return () => { supabase.removeChannel(ch); clearInterval(iv); };
+    return () => {
+      if (ch) { try { supabase.removeChannel(ch); } catch (e) { console.error("removeChannel failed", e); } }
+      clearInterval(iv);
+    };
   }, [athleteId, load]);
 
   const items = [
@@ -178,3 +206,18 @@ export default function AthleteAlertsBell({ athlete, isMobile, onNavigate }) {
     </div>
   );
 }
+
+/*
+  If the bell throws, the athlete loses the bell - not their program.
+*/
+class AthleteAlertsBell extends Component {
+  constructor(props) { super(props); this.state = { failed: false }; }
+  static getDerivedStateFromError() { return { failed: true }; }
+  componentDidCatch(error, info) { console.error("AthleteAlertsBell crashed", error, info); }
+  render() {
+    if (this.state.failed) return null;
+    return <AthleteAlertsBellInner {...this.props} />;
+  }
+}
+
+export default AthleteAlertsBell;
