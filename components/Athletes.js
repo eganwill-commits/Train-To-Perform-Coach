@@ -2,6 +2,7 @@
 import { useState, useEffect } from "react";
 import { Badge, Btn, Card, Input, Modal, Select, EmptyState } from "./ui";
 import { raiseAlertReplacing, fetchAlertReceipts, ALERT_KIND, ALERT_PAGE } from "../lib/alerts";
+import FeedbackModal from "./FeedbackModal";
 
 function formatDate(d) {
   return new Date(d + "T12:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
@@ -69,6 +70,8 @@ export default function Athletes({ athletes, addAthlete, updateAthlete, deleteAt
     exists. Before this, only the first happened - the athlete found out by chance.
     If the alert fails we say so rather than let the coach believe it was delivered.
   */
+  const [feedbackFor, setFeedbackFor] = useState(null); // video row being written about
+
   const saveFeedback = async (v, fb) => {
     await updateVideoSub(v.id, { coach_feedback: fb, status: "reviewed" });
     const alert_ = await raiseAlertReplacing({
@@ -371,11 +374,11 @@ export default function Athletes({ athletes, addAthlete, updateAthlete, deleteAt
                               ? <div style={{ fontSize: 11, color: "#16A34A", marginTop: 3, fontWeight: 600 }}>Seen {new Date(rc.read_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })} at {new Date(rc.read_at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}</div>
                               : <div style={{ fontSize: 11, color: "#A1A1AA", marginTop: 3, fontWeight: 600 }}>Sent — not opened yet</div>;
                           })()}
-                          <button onClick={() => { const fb = prompt("Update feedback:", v.coach_feedback); if (fb !== null) saveFeedback(v, fb); }} style={{ fontSize: 11, color: "#16A34A", background: "none", border: "none", cursor: "pointer", fontFamily: "inherit", marginTop: 4, fontWeight: 600 }}>Edit</button>
+                          <button onClick={() => setFeedbackFor(v)} style={{ fontSize: 11, color: "#16A34A", background: "none", border: "none", cursor: "pointer", fontFamily: "inherit", marginTop: 4, fontWeight: 600 }}>Edit</button>
                         </div>
                       ) : (
                         <div style={{ display: "flex", gap: 6 }}>
-                          <button onClick={() => { const fb = prompt("Add feedback for this video:"); if (fb) saveFeedback(v, fb); }} style={{ padding: "6px 12px", background: "#18181B", color: "#fff", border: "none", borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>Add Feedback</button>
+                          <button onClick={() => setFeedbackFor(v)} style={{ padding: "6px 12px", background: "#18181B", color: "#fff", border: "none", borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>Add Feedback</button>
                           <button onClick={() => updateVideoSub(v.id, { status: "reviewed" })} style={{ padding: "6px 12px", background: "#F0FDF4", color: "#16A34A", border: "1px solid #4ADE80", borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>Mark Reviewed</button>
                           <button onClick={() => updateVideoSub(v.id, { status: "needs-work" })} style={{ padding: "6px 12px", background: "#FEF2F2", color: "#DC2626", border: "1px solid #FCA5A5", borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>Needs Work</button>
                         </div>
@@ -447,6 +450,17 @@ export default function Athletes({ athletes, addAthlete, updateAthlete, deleteAt
             })}
           </div>
         )}
+
+        <FeedbackModal
+          open={!!feedbackFor}
+          title={feedbackFor?.coach_feedback ? "Update feedback" : "Add feedback"}
+          label={feedbackFor ? `${feedbackFor.exercise_name || "Movement video"} — this is sent to the athlete and rings their bell.` : ""}
+          initialValue={feedbackFor?.coach_feedback || ""}
+          placeholder="What did you see? What should they change next time?"
+          saveLabel={feedbackFor?.coach_feedback ? "Update feedback" : "Send feedback"}
+          onSave={async (text) => { if (feedbackFor) await saveFeedback(feedbackFor, text); }}
+          onClose={() => setFeedbackFor(null)}
+        />
 
         <Modal open={modal} onClose={() => setModal(false)} title="Edit Athlete">
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>

@@ -5,6 +5,7 @@ import { supabase } from "../lib/supabase";
 import { raiseAlertReplacing, ALERT_KIND, ALERT_PAGE } from "../lib/alerts";
 import { printDay } from "./printHelper";
 import NotesBoard from "./NotesBoard";
+import FeedbackModal from "./FeedbackModal";
 import ProgramBrief, { briefSummary } from "./ProgramBrief";
 
 const uid = () => Math.random().toString(36).slice(2, 10);
@@ -577,10 +578,8 @@ function ProgramDetail({ program, programs, exercises, cats, colors, addBlock, u
     rather than left to stumble on it.
   */
   const [replyingTo, setReplyingTo] = useState(null);
-  const replyToNote = async (logRow, athleteName) => {
-    const existing = logRow.coach_reply || "";
-    const text = window.prompt(existing ? "Update your reply:" : `Reply to ${(athleteName || "the athlete").split(" ")[0]}'s note:`, existing);
-    if (text === null) return;
+  const [replyFor, setReplyFor] = useState(null); // log row being replied to
+  const replyToNote = async (logRow, text) => {
     setReplyingTo(logRow.id);
     try {
       const nowIso = new Date().toISOString();
@@ -602,9 +601,10 @@ function ProgramDetail({ program, programs, exercises, cats, colors, addBlock, u
     } catch (e) {
       console.error("replyToNote failed", e);
       window.alert("That reply could not be saved. Please try again.");
-    } finally {
       setReplyingTo(null);
+      throw e; // keep the editor open so the coach does not lose what they wrote
     }
+    setReplyingTo(null);
   };
 
   // Compute current week (for the "back to current" button) but don't auto-navigate
@@ -1127,14 +1127,14 @@ function ProgramDetail({ program, programs, exercises, cats, colors, addBlock, u
                                       <div style={{ fontSize: 9, color: "#1E40AF", fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.4 }}>Your Reply</div>
                                       <div style={{ fontSize: 12, color: "#18181B", whiteSpace: "pre-wrap" }}>{ml.coach_reply}</div>
                                       <button
-                                        onClick={() => replyToNote(ml, ath?.name)}
+                                        onClick={() => setReplyFor(ml)}
                                         disabled={replyingTo === ml.id}
                                         style={{ marginTop: 3, background: "none", border: "none", padding: 0, color: "#2563EB", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}
                                       >{replyingTo === ml.id ? "Saving…" : "Edit reply"}</button>
                                     </div>
                                   ) : (
                                     <button
-                                      onClick={() => replyToNote(ml, ath?.name)}
+                                      onClick={() => setReplyFor(ml)}
                                       disabled={replyingTo === ml.id}
                                       style={{ padding: "5px 10px", background: "#18181B", color: "#fff", border: "none", borderRadius: 6, fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}
                                     >{replyingTo === ml.id ? "Saving…" : "Reply to note"}</button>
@@ -1310,6 +1310,17 @@ function ProgramDetail({ program, programs, exercises, cats, colors, addBlock, u
       </div>
 
       {/* Copy modal */}
+      <FeedbackModal
+        open={!!replyFor}
+        title={replyFor?.coach_reply ? "Update your reply" : "Reply to note"}
+        label={replyFor ? `${(ath?.name || "The athlete").split(" ")[0]} wrote on ${replyFor.exercise_name || "this exercise"}: "${replyFor.notes || ""}"` : ""}
+        initialValue={replyFor?.coach_reply || ""}
+        placeholder="Answer them here — this rings their bell and appears on the exercise."
+        saveLabel={replyFor?.coach_reply ? "Update reply" : "Send reply"}
+        onSave={async (text) => { if (replyFor) await replyToNote(replyFor, text); }}
+        onClose={() => setReplyFor(null)}
+      />
+
       <Modal open={copyOpen} onClose={() => setCopyOpen(false)} title="Copy Programming">
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           {/* What to copy */}
