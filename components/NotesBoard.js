@@ -48,7 +48,14 @@ export default function NotesBoard({ athleteId, authorName, authorRole, isMobile
     if (!text) return;
     const note = { athlete_id: athleteId, author_name: authorName, author_role: authorRole, content: text, pinned: false };
     const { data, error } = await supabase.from("athlete_notes").insert([note]).select().single();
-    if (!error && data) setNotes(prev => [data, ...prev]);
+    // Same rule as the workout log: a note that failed to save must not look like it sent.
+    // This used to swallow the error and clear the box, so the note simply vanished.
+    if (error) {
+      console.error("addNote failed", error);
+      window.alert("That note could not be saved. Your text is still in the box - try again.");
+      return;
+    }
+    if (data) setNotes(prev => [data, ...prev]);
     // A note from the coach rings the athlete's bell. A note from the athlete does not -
     // the coach already has their own alerts feed watching athlete_notes.
     if (!error && data && authorRole === "coach") {

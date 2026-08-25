@@ -50,6 +50,18 @@ export default function AlertsBell({ logs, videoSubs, athletes, isMobile, onNavi
 
   // New logs since last checked
   const newLogs = (logs || []).filter(l => l.logged_at && l.logged_at > lastChecked);
+
+  /*
+    Notes the athlete wrote on an individual exercise inside their workout.
+
+    These used to be invisible here. They were swallowed into the "logged N exercises"
+    line, so "I don't like this" or "knee felt off on set 3" read exactly the same as a
+    routine session - the coach only found it by opening the day and reading every card.
+    A note is the athlete telling you something; it gets its own alert.
+  */
+  const newLogNotes = (logs || [])
+    .filter(l => l.logged_at && l.logged_at > lastChecked && (l.notes || "").trim())
+    .sort((a, b) => String(b.logged_at).localeCompare(String(a.logged_at)));
   const newVideos = (videoSubs || []).filter(v => v.created_at && v.created_at > lastChecked);
 
   // Group logs by athlete + date + day
@@ -62,7 +74,7 @@ export default function AlertsBell({ logs, videoSubs, athletes, isMobile, onNavi
   });
   const logAlerts = Object.values(logGroups).sort((a, b) => b.latest.localeCompare(a.latest));
 
-  const totalNew = logAlerts.length + newVideos.length + unreadMsgs.length + recentNotes.length;
+  const totalNew = logAlerts.length + newVideos.length + unreadMsgs.length + recentNotes.length + newLogNotes.length;
 
   const markRead = () => {
     setLastChecked();
@@ -111,6 +123,30 @@ export default function AlertsBell({ logs, videoSubs, athletes, isMobile, onNavi
               </div>
             ) : (
               <div>
+                {/* Notes the athlete left on an exercise - most actionable, so first */}
+                {newLogNotes.map(l => {
+                  const name = l.athlete_name || getAthleteName(l.athlete_id);
+                  const initials = getInitials(name);
+                  return (
+                  <div key={"ln-" + l.id} onClick={() => { if (onNavigate) { onNavigate(l.athlete_id); setOpen(false); } }} style={{ display: "flex", gap: 10, padding: "12px 16px", borderBottom: "1px solid #F4F4F5", alignItems: "start", cursor: onNavigate ? "pointer" : "default" }}>
+                    <div style={{ width: 36, height: 36, borderRadius: 18, background: "#FEF2F2", color: "#DC2626", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 13, flexShrink: 0 }}>{initials}</div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                        <span style={{ fontWeight: 700, fontSize: 14 }}>{name}</span>
+                        <span style={{ fontSize: 11, color: "#A1A1AA" }}>{timeAgo(l.logged_at)}</span>
+                      </div>
+                      <div style={{ fontSize: 13, color: "#52525B", marginTop: 1 }}>
+                        {"💬"} Note on <strong>{l.exercise_name || "an exercise"}</strong>
+                      </div>
+                      <div style={{ fontSize: 13, color: "#18181B", marginTop: 3, background: "#FAFAFA", border: "1px solid #E4E4E7", borderRadius: 6, padding: "5px 8px", wordBreak: "break-word" }}>
+                        {l.notes}
+                      </div>
+                      {onNavigate && <div style={{ fontSize: 11, color: "#2563EB", fontWeight: 600, marginTop: 3 }}>View {"→"}</div>}
+                    </div>
+                  </div>
+                  );
+                })}
+
                 {/* Video submissions */}
                 {newVideos.map(v => {
                   const name = v.athlete_name || getAthleteName(v.athlete_id);
