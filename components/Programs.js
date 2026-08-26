@@ -1,11 +1,13 @@
 "use client";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Badge, Btn, Card, Input, Select, Modal, EmptyState, SearchableSelect, BlurInput } from "./ui";
 import { supabase } from "../lib/supabase";
 import { raiseAlertReplacing, ALERT_KIND, ALERT_PAGE } from "../lib/alerts";
 import { printDay } from "./printHelper";
 import NotesBoard from "./NotesBoard";
 import FeedbackModal from "./FeedbackModal";
+import ExerciseThread from "./ExerciseThread";
+import { fetchAllComments } from "../lib/comments";
 import ProgramBrief, { briefSummary } from "./ProgramBrief";
 
 const uid = () => Math.random().toString(36).slice(2, 10);
@@ -552,6 +554,22 @@ function ProgramDetail({ program, programs, exercises, cats, colors, addBlock, u
   const [copyTargets, setCopyTargets] = useState([]);
   const [expandedBlock, setExpandedBlock] = useState(null);
   const [recapSaved, setRecapSaved] = useState(false);
+  // One query for every exercise comment on this athlete, grouped by block. A week can
+  // hold fifty exercises and a fetch per card would be fifty round trips per render.
+  const [commentsByBlock, setCommentsByBlock] = useState({});
+  const reloadComments = useCallback(async () => {
+    const id = programRef.current?.athlete_id;
+    if (!id) return;
+    const rows = await fetchAllComments(id);
+    const byBlock = {};
+    rows.forEach(c => { (byBlock[c.block_id] = byBlock[c.block_id] || []).push(c); });
+    setCommentsByBlock(byBlock);
+  }, []);
+  useEffect(() => {
+    reloadComments();
+    const iv = setInterval(reloadComments, 30000);
+    return () => clearInterval(iv);
+  }, [reloadComments, program.id]);
 
   /*
     Deep link from the alert bell. Jump to the week the alert names, scroll that day into
@@ -1027,6 +1045,22 @@ function ProgramDetail({ program, programs, exercises, cats, colors, addBlock, u
                                 <BlurInput value={block.notes || ""} onSave={v => updateBlock(aw, di, bi, "notes", v)} placeholder="Coaching cues, modifications…" multiline style={{ width: "100%", padding: "6px 5px", border: "1px solid #E4E4E7", borderRadius: 6, fontSize: 14, fontFamily: "inherit", marginTop: 1, boxSizing: "border-box", minHeight: block.notes && block.notes.length > 60 ? 60 : undefined }} />
                               </label>
                               <VariantHint ex={resolvedEx} />
+                              {/* Ask the athlete about this exercise. Anchored to the block, so the
+                                  question and the answer arrive with their context attached. */}
+                              <ExerciseThread
+                                athleteId={program.athlete_id}
+                                programId={program.id}
+                                weekLabel={week.label}
+                                dayLabel={day.label}
+                                dayId={day.id}
+                                blockId={block.id}
+                                exerciseName={getDisplayName(block)}
+                                role="coach"
+                                authorName="Coach"
+                                compact
+                                preloaded={commentsByBlock[block.id] || []}
+                                onChanged={reloadComments}
+                              />
                               {block.notes && !expandedBlock && <div style={{ fontSize: 11, color: "#71717A", marginTop: 4, fontStyle: "italic", whiteSpace: "pre-wrap", lineHeight: 1.4, wordBreak: "break-word" }}>{block.notes}</div>}
 
                               {/* Athlete's logged results */}
@@ -1098,6 +1132,22 @@ function ProgramDetail({ program, programs, exercises, cats, colors, addBlock, u
                           <BlurInput value={block.notes || ""} onSave={v => updateBlock(aw, di, bi, "notes", v)} placeholder="Coaching cues, modifications…" multiline style={{ width: "100%", padding: "4px 5px", border: "1px solid #E4E4E7", borderRadius: 6, fontSize: 13, fontFamily: "inherit", marginTop: 1, boxSizing: "border-box", minHeight: block.notes && block.notes.length > 60 ? 60 : undefined }} />
                         </label>
                         <VariantHint ex={resolvedEx} />
+                        {/* Ask the athlete about this exercise. Anchored to the block, so the
+                            question and the answer arrive with their context attached. */}
+                        <ExerciseThread
+                          athleteId={program.athlete_id}
+                          programId={program.id}
+                          weekLabel={week.label}
+                          dayLabel={day.label}
+                          dayId={day.id}
+                          blockId={block.id}
+                          exerciseName={getDisplayName(block)}
+                          role="coach"
+                          authorName="Coach"
+                          compact
+                          preloaded={commentsByBlock[block.id] || []}
+                          onChanged={reloadComments}
+                        />
 
                         {/* Athlete's logged results */}
                         {(() => {
@@ -1118,29 +1168,7 @@ function ProgramDetail({ program, programs, exercises, cats, colors, addBlock, u
                                   <div style={{ fontSize: 12, color: "#18181B", whiteSpace: "pre-wrap" }}>{ml.notes}</div>
                                 </div>
                               )}
-                              {/* Reply to the note. Same contract as video feedback:
-                                  stored on the row it answers, and the athlete is told. */}
-                              {ml.notes && (
-                                <div style={{ marginTop: 6 }}>
-                                  {ml.coach_reply ? (
-                                    <div style={{ padding: "6px 8px", background: "#EFF6FF", borderRadius: 4, border: "1px solid #BFDBFE" }}>
-                                      <div style={{ fontSize: 9, color: "#1E40AF", fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.4 }}>Your Reply</div>
-                                      <div style={{ fontSize: 12, color: "#18181B", whiteSpace: "pre-wrap" }}>{ml.coach_reply}</div>
-                                      <button
-                                        onClick={() => setReplyFor(ml)}
-                                        disabled={replyingTo === ml.id}
-                                        style={{ marginTop: 3, background: "none", border: "none", padding: 0, color: "#2563EB", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}
-                                      >{replyingTo === ml.id ? "Saving…" : "Edit reply"}</button>
-                                    </div>
-                                  ) : (
-                                    <button
-                                      onClick={() => setReplyFor(ml)}
-                                      disabled={replyingTo === ml.id}
-                                      style={{ padding: "5px 10px", background: "#18181B", color: "#fff", border: "none", borderRadius: 6, fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}
-                                    >{replyingTo === ml.id ? "Saving…" : "Reply to note"}</button>
-                                  )}
-                                </div>
-                              )}
+
                             </div>
                           );
                         })()}

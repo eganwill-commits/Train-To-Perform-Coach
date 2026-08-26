@@ -11,6 +11,8 @@ import NotesBoard from "./NotesBoard";
 import ToastNotifications from "./ToastNotifications";
 import ProgramBrief, { briefSummary } from "./ProgramBrief";
 import AthleteAlertsBell from "./AthleteAlertsBell";
+import ExerciseThread from "./ExerciseThread";
+import { fetchAllComments } from "../lib/comments";
 
 function useIsMobile(bp = 768) {
   const [m, setM] = useState(false);
@@ -253,7 +255,7 @@ export default function AthleteView({ athlete, onLogout, readOnly }) {
           </header>
         )}
         <main className="t2p-main" style={{ flex: 1, padding: isMobile ? "12px 10px" : 32, maxWidth: "100%", overflowX: "hidden" }}>
-          {page === "my-program" && <MyProgram programs={programs} setPrograms={setPrograms} exercises={exercises} colors={colors} cats={cats} isMobile={isMobile} athlete={athlete} addLog={addLogRO} logs={logs} groups={groups} addVideoSub={addVideoSubRO} videoSubs={videoSubs} deleteVideoSub={deleteVideoSubRO} setLogs={setLogs} />}
+          {page === "my-program" && <MyProgram programs={programs} setPrograms={setPrograms} exercises={exercises} colors={colors} cats={cats} isMobile={isMobile} athlete={athlete} addLog={addLogRO} logs={logs} groups={groups} addVideoSub={addVideoSubRO} videoSubs={videoSubs} deleteVideoSub={deleteVideoSubRO} setLogs={setLogs} focusBlockId={focusRef} onFocusDone={() => setFocusRef(null)} />}
           {page === "my-baselines" && <MyBaselines baselines={baselines} updateBaseline={updateBaselineRO} isMobile={isMobile} />}
           {page === "my-logs" && <MyLogs logs={logs} colors={colors} cats={cats} isMobile={isMobile} deleteLog={deleteLogRO} deleteDayLogs={deleteDayLogsRO} />}
           {page === "my-videos" && <MyVideos videoSubs={videoSubs} addVideoSub={addVideoSubRO} deleteVideoSub={deleteVideoSubRO} athlete={athlete} exercises={exercises} cats={cats} colors={colors} isMobile={isMobile} focusId={focusRef} onFocusDone={() => setFocusRef(null)} />}
@@ -266,7 +268,7 @@ export default function AthleteView({ athlete, onLogout, readOnly }) {
 }
 
 
-function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, athlete, addLog, logs, groups, addVideoSub, videoSubs, deleteVideoSub, setLogs }) {
+function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, athlete, addLog, logs, groups, addVideoSub, videoSubs, deleteVideoSub, setLogs, focusBlockId, onFocusDone }) {
   const [selectedProg, setSelectedProg] = useState(null);
   const [expandedBlock, setExpandedBlock] = useState(null);
   const [aw, setAw] = useState(0);
@@ -284,6 +286,24 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
   });
   const [submitting, setSubmitting] = useState(null);
   const [saved, setSaved] = useState(false);
+  // Arriving from a coach comment: the alert carries only the block id, which is unique
+  // in the program, so the week and day are found from it rather than encoded in the alert.
+  const focusBlockRef = useRef(null);
+  const [blockGlow, setBlockGlow] = useState(null);
+  // Every exercise comment for this athlete, in one query, grouped by block.
+  const [commentsByBlock, setCommentsByBlock] = useState({});
+  const reloadComments = useCallback(async () => {
+    if (!athlete?.id) return;
+    const rows = await fetchAllComments(athlete.id);
+    const byBlock = {};
+    rows.forEach(c => { (byBlock[c.block_id] = byBlock[c.block_id] || []).push(c); });
+    setCommentsByBlock(byBlock);
+  }, [athlete?.id]);
+  useEffect(() => {
+    reloadComments();
+    const iv = setInterval(reloadComments, 30000);
+    return () => clearInterval(iv);
+  }, [reloadComments]);
   const [uploadingVideo, setUploadingVideo] = useState(null); // block.id being uploaded
   const [videoSuccess, setVideoSuccess] = useState(null); // block.id that succeeded
 
@@ -360,6 +380,23 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
       // re-select of a program.
     }
   }, [selectedProg]);
+
+  useEffect(() => {
+    if (!focusBlockId || !prog) return;
+    const weeks = prog.weeks || [];
+    let wi = -1;
+    for (let i = 0; i < weeks.length && wi < 0; i++) {
+      const days = weeks[i].days || [];
+      if (days.some(d => (d.blocks || []).some(b => b.id === focusBlockId))) wi = i;
+    }
+    if (wi < 0) return; // the block is not in this program - leave the view alone
+    setAw(wi);
+    setExpandedBlock(focusBlockId);
+    setBlockGlow(focusBlockId);
+    const t1 = setTimeout(() => focusBlockRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }), 250);
+    const t2 = setTimeout(() => { setBlockGlow(null); if (onFocusDone) onFocusDone(); }, 6000);
+    return () => { clearTimeout(t1); clearTimeout(t2); };
+  }, [focusBlockId, prog, onFocusDone]);
 
   // Equipment room. The DAY-level choice is the primary control: one pick covers every
   // exercise in that session, because an athlete who is travelling is in that room all day.
@@ -803,8 +840,22 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
               const borderLeftColor = exStatus === "completed" ? "#16A34A" : exStatus === "missed" ? "#DC2626" : (cc?.bg || "#999");
               const bgColor = exStatus === "completed" ? "#F0FDF4" : exStatus === "missed" ? "#FEF2F2" : (cc?.light || "#F9FAFB");
 
+              const isFocusBlock = blockGlow === block.id;
               return (
-                <div key={block.id} style={{ background: bgColor, border: `1px solid ${cc?.border || "#E5E7EB"}`, borderRadius: 8, marginBottom: 6, borderLeft: `3px solid ${borderLeftColor}`, overflow: "hidden", opacity: exStatus === "missed" ? 0.6 : 1 }}>
+                <div
+                  key={block.id}
+                  ref={isFocusBlock ? focusBlockRef : undefined}
+                  style={{
+                    background: bgColor,
+                    border: isFocusBlock ? "2px solid #2563EB" : `1px solid ${cc?.border || "#E5E7EB"}`,
+                    boxShadow: isFocusBlock ? "0 0 0 4px rgba(37,99,235,.15)" : undefined,
+                    transition: "box-shadow .4s ease, border-color .4s ease",
+                    borderRadius: 8, marginBottom: 6,
+                    borderLeft: `3px solid ${borderLeftColor}`,
+                    overflow: "hidden", opacity: exStatus === "missed" ? 0.6 : 1,
+                    scrollMarginTop: 70,
+                  }}
+                >
                   {/* Collapsed row */}
                   <div style={{ display: "flex", alignItems: "center", padding: "8px 8px", gap: 6 }}>
                     {/* Complete/Missed toggles */}
@@ -905,6 +956,25 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
                           </div>
                         )}
                       </div>
+
+                      {/* Conversation with the coach about this exercise */}
+                      {canPersist && (
+                        <ExerciseThread
+                          athleteId={athlete.id}
+                          programId={prog?.id}
+                          weekLabel={week.label}
+                          dayLabel={day.label}
+                          dayId={day.id}
+                          blockId={block.id}
+                          exerciseName={getDisplayName(block, day.id)}
+                          role="athlete"
+                          authorName={athlete.name}
+                          compact
+                          autoOpen={focusBlockId === block.id}
+                          preloaded={commentsByBlock[block.id] || []}
+                          onChanged={reloadComments}
+                        />
+                      )}
 
                       {/* Submit Video */}
                       {addVideoSub && (

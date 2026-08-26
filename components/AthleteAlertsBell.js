@@ -21,6 +21,7 @@ const ICON = {
   note: "\u{1F4CB}",
   day_note: "\u{1F4DD}",
   note_reply: "\u{1F4AC}",
+  exercise_comment: "\u{1F4AC}",
   message: "✉",
 };
 
@@ -29,6 +30,7 @@ const TINT = {
   note: { bg: "#FFFBEB", fg: "#D97706" },
   day_note: { bg: "#EFF6FF", fg: "#2563EB" },
   note_reply: { bg: "#EFF6FF", fg: "#1E40AF" },
+  exercise_comment: { bg: "#EFF6FF", fg: "#1E40AF" },
   message: { bg: "#EFF6FF", fg: "#2563EB" },
 };
 
@@ -114,7 +116,8 @@ function AthleteAlertsBellInner({ athlete, isMobile, onNavigate }) {
       title: a.title, body: a.body, at: a.created_at, page: a.link_page,
       // The exact row the alert is about, so the page can scroll straight to it
       // instead of dropping the athlete on a list to hunt through.
-      focus: a.ref_table === "video_submissions" ? a.ref_id : null,
+      // Videos focus a submission; exercise comments focus a block in the program.
+      focus: (a.ref_table === "video_submissions" || a.ref_table === "exercise_block") ? a.ref_id : null,
     })),
     ...msgs.map(m => ({
       key: `m-${m.id}`, id: m.id, source: "message", kind: "message",
