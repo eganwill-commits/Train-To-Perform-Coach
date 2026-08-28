@@ -255,6 +255,14 @@ export default function AthleteView({ athlete, onLogout, readOnly }) {
 }
 
 
+/*
+  The exercises whose numbers drive programming: the lifts, and the power work that has a
+  measurable output - box jump height, bound distance, throw distance, depth-drop box
+  height. Everything else still deserves to be logged (the habit matters), but only these
+  get chased in red.
+*/
+const PRIORITY_CATS = new Set(["STR", "PWR"]);
+
 function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, athlete, addLog, logs, groups, addVideoSub, videoSubs, deleteVideoSub, setLogs, focusBlockId, onFocusDone }) {
   const [selectedProg, setSelectedProg] = useState(null);
   const [expandedBlock, setExpandedBlock] = useState(null);
@@ -783,10 +791,10 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
         if (!prog || !canPersist) return null;
         const weeks = prog.weeks || [];
         const gaps = [];
-        // A warm-up or a mobility drill does not need a number. The lifts that DO are the
-        // ones carrying a real prescribed load - those are what progression is built from,
-        // and those are what is worth chasing him for.
-        const QUALITATIVE = /^(bw|body\s?weight|bodyweight|light|easy|mod|moderate|light band|band|max intent|heavy)$/i;
+        // The lifts (STR) and the measurable power work (PWR - box jump height, bound
+        // distance, med ball throws, depth drop box height) are what progression is built
+        // from. Those are worth chasing him for. Warm-ups, skill work and conditioning
+        // matter for the habit, but are handled quietly on each day rather than in red.
         const norm = (x) => (x || "").toLowerCase().replace(/[-\u2013\u2014]/g, " ").replace(/\s+/g, " ").trim();
         weeks.forEach((w, wi) => {
           (w.days || []).forEach(d => {
@@ -794,10 +802,7 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
               l.athlete_id === athlete.id && l.week_label === (w.label || "") && l.day_label === (d.label || "")
             );
             if (rows.length === 0) return; // never trained - not a gap, just not done yet
-            const targets = (d.blocks || []).filter(b => {
-              const ld = (b.load || "").trim();
-              return ld && !QUALITATIVE.test(ld);
-            });
+            const targets = (d.blocks || []).filter(b => PRIORITY_CATS.has(b.category));
             if (targets.length === 0) return;
             const recorded = targets.filter(b => {
               const dn = getDisplayName(b, d.id);
@@ -843,7 +848,7 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
                       {g.day.label}
                     </span>
                     <span style={{ display: "block", fontSize: 12, color: "#71717A", marginTop: 1 }}>
-                      {weekNumberLabel(g.weekLabel, g.wi)} · {g.count} lifts with no weight recorded
+                      {weekNumberLabel(g.weekLabel, g.wi)} · {g.count} lifts &amp; power exercises with nothing recorded
                     </span>
                   </span>
                   <span style={{ flexShrink: 0, fontSize: 13, fontWeight: 800, color: "#DC2626", whiteSpace: "nowrap" }}>
@@ -1048,6 +1053,13 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
                       </div>
                       {hasInput && <span style={{ width: 7, height: 7, borderRadius: 4, background: "#16A34A", flexShrink: 0 }} />}
                       {!hasInput && loggedResult && <span style={{ width: 7, height: 7, borderRadius: 4, background: "#16A34A", flexShrink: 0 }} />}
+                      {/* A lift or a measurable power effort with nothing against it. */}
+                      {PRIORITY_CATS.has(block.category) && !hasInput &&
+                        !(loggedResult && ((loggedResult.load || "") !== "" || (loggedResult.sets || "") !== "" || (loggedResult.rpe || "") !== "")) && (
+                        <span style={{ fontSize: 9, fontWeight: 800, color: "#fff", background: "#DC2626", padding: "1px 6px", borderRadius: 999, flexShrink: 0, whiteSpace: "nowrap" }}>
+                          {block.category === "PWR" ? "MEASURE" : "LOG IT"}
+                        </span>
+                      )}
                       {videoUrl && <a href={videoUrl} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} style={{ fontSize: 10, color: "#fff", background: "#2563EB", textDecoration: "none", fontWeight: 700, padding: "2px 6px", borderRadius: 999, flexShrink: 0 }}>▶</a>}
                       <span style={{ fontSize: 10, color: "#A1A1AA", transform: isOpen ? "rotate(180deg)" : "none", transition: "transform .15s", flexShrink: 0 }}>▼</span>
                     </div>
@@ -1125,7 +1137,7 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
                         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
                           <label style={{ fontSize: 10, color: "#71717A" }}>Sets<input type="number" value={effSets} onChange={e => updateResult(block.id, "sets", e.target.value, block, day, week.label)} onBlur={() => flushSave(block, day, week.label)} placeholder={block.sets || ""} style={inputStyle} /></label>
                           <label style={{ fontSize: 10, color: "#71717A" }}>Reps<input value={effReps} onChange={e => updateResult(block.id, "reps", e.target.value, block, day, week.label)} onBlur={() => flushSave(block, day, week.label)} placeholder={block.reps || ""} style={inputStyle} /></label>
-                          <label style={{ fontSize: 10, color: "#71717A" }}>Load<input value={effLoad} onChange={e => updateResult(block.id, "load", e.target.value, block, day, week.label)} onBlur={() => flushSave(block, day, week.label)} placeholder={block.load || "lbs"} style={inputStyle} /></label>
+                          <label style={{ fontSize: 10, color: "#71717A" }}>{block.category === "PWR" ? "Height / dist / load" : "Load"}<input value={effLoad} onChange={e => updateResult(block.id, "load", e.target.value, block, day, week.label)} onBlur={() => flushSave(block, day, week.label)} placeholder={block.category === "PWR" ? (block.load || "e.g. 30in box, 7ft") : (block.load || "lbs")} style={inputStyle} /></label>
                           <label style={{ fontSize: 10, color: "#71717A" }}>RPE<input value={effRpe} onChange={e => updateResult(block.id, "rpe", e.target.value, block, day, week.label)} onBlur={() => flushSave(block, day, week.label)} placeholder="1-10" style={inputStyle} /></label>
                         </div>
                         <label style={{ fontSize: 10, color: "#71717A", display: "block", marginTop: 6 }}>Notes<input value={effNotes} onChange={e => updateResult(block.id, "notes", e.target.value, block, day, week.label)} onBlur={() => flushSave(block, day, week.label)} placeholder="How did it feel?" style={inputStyle} /></label>
@@ -1226,6 +1238,32 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
             )}
 
             {/* Log day button */}
+            {/* Habit: how much of the session actually has numbers against it. Quiet on
+                purpose - the red banner above is for the lifts and power work; this is the
+                gentle push towards logging everything. */}
+            {dayLogged && day.blocks.length > 0 && (() => {
+              const done = day.blocks.filter(b => {
+                const m = blockLogMap[b.id];
+                return m && ((m.load || "") !== "" || (m.sets || "") !== "" || (m.reps || "") !== "" || (m.rpe || "") !== "");
+              }).length;
+              const total = day.blocks.length;
+              const pct = total ? Math.round((done / total) * 100) : 0;
+              const complete = done === total;
+              return (
+                <div style={{ marginTop: 8, padding: "7px 10px", borderRadius: 8, background: complete ? "#F0FDF4" : "#FFFBEB", border: `1px solid ${complete ? "#BBF7D0" : "#FDE68A"}` }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: complete ? "#16A34A" : "#92400E" }}>
+                      {complete ? "✓ Every exercise logged" : `Numbers logged: ${done} of ${total}`}
+                    </span>
+                    {!complete && <span style={{ fontSize: 11, color: "#92400E" }}>Log them all — it builds the picture</span>}
+                  </div>
+                  <div style={{ marginTop: 5, height: 5, borderRadius: 3, background: "#E4E4E7", overflow: "hidden" }}>
+                    <div style={{ width: `${pct}%`, height: "100%", background: complete ? "#16A34A" : "#F59E0B", transition: "width .3s ease" }} />
+                  </div>
+                </div>
+              );
+            })()}
+
             {day.blocks.length > 0 && addLog && (
               <div style={{ marginTop: 6 }}>
                 {dayStatus === "missed" ? (
