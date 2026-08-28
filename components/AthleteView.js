@@ -14,6 +14,7 @@ import AthleteAlertsBell from "./AthleteAlertsBell";
 import ExerciseThread from "./ExerciseThread";
 import { weekStartFromLabel, weekNumberLabel, weekdayOffset } from "../lib/weeks";
 import { fetchAllComments } from "../lib/comments";
+import { MUST_LOG_CATS, findMissingNumberSessions, sessionLogProgress } from "../lib/logging";
 
 function useIsMobile(bp = 768) {
   const [m, setM] = useState(false);
@@ -255,14 +256,6 @@ export default function AthleteView({ athlete, onLogout, readOnly }) {
 }
 
 
-/*
-  The exercises whose numbers drive programming: the lifts, and the power work that has a
-  measurable output - box jump height, bound distance, throw distance, depth-drop box
-  height. Everything else still deserves to be logged (the habit matters), but only these
-  get chased in red.
-*/
-const PRIORITY_CATS = new Set(["STR", "PWR"]);
-
 function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, athlete, addLog, logs, groups, addVideoSub, videoSubs, deleteVideoSub, setLogs, focusBlockId, onFocusDone }) {
   const [selectedProg, setSelectedProg] = useState(null);
   const [expandedBlock, setExpandedBlock] = useState(null);
@@ -470,41 +463,18 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
   };
 
   /*
-    Which sessions are missing the numbers that matter. Memoised on purpose: this walks
-    every week x day x log, and it used to re-run on every render - including every
-    keystroke while an athlete typed a load. Harmless for one athlete with one week of
-    history; not harmless for a squad member with a full season behind them.
+    Which recent sessions are missing the numbers that matter. The rule itself lives in
+    lib/logging.js so the coach's roster panel and this banner can never disagree.
+    Memoised: it walks every week x day x log, and used to re-run on every keystroke.
   */
   const gaps = useMemo(() => {
     if (!prog || !canPersist) return [];
-    const out = [];
-    const norm = (x) => (x || "").toLowerCase().replace(/[-\u2013\u2014]/g, " ").replace(/\s+/g, " ").trim();
-    // Index the athlete's logs by week+day once, instead of filtering the whole array per day.
-    const byDay = new Map();
-    (logs || []).forEach(l => {
-      if (l.athlete_id !== athlete.id) return;
-      const k = `${l.week_label || ""}||${l.day_label || ""}`;
-      const arr = byDay.get(k); if (arr) arr.push(l); else byDay.set(k, [l]);
+    return findMissingNumberSessions({
+      program: prog,
+      logs,
+      athleteId: athlete.id,
+      displayName: (b, dayId) => getDisplayName(b, dayId),
     });
-    (prog.weeks || []).forEach((w, wi) => {
-      (w.days || []).forEach(d => {
-        const rows = byDay.get(`${w.label || ""}||${d.label || ""}`) || [];
-        if (rows.length === 0) return; // never trained - not a gap, just not done yet
-        const targets = (d.blocks || []).filter(b => PRIORITY_CATS.has(b.category));
-        if (targets.length === 0) return;
-        const recorded = targets.filter(b => {
-          const dn = getDisplayName(b, d.id);
-          const mm = rows.find(l =>
-            (l.exercise_id && b.exerciseId && l.exercise_id === b.exerciseId) ||
-            l.exercise_name === dn || norm(l.exercise_name) === norm(dn)
-          );
-          return mm && ((mm.load || "") !== "" || (mm.sets || "") !== "" || (mm.rpe || "") !== "");
-        }).length;
-        // Only when NOTHING was recorded for the day's lifts and power work.
-        if (recorded === 0) out.push({ wi, weekLabel: w.label, day: d, count: targets.length });
-      });
-    });
-    return out;
   }, [prog, logs, athlete.id, canPersist, blockTier, dayTier]);
 
   /* ------------------------------------------------------------------
@@ -858,7 +828,7 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
                       {g.day.label}
                     </span>
                     <span style={{ display: "block", fontSize: 12, color: "#71717A", marginTop: 1 }}>
-                      {weekNumberLabel(g.weekLabel, g.wi)} · {g.count} lifts &amp; power exercises with nothing recorded
+                      {weekNumberLabel(g.weekLabel, g.wi)} · {g.count} lifts, power &amp; finisher exercises with nothing recorded
                     </span>
                   </span>
                   <span style={{ flexShrink: 0, fontSize: 13, fontWeight: 800, color: "#DC2626", whiteSpace: "nowrap" }}>
@@ -1064,7 +1034,7 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
                       {hasInput && <span style={{ width: 7, height: 7, borderRadius: 4, background: "#16A34A", flexShrink: 0 }} />}
                       {!hasInput && loggedResult && <span style={{ width: 7, height: 7, borderRadius: 4, background: "#16A34A", flexShrink: 0 }} />}
                       {/* A lift or a measurable power effort with nothing against it. */}
-                      {PRIORITY_CATS.has(block.category) && !hasInput &&
+                      {MUST_LOG_CATS.has(block.category) && !hasInput &&
                         !(loggedResult && ((loggedResult.load || "") !== "" || (loggedResult.sets || "") !== "" || (loggedResult.rpe || "") !== "")) && (
                         <span style={{ fontSize: 9, fontWeight: 800, color: "#fff", background: "#DC2626", padding: "1px 6px", borderRadius: 999, flexShrink: 0, whiteSpace: "nowrap" }}>
                           {block.category === "PWR" ? "MEASURE" : "LOG IT"}
@@ -1252,13 +1222,9 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
                 purpose - the red banner above is for the lifts and power work; this is the
                 gentle push towards logging everything. */}
             {dayLogged && day.blocks.length > 0 && (() => {
-              const done = day.blocks.filter(b => {
-                const m = blockLogMap[b.id];
-                return m && ((m.load || "") !== "" || (m.sets || "") !== "" || (m.reps || "") !== "" || (m.rpe || "") !== "");
-              }).length;
-              const total = day.blocks.length;
+              const { done, total } = sessionLogProgress(day, blockLogMap);
               const pct = total ? Math.round((done / total) * 100) : 0;
-              const complete = done === total;
+              const complete = total > 0 && done === total;
               return (
                 <div style={{ marginTop: 8, padding: "7px 10px", borderRadius: 8, background: complete ? "#F0FDF4" : "#FFFBEB", border: `1px solid ${complete ? "#BBF7D0" : "#FDE68A"}` }}>
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>

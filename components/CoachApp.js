@@ -527,7 +527,7 @@ export default function CoachApp({ onLogout }) {
           </header>
         )}
         <main className="t2p-main" style={{ flex: 1, padding: isMobile ? "12px 10px" : 32, maxWidth: "100%", overflowX: "hidden" }}>
-          {page === "dashboard" && <Dashboard {...pp} />}
+          {page === "dashboard" && <Dashboard {...pp} onNavigate={navToAthlete} />}
           {page === "seasons" && <Seasons {...pp} />}
           {page === "athletes" && <Athletes {...pp} focusAthleteId={focusAthleteId} onFocusClear={() => setFocusAthleteId(null)} />}
           {page === "programs" && <Programs {...pp} focusAthleteId={focusAthleteId} focusTarget={focusTarget} onFocusClear={() => { setFocusAthleteId(null); setFocusTarget(null); }} />}

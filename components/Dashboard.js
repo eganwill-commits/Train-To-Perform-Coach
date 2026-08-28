@@ -1,7 +1,10 @@
 "use client";
+import { useMemo } from "react";
 import { Badge, Card } from "./ui";
+import { findMissingNumberSessions, RECENT_DAYS } from "../lib/logging";
+import { weekNumberLabel } from "../lib/weeks";
 
-export default function Dashboard({ athletes, programs, logs, cats, colors, isMobile }) {
+export default function Dashboard({ athletes, programs, logs, cats, colors, isMobile, onNavigate }) {
   const today = new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
   const recent = [...logs].slice(0, 5);
 
@@ -29,6 +32,28 @@ export default function Dashboard({ athletes, programs, logs, cats, colors, isMo
     if (l.category && logCounts[l.category] !== undefined) logCounts[l.category]++;
   });
 
+  /*
+    Who has trained recently without recording the numbers that matter.
+
+    The athlete's own app nags them; this is the coach's side of it - one place to see the
+    whole roster instead of opening each athlete to find out. Same rule, same module, so
+    the two can never disagree about whose session is incomplete.
+  */
+  const missing = useMemo(() => {
+    const rows = [];
+    (programs || []).forEach(p => {
+      const ath = (athletes || []).find(a => a.id === p.athlete_id);
+      if (!ath) return;
+      findMissingNumberSessions({
+        program: p,
+        logs,
+        athleteId: p.athlete_id,
+        displayName: (b) => b.exerciseName || "",
+      }).forEach(g => rows.push({ ...g, athlete: ath, programName: p.name }));
+    });
+    return rows.sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
+  }, [programs, athletes, logs]);
+
   return (
     <div>
       <div style={{ marginBottom: isMobile ? 20 : 32 }}>
@@ -43,6 +68,42 @@ export default function Dashboard({ athletes, programs, logs, cats, colors, isMo
           </Card>
         ))}
       </div>
+
+      {/* Who is missing numbers */}
+      {missing.length > 0 && (
+        <Card style={{ marginBottom: isMobile ? 16 : 24, border: "2px solid #FCA5A5", background: "#FEF2F2" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 4 }}>
+            <span style={{ fontSize: 18 }}>{"\u26A0\uFE0F"}</span>
+            <h3 style={{ margin: 0, fontSize: 16, color: "#991B1B" }}>Missing numbers</h3>
+          </div>
+          <p style={{ margin: "0 0 12px", fontSize: 12, color: "#7F1D1D" }}>
+            Sessions trained in the last {RECENT_DAYS} days where no lift, power or finisher
+            was recorded. Their own app is prompting them too.
+          </p>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {missing.map((m, i) => (
+              <button
+                key={`${m.athlete.id}-${m.wi}-${m.day.id}-${i}`}
+                onClick={() => { if (onNavigate) onNavigate(m.athlete.id, "programs", { weekLabel: m.weekLabel, dayLabel: m.day.label }); }}
+                style={{
+                  display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10,
+                  width: "100%", textAlign: "left", padding: "10px 12px", borderRadius: 8,
+                  background: "#fff", border: "1px solid #FCA5A5",
+                  cursor: onNavigate ? "pointer" : "default", fontFamily: "inherit",
+                }}
+              >
+                <span style={{ minWidth: 0 }}>
+                  <span style={{ display: "block", fontSize: 14, fontWeight: 700, color: "#18181B" }}>{m.athlete.name}</span>
+                  <span style={{ display: "block", fontSize: 12, color: "#71717A", marginTop: 1, wordBreak: "break-word" }}>
+                    {weekNumberLabel(m.weekLabel, m.wi)} · {m.day.label} · {m.count} not recorded{m.date ? ` · ${m.date}` : ""}
+                  </span>
+                </span>
+                {onNavigate && <span style={{ flexShrink: 0, fontSize: 12, fontWeight: 700, color: "#DC2626", whiteSpace: "nowrap" }}>Open {"\u2192"}</span>}
+              </button>
+            ))}
+          </div>
+        </Card>
+      )}
 
       {/* Programming Distribution */}
       <Card style={{ marginBottom: isMobile ? 16 : 24 }}>
