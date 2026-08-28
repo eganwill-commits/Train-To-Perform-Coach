@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { supabase } from "../lib/supabase";
 import { PILLAR_COLORS, ATHLETE_NAV, EQUIP_OPTIONS, EQUIP_LABEL, roomLabel } from "../lib/constants";
 import { Badge, Btn, Card, Input, Select, Modal, EmptyState, SearchableSelect } from "./ui";
@@ -468,6 +468,45 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
     if (block.exerciseName) { const f = exercises.find(e => e.name === block.exerciseName); if (f && f.video_url) return f.video_url; }
     return "";
   };
+
+  /*
+    Which sessions are missing the numbers that matter. Memoised on purpose: this walks
+    every week x day x log, and it used to re-run on every render - including every
+    keystroke while an athlete typed a load. Harmless for one athlete with one week of
+    history; not harmless for a squad member with a full season behind them.
+  */
+  const gaps = useMemo(() => {
+    if (!prog || !canPersist) return [];
+    const out = [];
+    const norm = (x) => (x || "").toLowerCase().replace(/[-\u2013\u2014]/g, " ").replace(/\s+/g, " ").trim();
+    // Index the athlete's logs by week+day once, instead of filtering the whole array per day.
+    const byDay = new Map();
+    (logs || []).forEach(l => {
+      if (l.athlete_id !== athlete.id) return;
+      const k = `${l.week_label || ""}||${l.day_label || ""}`;
+      const arr = byDay.get(k); if (arr) arr.push(l); else byDay.set(k, [l]);
+    });
+    (prog.weeks || []).forEach((w, wi) => {
+      (w.days || []).forEach(d => {
+        const rows = byDay.get(`${w.label || ""}||${d.label || ""}`) || [];
+        if (rows.length === 0) return; // never trained - not a gap, just not done yet
+        const targets = (d.blocks || []).filter(b => PRIORITY_CATS.has(b.category));
+        if (targets.length === 0) return;
+        const recorded = targets.filter(b => {
+          const dn = getDisplayName(b, d.id);
+          const mm = rows.find(l =>
+            (l.exercise_id && b.exerciseId && l.exercise_id === b.exerciseId) ||
+            l.exercise_name === dn || norm(l.exercise_name) === norm(dn)
+          );
+          return mm && ((mm.load || "") !== "" || (mm.sets || "") !== "" || (mm.rpe || "") !== "");
+        }).length;
+        // Only when NOTHING was recorded for the day's lifts and power work.
+        if (recorded === 0) out.push({ wi, weekLabel: w.label, day: d, count: targets.length });
+      });
+    });
+    return out;
+  }, [prog, logs, athlete.id, canPersist, blockTier, dayTier]);
+
   /* ------------------------------------------------------------------
      SAVE AS HE TYPES
 
@@ -788,35 +827,6 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
           on its own as each session gets filled in. Nothing is hard-coded to a date.
           ------------------------------------------------------------------ */}
       {(() => {
-        if (!prog || !canPersist) return null;
-        const weeks = prog.weeks || [];
-        const gaps = [];
-        // The lifts (STR) and the measurable power work (PWR - box jump height, bound
-        // distance, med ball throws, depth drop box height) are what progression is built
-        // from. Those are worth chasing him for. Warm-ups, skill work and conditioning
-        // matter for the habit, but are handled quietly on each day rather than in red.
-        const norm = (x) => (x || "").toLowerCase().replace(/[-\u2013\u2014]/g, " ").replace(/\s+/g, " ").trim();
-        weeks.forEach((w, wi) => {
-          (w.days || []).forEach(d => {
-            const rows = (logs || []).filter(l =>
-              l.athlete_id === athlete.id && l.week_label === (w.label || "") && l.day_label === (d.label || "")
-            );
-            if (rows.length === 0) return; // never trained - not a gap, just not done yet
-            const targets = (d.blocks || []).filter(b => PRIORITY_CATS.has(b.category));
-            if (targets.length === 0) return;
-            const recorded = targets.filter(b => {
-              const dn = getDisplayName(b, d.id);
-              const m = rows.find(l =>
-                (l.exercise_id && b.exerciseId && l.exercise_id === b.exerciseId) ||
-                l.exercise_name === dn || norm(l.exercise_name) === norm(dn)
-              );
-              return m && ((m.load || "") !== "" || (m.sets || "") !== "" || (m.rpe || "") !== "");
-            }).length;
-            // Flag only when NOTHING was recorded for the day's target lifts. A session
-            // where he logged some of them is his call, not a nag.
-            if (recorded === 0) gaps.push({ wi, weekLabel: w.label, day: d, count: targets.length });
-          });
-        });
         if (gaps.length === 0) return null;
         return (
           <div style={{ background: "#FEF2F2", border: "3px solid #DC2626", borderRadius: 12, padding: isMobile ? 14 : 18, marginBottom: 14 }}>
