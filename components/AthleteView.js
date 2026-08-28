@@ -277,6 +277,15 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
   // in the program, so the week and day are found from it rather than encoded in the alert.
   const focusBlockRef = useRef(null);
   const [blockGlow, setBlockGlow] = useState(null);
+  // Jump target for the "missing numbers" banner.
+  const focusDayRef = useRef(null);
+  const [dayGlow, setDayGlow] = useState(null);
+  const goToDay = (weekIdx, dayId) => {
+    setAw(weekIdx);
+    setDayGlow(dayId);
+    setTimeout(() => focusDayRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 220);
+    setTimeout(() => setDayGlow(null), 6000);
+  };
   // Every exercise comment for this athlete, in one query, grouped by block.
   const [commentsByBlock, setCommentsByBlock] = useState({});
   const reloadComments = useCallback(async () => {
@@ -759,6 +768,94 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
 
       {saved && <div style={{ background: "#F0FDF4", color: "#16A34A", padding: "10px 14px", borderRadius: 8, marginBottom: 10, fontWeight: 600, fontSize: 14 }}>Workout logged!</div>}
 
+      {/* ------------------------------------------------------------------
+          MISSING NUMBERS
+
+          A session can be marked complete with nothing in it. That is not a
+          hypothetical - on 25 and 28 Aug fourteen and seventeen exercises went in
+          empty. The athlete had no way of knowing, because a completed day looks
+          identical whether or not it holds a single number.
+
+          Data-driven on purpose: it lists whatever is actually empty and disappears
+          on its own as each session gets filled in. Nothing is hard-coded to a date.
+          ------------------------------------------------------------------ */}
+      {(() => {
+        if (!prog || !canPersist) return null;
+        const weeks = prog.weeks || [];
+        const gaps = [];
+        // A warm-up or a mobility drill does not need a number. The lifts that DO are the
+        // ones carrying a real prescribed load - those are what progression is built from,
+        // and those are what is worth chasing him for.
+        const QUALITATIVE = /^(bw|body\s?weight|bodyweight|light|easy|mod|moderate|light band|band|max intent|heavy)$/i;
+        const norm = (x) => (x || "").toLowerCase().replace(/[-\u2013\u2014]/g, " ").replace(/\s+/g, " ").trim();
+        weeks.forEach((w, wi) => {
+          (w.days || []).forEach(d => {
+            const rows = (logs || []).filter(l =>
+              l.athlete_id === athlete.id && l.week_label === (w.label || "") && l.day_label === (d.label || "")
+            );
+            if (rows.length === 0) return; // never trained - not a gap, just not done yet
+            const targets = (d.blocks || []).filter(b => {
+              const ld = (b.load || "").trim();
+              return ld && !QUALITATIVE.test(ld);
+            });
+            if (targets.length === 0) return;
+            const recorded = targets.filter(b => {
+              const dn = getDisplayName(b, d.id);
+              const m = rows.find(l =>
+                (l.exercise_id && b.exerciseId && l.exercise_id === b.exerciseId) ||
+                l.exercise_name === dn || norm(l.exercise_name) === norm(dn)
+              );
+              return m && ((m.load || "") !== "" || (m.sets || "") !== "" || (m.rpe || "") !== "");
+            }).length;
+            // Flag only when NOTHING was recorded for the day's target lifts. A session
+            // where he logged some of them is his call, not a nag.
+            if (recorded === 0) gaps.push({ wi, weekLabel: w.label, day: d, count: targets.length });
+          });
+        });
+        if (gaps.length === 0) return null;
+        return (
+          <div style={{ background: "#FEF2F2", border: "3px solid #DC2626", borderRadius: 12, padding: isMobile ? 14 : 18, marginBottom: 14 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
+              <span style={{ fontSize: 22 }}>{"⚠️"}</span>
+              <span style={{ fontSize: isMobile ? 16 : 18, fontWeight: 800, color: "#991B1B" }}>
+                {gaps.length === 1 ? "One session is missing your numbers" : `${gaps.length} sessions are missing your numbers`}
+              </span>
+            </div>
+            <div style={{ fontSize: 14, color: "#7F1D1D", lineHeight: 1.55, marginBottom: 10 }}>
+              These workouts are marked done but no weights, sets or reps were saved. Your
+              coach needs them to set your next loads. Tap a session below, enter what you
+              actually lifted, and watch for <b>{"✓ Saved"}</b> next to each exercise.
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {gaps.map(g => (
+                <button
+                  key={`${g.wi}-${g.day.id}`}
+                  onClick={() => goToDay(g.wi, g.day.id)}
+                  style={{
+                    display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10,
+                    width: "100%", textAlign: "left", padding: "12px 14px", borderRadius: 10,
+                    background: "#fff", border: "2px solid #FCA5A5", cursor: "pointer",
+                    fontFamily: "inherit",
+                  }}
+                >
+                  <span style={{ minWidth: 0 }}>
+                    <span style={{ display: "block", fontSize: 14, fontWeight: 700, color: "#18181B", wordBreak: "break-word" }}>
+                      {g.day.label}
+                    </span>
+                    <span style={{ display: "block", fontSize: 12, color: "#71717A", marginTop: 1 }}>
+                      {weekNumberLabel(g.weekLabel, g.wi)} · {g.count} lifts with no weight recorded
+                    </span>
+                  </span>
+                  <span style={{ flexShrink: 0, fontSize: 13, fontWeight: 800, color: "#DC2626", whiteSpace: "nowrap" }}>
+                    Add numbers {"→"}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Notes Board */}
       <NotesBoard athleteId={athlete.id} authorName={athlete.name} authorRole="athlete" isMobile={isMobile} />
 
@@ -828,8 +925,12 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
           if (m) { blockLogMap[block.id] = m; usedIds.add(m.id); }
         });
 
+        const isFocusDay = dayGlow === day.id;
         return (
-          <Card key={day.id} style={{ padding: isMobile ? 10 : 14, marginBottom: 10, overflow: "hidden", border: dayStatus === "completed" ? "2px solid #16A34A" : dayStatus === "missed" ? "2px solid #DC2626" : "1px solid #E4E4E7", background: dayStatus === "missed" ? "#FEF2F218" : "#fff" }}>
+          // Wrapper carries the ref - Card is a plain function component and does not
+          // forward refs.
+          <div key={day.id} ref={isFocusDay ? focusDayRef : undefined} style={{ scrollMarginTop: 70 }}>
+          <Card style={{ padding: isMobile ? 10 : 14, marginBottom: 10, overflow: "hidden", border: isFocusDay ? "3px solid #F59E0B" : dayStatus === "completed" ? "2px solid #16A34A" : dayStatus === "missed" ? "2px solid #DC2626" : "1px solid #E4E4E7", boxShadow: isFocusDay ? "0 0 0 5px rgba(245,158,11,.2)" : undefined, transition: "box-shadow .4s ease, border-color .4s ease", background: dayStatus === "missed" ? "#FEF2F218" : "#fff" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                 {dayStatus === "completed" && <span style={{ color: "#16A34A", fontWeight: 700, fontSize: 14 }}>✓</span>}
@@ -1137,6 +1238,7 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
               </div>
             )}
           </Card>
+          </div>
         );
       })}
 
