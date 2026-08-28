@@ -1,7 +1,7 @@
 "use client";
 import { useMemo } from "react";
 import { Badge, Card } from "./ui";
-import { findMissingNumberSessions, RECENT_DAYS } from "../lib/logging";
+import { findMissingNumberSessions } from "../lib/logging";
 import { weekNumberLabel } from "../lib/weeks";
 
 export default function Dashboard({ athletes, programs, logs, cats, colors, isMobile, onNavigate }) {
@@ -77,8 +77,8 @@ export default function Dashboard({ athletes, programs, logs, cats, colors, isMo
             <h3 style={{ margin: 0, fontSize: 16, color: "#991B1B" }}>Missing numbers</h3>
           </div>
           <p style={{ margin: "0 0 12px", fontSize: 12, color: "#7F1D1D" }}>
-            Sessions trained in the last {RECENT_DAYS} days where no lift, power or finisher
-            was recorded. Their own app is prompting them too.
+            Sessions from this block where no lift, power or finisher was recorded.
+            Their own app is prompting them too.
           </p>
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {missing.map((m, i) => (
