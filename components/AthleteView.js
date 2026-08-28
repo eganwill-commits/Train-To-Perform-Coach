@@ -464,8 +464,93 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
     if (block.exerciseName) { const f = exercises.find(e => e.name === block.exerciseName); if (f && f.video_url) return f.video_url; }
     return "";
   };
-  const updateResult = (blockId, field, value) => {
+  /* ------------------------------------------------------------------
+     SAVE AS HE TYPES
+
+     The Log day button still exists and still marks the session complete. But his
+     numbers no longer WAIT for it.
+
+     Until now everything he typed sat in memory (with a localStorage copy) until he
+     pressed one button at the end. That made the whole session depend on the page
+     surviving from the first set to the last - a crash, a reload, a discarded tab and it
+     was gone. On 28 Aug fourteen exercises saved empty for exactly that reason, on a
+     morning when the app was crashing on load. Narrowing that window is not closing it.
+
+     Each value now goes to `logs` about a second after he stops typing, and on blur.
+     `logs` is the one table the coach view, the AI assistant and progression read, and
+     realtime pushes each row to the coach as it lands.
+     ------------------------------------------------------------------ */
+  const resultsRef = useRef(blockResults);
+  const logsRef = useRef(logs);
+  const timersRef = useRef({});
+  useEffect(() => { resultsRef.current = blockResults; }, [blockResults]);
+  useEffect(() => { logsRef.current = logs; }, [logs]);
+  useEffect(() => () => { Object.values(timersRef.current).forEach(clearTimeout); }, []);
+  // blockId -> "saving" | "saved" | "error", so he can SEE each number land.
+  const [saveState, setSaveState] = useState({});
+
+  const normName = (x) => (x || "").toLowerCase().replace(/[-–—]/g, " ").replace(/\s+/g, " ").trim();
+
+  const saveBlockNow = async (block, day, weekLabel) => {
+    if (!addLog || !athlete || !block || !day) return;
+    const r = (resultsRef.current || {})[block.id] || {};
+    const filled = ["sets", "reps", "load", "rpe", "notes"].some(k => (r[k] ?? "") !== "") || !!r.status;
+    if (!filled) return; // never write an empty row from autosave
+    const dn = getDisplayName(block, day.id);
+    const row = {
+      athlete_id: athlete.id,
+      athlete_name: athlete.name,
+      exercise_id: block.exerciseId || "",
+      exercise_name: dn,
+      category: block.category || "",
+      equipment_tier: tierFor(block, day.id),
+      sets: r.sets ?? "", reps: r.reps ?? "", load: r.load ?? "",
+      rpe: r.rpe ?? "", notes: r.notes ?? "",
+      exercise_status: r.status ?? "completed",
+      date: new Date().toISOString().slice(0, 10),
+      week_label: weekLabel,
+      day_label: day.label,
+    };
+    const prior = (logsRef.current || []).find(l =>
+      l.athlete_id === athlete.id && l.day_label === day.label && l.week_label === weekLabel && (
+        (l.exercise_id && block.exerciseId && l.exercise_id === block.exerciseId) ||
+        l.exercise_name === dn || normName(l.exercise_name) === normName(dn)
+      ));
+    setSaveState(prev => ({ ...prev, [block.id]: "saving" }));
+    try {
+      if (prior) {
+        const { data, error } = await supabase.from("logs").update(row).eq("id", prior.id).select().single();
+        if (error) throw error;
+        if (data && setLogs) setLogs(prev => prev.map(l => (l.id === data.id ? data : l)));
+      } else {
+        const { data, error } = await supabase.from("logs").insert(row).select().single();
+        if (error) throw error;
+        if (data && setLogs) setLogs(prev => (prev.some(l => l.id === data.id) ? prev : [data, ...prev]));
+      }
+      setSaveState(prev => ({ ...prev, [block.id]: "saved" }));
+    } catch (e) {
+      // The draft still holds it and Log day will carry it. Never show a tick for
+      // something that did not land.
+      console.error("autosave failed", e);
+      setSaveState(prev => ({ ...prev, [block.id]: "error" }));
+    }
+  };
+
+  const flushSave = (block, day, weekLabel) => {
+    if (!block || !day) return;
+    clearTimeout(timersRef.current[block.id]);
+    saveBlockNow(block, day, weekLabel);
+  };
+
+  const queueSave = (block, day, weekLabel, delay = 1200) => {
+    if (!block || !day) return;
+    clearTimeout(timersRef.current[block.id]);
+    timersRef.current[block.id] = setTimeout(() => saveBlockNow(block, day, weekLabel), delay);
+  };
+
+  const updateResult = (blockId, field, value, block, day, weekLabel) => {
     setBlockResults(prev => ({ ...prev, [blockId]: { ...(prev[blockId] || {}), [field]: value } }));
+    if (block && day) queueSave(block, day, weekLabel);
   };
 
   const submitDay = async (day, weekLabel) => {
@@ -484,6 +569,10 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
     if (!typedAny && !priorAny && typeof window !== "undefined") {
       if (!window.confirm("You haven't entered any numbers for this session.\n\nMark it complete without them?")) return;
     }
+
+    // Flush any pending autosave first, so the submit and a timer cannot race and
+    // write the same exercise twice.
+    (day.blocks || []).forEach(b => clearTimeout(timersRef.current[b.id]));
 
     const date = new Date().toISOString().slice(0, 10);
     setSubmitting(day.id);
@@ -860,8 +949,8 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
                   <div style={{ display: "flex", alignItems: "center", padding: "8px 8px", gap: 6 }}>
                     {/* Complete/Missed toggles */}
                     <div style={{ display: "flex", gap: 2, flexShrink: 0 }} onClick={e => e.stopPropagation()}>
-                      <button onClick={() => updateResult(block.id, "status", exStatus === "completed" ? null : "completed")} style={{ width: 24, height: 24, borderRadius: 4, border: exStatus === "completed" ? "2px solid #16A34A" : "1px solid #D4D4D8", background: exStatus === "completed" ? "#16A34A" : "transparent", color: exStatus === "completed" ? "#fff" : "#A1A1AA", fontSize: 12, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}>✓</button>
-                      <button onClick={() => updateResult(block.id, "status", exStatus === "missed" ? null : "missed")} style={{ width: 24, height: 24, borderRadius: 4, border: exStatus === "missed" ? "2px solid #DC2626" : "1px solid #D4D4D8", background: exStatus === "missed" ? "#DC2626" : "transparent", color: exStatus === "missed" ? "#fff" : "#A1A1AA", fontSize: 12, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}>✗</button>
+                      <button onClick={() => { updateResult(block.id, "status", exStatus === "completed" ? null : "completed"); flushSave(block, day, week.label); }} style={{ width: 24, height: 24, borderRadius: 4, border: exStatus === "completed" ? "2px solid #16A34A" : "1px solid #D4D4D8", background: exStatus === "completed" ? "#16A34A" : "transparent", color: exStatus === "completed" ? "#fff" : "#A1A1AA", fontSize: 12, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}>✓</button>
+                      <button onClick={() => { updateResult(block.id, "status", exStatus === "missed" ? null : "missed"); flushSave(block, day, week.label); }} style={{ width: 24, height: 24, borderRadius: 4, border: exStatus === "missed" ? "2px solid #DC2626" : "1px solid #D4D4D8", background: exStatus === "missed" ? "#DC2626" : "transparent", color: exStatus === "missed" ? "#fff" : "#A1A1AA", fontSize: 12, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}>✗</button>
                     </div>
                     <div onClick={() => setExpandedBlock(isOpen ? null : block.id)} style={{ display: "flex", alignItems: "center", flex: 1, minWidth: 0, cursor: "pointer", gap: 6 }}>
                       <Badge color={cc?.bg || "#999"}>{block.category}</Badge>
@@ -936,16 +1025,22 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
 
                       {/* Log / Edit inputs */}
                       <div style={{ marginTop: 10, paddingTop: 8, borderTop: "1px dashed #D4D4D8" }}>
-                        <div style={{ fontSize: 10, fontWeight: 700, color: loggedResult ? "#16A34A" : "#71717A", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 6 }}>
-                          {loggedResult ? "Your Results (edit & re-submit)" : "Log Your Results"}
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
+                          <span style={{ fontSize: 10, fontWeight: 700, color: loggedResult ? "#16A34A" : "#71717A", textTransform: "uppercase", letterSpacing: 0.5 }}>
+                            {loggedResult ? "Your Results" : "Log Your Results"}
+                          </span>
+                          {/* He should be able to see each number land, not trust that it did. */}
+                          {saveState[block.id] === "saving" && <span style={{ fontSize: 10, color: "#A1A1AA", fontWeight: 600 }}>Saving…</span>}
+                          {saveState[block.id] === "saved" && <span style={{ fontSize: 10, color: "#16A34A", fontWeight: 700 }}>✓ Saved</span>}
+                          {saveState[block.id] === "error" && <span style={{ fontSize: 10, color: "#DC2626", fontWeight: 700 }}>Not saved — check signal</span>}
                         </div>
                         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
-                          <label style={{ fontSize: 10, color: "#71717A" }}>Sets<input type="number" value={effSets} onChange={e => updateResult(block.id, "sets", e.target.value)} placeholder={block.sets || ""} style={inputStyle} /></label>
-                          <label style={{ fontSize: 10, color: "#71717A" }}>Reps<input value={effReps} onChange={e => updateResult(block.id, "reps", e.target.value)} placeholder={block.reps || ""} style={inputStyle} /></label>
-                          <label style={{ fontSize: 10, color: "#71717A" }}>Load<input value={effLoad} onChange={e => updateResult(block.id, "load", e.target.value)} placeholder={block.load || "lbs"} style={inputStyle} /></label>
-                          <label style={{ fontSize: 10, color: "#71717A" }}>RPE<input value={effRpe} onChange={e => updateResult(block.id, "rpe", e.target.value)} placeholder="1-10" style={inputStyle} /></label>
+                          <label style={{ fontSize: 10, color: "#71717A" }}>Sets<input type="number" value={effSets} onChange={e => updateResult(block.id, "sets", e.target.value, block, day, week.label)} onBlur={() => flushSave(block, day, week.label)} placeholder={block.sets || ""} style={inputStyle} /></label>
+                          <label style={{ fontSize: 10, color: "#71717A" }}>Reps<input value={effReps} onChange={e => updateResult(block.id, "reps", e.target.value, block, day, week.label)} onBlur={() => flushSave(block, day, week.label)} placeholder={block.reps || ""} style={inputStyle} /></label>
+                          <label style={{ fontSize: 10, color: "#71717A" }}>Load<input value={effLoad} onChange={e => updateResult(block.id, "load", e.target.value, block, day, week.label)} onBlur={() => flushSave(block, day, week.label)} placeholder={block.load || "lbs"} style={inputStyle} /></label>
+                          <label style={{ fontSize: 10, color: "#71717A" }}>RPE<input value={effRpe} onChange={e => updateResult(block.id, "rpe", e.target.value, block, day, week.label)} onBlur={() => flushSave(block, day, week.label)} placeholder="1-10" style={inputStyle} /></label>
                         </div>
-                        <label style={{ fontSize: 10, color: "#71717A", display: "block", marginTop: 6 }}>Notes<input value={effNotes} onChange={e => updateResult(block.id, "notes", e.target.value)} placeholder="How did it feel?" style={inputStyle} /></label>
+                        <label style={{ fontSize: 10, color: "#71717A", display: "block", marginTop: 6 }}>Notes<input value={effNotes} onChange={e => updateResult(block.id, "notes", e.target.value, block, day, week.label)} onBlur={() => flushSave(block, day, week.label)} placeholder="How did it feel?" style={inputStyle} /></label>
                         {loggedResult && <div style={{ fontSize: 10, color: "#A1A1AA", marginTop: 4 }}>Logged {new Date(loggedResult.date + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}</div>}
                         {/* The coach answering a note the athlete left here. Shown on the
                             exercise it belongs to, so the reply sits next to what it is about. */}
