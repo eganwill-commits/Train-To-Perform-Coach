@@ -12,6 +12,7 @@ import ToastNotifications from "./ToastNotifications";
 import ProgramBrief, { briefSummary } from "./ProgramBrief";
 import AthleteAlertsBell from "./AthleteAlertsBell";
 import ExerciseThread from "./ExerciseThread";
+import { weekStartFromLabel, weekNumberLabel, weekdayOffset } from "../lib/weeks";
 import { fetchAllComments } from "../lib/comments";
 
 function useIsMobile(bp = 768) {
@@ -27,21 +28,7 @@ function variantName(ex, tier) {
   return (ex.variants && ex.variants[t]) || ex.name || "";
 }
 
-const A_MONTHS = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 };
-const A_WDAYS = { mon: 0, tue: 1, wed: 2, thu: 3, fri: 4, sat: 5, sun: 6 };
-function weekStartFromLabel(label, idx, startDate) {
-  if (startDate) {
-    const p = String(startDate).split("-").map(Number);
-    if (p[0] && p[1] && p[2]) { const d = new Date(p[0], p[1] - 1, p[2]); d.setDate(d.getDate() + idx * 7); return d; }
-  }
-  const m = (label || "").match(/(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(\d{1,2})/i);
-  if (m) return new Date(2026, A_MONTHS[m[1].slice(0, 3).toLowerCase()], parseInt(m[2], 10));
-  return new Date(2026, 3, 6 + idx * 7);
-}
-function weekdayOffset(label) {
-  const m = (label || "").toLowerCase().match(/\b(mon|tue|wed|thu|fri|sat|sun)[a-z]*\b/);
-  return m ? A_WDAYS[m[1]] : 0;
-}
+
 
 const DAY_WARMUPS = {
   lowerA: "2\u20133 min easy bike/row \u2192 lower-body mobility (leg swings, deep bodyweight squats, walking lunges, ankle rocks) \u2192 glute bridges + dead bugs \u2192 2\u20133 ramp-up sets building to your first working Back Squat.",
@@ -798,14 +785,14 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
               const weekEnd = new Date(weekStart); weekEnd.setDate(weekStart.getDate() + 4);
               const fmt = (d) => d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
               return <button key={w.id} onClick={() => setAw(i)} style={{ padding: "4px 8px", borderRadius: 6, border: `2px solid ${bd}`, background: bg, color: fg, fontWeight: 600, fontSize: 11, cursor: "pointer", fontFamily: "inherit", lineHeight: 1.2, textAlign: "center", opacity: isUpcoming && !isActive ? 0.7 : 1 }}>
-                {st === "completed" ? "✓" : st === "missed" ? "✗" : ""}{isCurrent ? "→ " : ""}W{i + 1}
+                {st === "completed" ? "✓" : st === "missed" ? "✗" : ""}{isCurrent ? "→ " : ""}{weekNumberLabel(w.label, i)}
                 <div style={{ fontSize: 8, fontWeight: 500, opacity: 0.75, marginTop: 1 }}>{fmt(weekStart)}–{fmt(weekEnd)}</div>
               </button>;
             })}
           </div>
           {aw !== currentWeekIndex && (
             <button onClick={() => setAw(currentWeekIndex)} style={{ marginBottom: 8, padding: "4px 12px", background: "#FEF3C7", color: "#92400E", border: "1px solid #FDE68A", borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>
-              ← Back to Current Week (W{currentWeekIndex + 1})
+              ← Back to Current Week ({weekNumberLabel(weeks[currentWeekIndex]?.label, currentWeekIndex)})
             </button>
           )}
           </>

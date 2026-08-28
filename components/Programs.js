@@ -7,6 +7,7 @@ import { printDay } from "./printHelper";
 import NotesBoard from "./NotesBoard";
 import FeedbackModal from "./FeedbackModal";
 import ExerciseThread from "./ExerciseThread";
+import { weekStartFromLabel, weekNumberLabel, weekdayOffset } from "../lib/weeks";
 import { fetchAllComments } from "../lib/comments";
 import ProgramBrief, { briefSummary } from "./ProgramBrief";
 
@@ -15,28 +16,8 @@ const uid = () => Math.random().toString(36).slice(2, 10);
 // Derive real calendar dates from week/day labels (e.g. "Week 1 · Jul 6–10").
 // Falls back to the legacy fixed base for programs whose labels have no dates,
 // so existing programs are unaffected.
-const MONTHS = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 };
-const WDAYS = { mon: 0, tue: 1, wed: 2, thu: 3, fri: 4, sat: 5, sun: 6 };
-function weekStartFromLabel(label, idx, startDate) {
-  if (startDate) {
-    const p = String(startDate).split("-").map(Number);
-    if (p[0] && p[1] && p[2]) { const d = new Date(p[0], p[1] - 1, p[2]); d.setDate(d.getDate() + idx * 7); return d; }
-  }
-  const m = (label || "").match(/(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(\d{1,2})/i);
-  if (m) return new Date(2026, MONTHS[m[1].slice(0, 3).toLowerCase()], parseInt(m[2], 10));
-  return new Date(2026, 3, 6 + idx * 7);
-}
-// The chip shows the week's own number, not its position in the array. Mac's program
-// opens with Week 0 (the benchmark), so position+1 labelled every week one higher than
-// the program, the workbook and the PDF call it - W1 was really Week 0, W13 was Week 12.
-function weekNumberLabel(label, idx) {
-  const m = (label || "").match(/week\s+(\d+)/i);
-  return "W" + (m ? m[1] : idx + 1);
-}
-function weekdayOffset(label) {
-  const m = (label || "").toLowerCase().match(/\b(mon|tue|wed|thu|fri|sat|sun)[a-z]*\b/);
-  return m ? WDAYS[m[1]] : 0;
-}
+
+
 
 const DAY_WARMUPS = {
   lowerA: "2–3 min easy bike/row → lower-body mobility (leg swings, deep bodyweight squats, walking lunges, ankle rocks) → glute bridges + dead bugs → 2–3 ramp-up sets building to your first working Back Squat.",
