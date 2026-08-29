@@ -727,19 +727,9 @@ function ProgramDetail({ program, programs, exercises, cats, colors, addBlock, u
     if (block.exerciseName) { const f = exercises.find(e => e.name === block.exerciseName); if (f) return f.id; }
     return "__custom__";
   };
-  /*
-    The block's own exerciseName WINS.
-
-    It used to be the other way round: any block carrying an exerciseId displayed the
-    library row's name, so a program that said "Back Squat - 2RM" showed as "Back Squat"
-    and the athlete never saw it was a test day. 63 movements in the Fall block were
-    affected. The library name is now only a fallback, and the coach can relabel any
-    block without repointing it at a different exercise.
-  */
   const getDisplayName = (block) => {
-    if (block.exerciseName) return block.exerciseName;
     if (block.exerciseId) { const f = exercises.find(e => e.id === block.exerciseId); if (f) return f.name; }
-    return "Unknown";
+    return block.exerciseName || "Unknown";
   };
 
   // Flexible matching: log entry matches a block by exercise_id, exact name, or normalized name
@@ -977,7 +967,6 @@ function ProgramDetail({ program, programs, exercises, cats, colors, addBlock, u
                   ...catExercises.map(ex => ({ value: ex.id, label: ex.name, group: block.category })),
                   ...otherExercises.map(ex => ({ value: ex.id, label: ex.name, group: ex.category })),
                 ];
-                const isCustom = resolvedId === "__custom__";
                 const isFirst = bi === 0;
                 const isLast = bi === day.blocks.length - 1;
                 const resolvedEx = resolvedId !== "__custom__" ? exercises.find(e => e.id === resolvedId) : null;
@@ -1024,14 +1013,9 @@ function ProgramDetail({ program, programs, exercises, cats, colors, addBlock, u
                                 </div>
                                 <button onClick={() => removeBlock(aw, di, bi)} style={{ background: "#FEE2E2", border: "none", borderRadius: 6, cursor: "pointer", color: "#DC2626", fontSize: 12, padding: "4px 10px", fontWeight: 600, fontFamily: "inherit" }}>Remove</button>
                               </div>
-                              {!isCustom && (
-                                <div style={{ marginBottom: 6 }}>
-                                  <SearchableSelect value={resolvedId} onChange={e => updateBlock(aw, di, bi, "exerciseId", e.target.value)} options={allOptions} groupBy placeholder="Select exercise…" />
-                                </div>
-                              )}
-                              <label style={{ fontSize: 10, color: "#71717A", display: "block", marginBottom: 6 }}>Display name <span style={{ color: "#A1A1AA", fontWeight: 400 }}>(what the athlete sees)</span>
-                                <BlurInput value={block.exerciseName || ""} onSave={v => updateBlock(aw, di, bi, "exerciseName", v)} placeholder={resolvedEx?.name || "Exercise name"} />
-                              </label>
+                              <div style={{ marginBottom: 6 }}>
+                                <SearchableSelect value={resolvedId} onChange={e => updateBlock(aw, di, bi, "exerciseId", e.target.value)} options={allOptions} groupBy placeholder={getDisplayName(block) || "Select exercise…"} />
+                              </div>
                               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 4 }}>
                                 {[["Sets", "sets", "number"], ["Reps", "reps", "text"], ["Load", "load", "text"]].map(([lb, f, t]) => (
                                   <label key={f} style={{ fontSize: 10, color: "#71717A" }}>{lb}<BlurInput type={t} value={block[f]} onSave={v => updateBlock(aw, di, bi, f, v)} placeholder={f === "load" ? "lbs" : ""} style={{ width: "100%", padding: "6px 5px", border: "1px solid #E4E4E7", borderRadius: 6, fontSize: 14, fontFamily: "inherit", marginTop: 1, boxSizing: "border-box" }} /></label>
@@ -1112,16 +1096,9 @@ function ProgramDetail({ program, programs, exercises, cats, colors, addBlock, u
                           </div>
                           <button onClick={() => removeBlock(aw, di, bi)} style={{ background: "none", border: "none", cursor: "pointer", color: "#A1A1AA", fontSize: 14 }}>✕</button>
                         </div>
-                        {isCustom ? (
-                          <div style={{ width: "100%", marginBottom: 4, padding: "5px 8px", border: "1px solid #E4E4E7", borderRadius: 6, fontSize: 13, fontFamily: "inherit", boxSizing: "border-box", background: "#fff", color: "#18181B", fontWeight: 600 }}>{displayName}</div>
-                        ) : (
-                          <div style={{ marginBottom: 4 }}>
-                            <SearchableSelect value={resolvedId} onChange={e => updateBlock(aw, di, bi, "exerciseId", e.target.value)} options={allOptions} groupBy placeholder="Select exercise…" />
-                          </div>
-                        )}
-                        <label style={{ fontSize: 10, color: "#71717A", display: "block", marginBottom: 6 }}>Display name <span style={{ color: "#A1A1AA", fontWeight: 400 }}>(what the athlete sees)</span>
-                          <BlurInput value={block.exerciseName || ""} onSave={v => updateBlock(aw, di, bi, "exerciseName", v)} placeholder={resolvedEx?.name || "Exercise name"} />
-                        </label>
+                        <div style={{ marginBottom: 4 }}>
+                          <SearchableSelect value={resolvedId} onChange={e => updateBlock(aw, di, bi, "exerciseId", e.target.value)} options={allOptions} groupBy placeholder={getDisplayName(block) || "Select exercise…"} />
+                        </div>
                         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 4, marginTop: 4 }}>
                           {[["Sets", "sets", "number"], ["Reps", "reps", "text"], ["Load", "load", "text"]].map(([lb, f, t]) => (
                             <label key={f} style={{ fontSize: 10, color: "#71717A" }}>{lb}<BlurInput type={t} value={block[f]} onSave={v => updateBlock(aw, di, bi, f, v)} placeholder={f === "load" ? "lbs" : ""} style={{ width: "100%", padding: "4px 5px", border: "1px solid #E4E4E7", borderRadius: 6, fontSize: 13, fontFamily: "inherit", marginTop: 1, boxSizing: "border-box" }} /></label>

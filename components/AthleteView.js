@@ -461,21 +461,10 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
     if (block.exerciseName) { const f = exercises.find(e => e.name === block.exerciseName); if (f) return f; }
     return null;
   };
-  /*
-    Precedence: equipment variant > the block's own name > the library name.
-
-    A tier variant is a real substitution (a no-barbell room genuinely does a different
-    movement) so it still wins. Otherwise the coach's label for THIS block wins, so the
-    athlete sees "Back Squat - 2RM" on test day rather than the library's "Back Squat".
-  */
   const getDisplayName = (block, dayId) => {
     const f = exerciseFor(block);
-    if (f) {
-      const v = variantName(f, tierFor(block, dayId));
-      if (v && v !== f.name) return v;          // genuine equipment substitution
-    }
-    if (block.exerciseName) return block.exerciseName;
-    return f ? f.name : "—";
+    if (f) return variantName(f, tierFor(block, dayId));
+    return block.exerciseName || "—";
   };
   const getVideoUrl = (block) => {
     if (block.exerciseId) { const f = exercises.find(e => e.id === block.exerciseId); if (f && f.video_url) return f.video_url; }
@@ -1338,10 +1327,8 @@ function AthleteLog({ addLog, athlete, exercises, cats, colors, isMobile, progra
   })();
   const logTier = loggedDayTier || "full_gym";
   const getDisplayName = (block) => {
-    const fx = block.exerciseId ? exercises.find(e => e.id === block.exerciseId) : null;
-    if (fx) { const v = variantName(fx, logTier); if (v && v !== fx.name) return v; }
-    if (block.exerciseName) return block.exerciseName;
-    if (fx) return fx.name;
+    if (block.exerciseId) { const f = exercises.find(e => e.id === block.exerciseId); if (f) return variantName(f, logTier); }
+    if (block.exerciseName) { const f = exercises.find(e => e.name === block.exerciseName); if (f) return variantName(f, logTier); return block.exerciseName; }
     return block.exerciseName || "Unknown";
   };
 
