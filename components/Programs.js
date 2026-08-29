@@ -11,6 +11,13 @@ import { weekStartFromLabel, weekNumberLabel, weekdayOffset } from "../lib/weeks
 import { fetchAllComments } from "../lib/comments";
 import ProgramBrief, { briefSummary } from "./ProgramBrief";
 
+/* Local calendar date, not UTC — see the note in AthleteView.js. */
+const localDateISO = () => {
+  const d = new Date();
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+};
+
+
 const uid = () => Math.random().toString(36).slice(2, 10);
 
 // Derive real calendar dates from week/day labels (e.g. "Week 1 · Jul 6–10").
@@ -703,7 +710,7 @@ function ProgramDetail({ program, programs, exercises, cats, colors, addBlock, u
   if (!week) return <div><button onClick={onBack} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 14, color: "#71717A", fontFamily: "inherit" }}>← Back</button><p>No weeks in this program.</p></div>;
 
   // Check which dates have logs for this athlete
-  const getDateForDay = (dayId) => submitDates[dayId] || new Date().toISOString().slice(0, 10);
+  const getDateForDay = (dayId) => submitDates[dayId] || localDateISO();
 
   const getDayLogs = (date, dayLabel) => {
     if (!program.athlete_id) return [];
@@ -720,9 +727,19 @@ function ProgramDetail({ program, programs, exercises, cats, colors, addBlock, u
     if (block.exerciseName) { const f = exercises.find(e => e.name === block.exerciseName); if (f) return f.id; }
     return "__custom__";
   };
+  /*
+    The block's own exerciseName WINS.
+
+    It used to be the other way round: any block carrying an exerciseId displayed the
+    library row's name, so a program that said "Back Squat - 2RM" showed as "Back Squat"
+    and the athlete never saw it was a test day. 63 movements in the Fall block were
+    affected. The library name is now only a fallback, and the coach can relabel any
+    block without repointing it at a different exercise.
+  */
   const getDisplayName = (block) => {
+    if (block.exerciseName) return block.exerciseName;
     if (block.exerciseId) { const f = exercises.find(e => e.id === block.exerciseId); if (f) return f.name; }
-    return block.exerciseName || "Unknown";
+    return "Unknown";
   };
 
   // Flexible matching: log entry matches a block by exercise_id, exact name, or normalized name
@@ -1012,6 +1029,9 @@ function ProgramDetail({ program, programs, exercises, cats, colors, addBlock, u
                                   <SearchableSelect value={resolvedId} onChange={e => updateBlock(aw, di, bi, "exerciseId", e.target.value)} options={allOptions} groupBy placeholder="Select exercise…" />
                                 </div>
                               )}
+                              <label style={{ fontSize: 10, color: "#71717A", display: "block", marginBottom: 6 }}>Display name <span style={{ color: "#A1A1AA", fontWeight: 400 }}>(what the athlete sees)</span>
+                                <BlurInput value={block.exerciseName || ""} onSave={v => updateBlock(aw, di, bi, "exerciseName", v)} placeholder={resolvedEx?.name || "Exercise name"} />
+                              </label>
                               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 4 }}>
                                 {[["Sets", "sets", "number"], ["Reps", "reps", "text"], ["Load", "load", "text"]].map(([lb, f, t]) => (
                                   <label key={f} style={{ fontSize: 10, color: "#71717A" }}>{lb}<BlurInput type={t} value={block[f]} onSave={v => updateBlock(aw, di, bi, f, v)} placeholder={f === "load" ? "lbs" : ""} style={{ width: "100%", padding: "6px 5px", border: "1px solid #E4E4E7", borderRadius: 6, fontSize: 14, fontFamily: "inherit", marginTop: 1, boxSizing: "border-box" }} /></label>
@@ -1099,6 +1119,9 @@ function ProgramDetail({ program, programs, exercises, cats, colors, addBlock, u
                             <SearchableSelect value={resolvedId} onChange={e => updateBlock(aw, di, bi, "exerciseId", e.target.value)} options={allOptions} groupBy placeholder="Select exercise…" />
                           </div>
                         )}
+                        <label style={{ fontSize: 10, color: "#71717A", display: "block", marginBottom: 6 }}>Display name <span style={{ color: "#A1A1AA", fontWeight: 400 }}>(what the athlete sees)</span>
+                          <BlurInput value={block.exerciseName || ""} onSave={v => updateBlock(aw, di, bi, "exerciseName", v)} placeholder={resolvedEx?.name || "Exercise name"} />
+                        </label>
                         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 4, marginTop: 4 }}>
                           {[["Sets", "sets", "number"], ["Reps", "reps", "text"], ["Load", "load", "text"]].map(([lb, f, t]) => (
                             <label key={f} style={{ fontSize: 10, color: "#71717A" }}>{lb}<BlurInput type={t} value={block[f]} onSave={v => updateBlock(aw, di, bi, f, v)} placeholder={f === "load" ? "lbs" : ""} style={{ width: "100%", padding: "4px 5px", border: "1px solid #E4E4E7", borderRadius: 6, fontSize: 13, fontFamily: "inherit", marginTop: 1, boxSizing: "border-box" }} /></label>

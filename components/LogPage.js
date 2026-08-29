@@ -3,6 +3,13 @@ import { useState } from "react";
 import { Badge, Btn, Card, Input, Select, Modal, EmptyState, SearchableSelect } from "./ui";
 import { roomLabel } from "../lib/constants";
 
+/* Local calendar date, not UTC — see the note in AthleteView.js. */
+const localDateISO = () => {
+  const d = new Date();
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+};
+
+
 function formatDate(d) {
   return new Date(d + "T12:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
 }
@@ -18,12 +25,12 @@ export default function LogPage({ logs, addLog, deleteLog, unlogDay, athletes, e
   const [modal, setModal] = useState(false);
   const [expandedDay, setExpandedDay] = useState(null);
   const [expandedExercise, setExpandedExercise] = useState(null);
-  const [form, setForm] = useState({ athlete_id: "", exercise_id: "", category: "", sets: "", reps: "", load: "", rpe: "", notes: "", date: new Date().toISOString().slice(0, 10) });
+  const [form, setForm] = useState({ athlete_id: "", exercise_id: "", category: "", sets: "", reps: "", load: "", rpe: "", notes: "", date: localDateISO() });
 
   const openNew = () => {
     const c = cats[0];
     const fx = exercises.find(e => e.category === c);
-    setForm({ athlete_id: selectedAthlete !== "all" ? selectedAthlete : (athletes[0]?.id || ""), exercise_id: fx?.id || "", category: c, sets: "", reps: "", load: "", rpe: "", notes: "", date: new Date().toISOString().slice(0, 10) });
+    setForm({ athlete_id: selectedAthlete !== "all" ? selectedAthlete : (athletes[0]?.id || ""), exercise_id: fx?.id || "", category: c, sets: "", reps: "", load: "", rpe: "", notes: "", date: localDateISO() });
     setModal(true);
   };
 

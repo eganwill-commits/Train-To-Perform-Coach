@@ -16,6 +16,13 @@ import ToastNotifications from "./ToastNotifications";
 import AlertsBell from "./AlertsBell";
 import T2PLogo from "./T2PLogo";
 
+/* Local calendar date, not UTC — see the note in AthleteView.js. */
+const localDateISO = () => {
+  const d = new Date();
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+};
+
+
 function useIsMobile(bp = 768) {
   const [m, setM] = useState(false);
   useEffect(() => {
@@ -272,7 +279,7 @@ export default function CoachApp({ onLogout }) {
         // logs.notes belongs to the athlete. The coach's programming note lives on the
         // block and must not be copied in here - it reads back as if they wrote it.
         notes: logged?.notes ?? "",
-        date: date || new Date().toISOString().slice(0, 10),
+        date: date || localDateISO(),
         week_label: weekLabel || "",
         day_label: day.label || "",
         exercise_status: logged?.exercise_status ?? "completed",

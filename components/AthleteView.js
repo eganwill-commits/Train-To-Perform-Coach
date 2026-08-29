@@ -10,6 +10,16 @@ import Messages from "./Messages";
 import NotesBoard from "./NotesBoard";
 import ToastNotifications from "./ToastNotifications";
 import ProgramBrief, { briefSummary } from "./ProgramBrief";
+
+/*
+  Local calendar date, not UTC. new Date().toISOString() is UTC, so any session logged
+  after ~18:00 Mountain was being stamped with the NEXT day's date.
+*/
+const localDateISO = () => {
+  const d = new Date();
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+};
+
 import AthleteAlertsBell from "./AthleteAlertsBell";
 import ExerciseThread from "./ExerciseThread";
 import { weekStartFromLabel, weekNumberLabel, weekdayOffset } from "../lib/weeks";
@@ -332,7 +342,7 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
         exercise_name: exName,
         video_url: urlData.publicUrl,
         notes: "",
-        date: new Date().toISOString().slice(0, 10),
+        date: localDateISO(),
         status: "pending",
       });
       setUploadingVideo(null);
@@ -451,10 +461,21 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
     if (block.exerciseName) { const f = exercises.find(e => e.name === block.exerciseName); if (f) return f; }
     return null;
   };
+  /*
+    Precedence: equipment variant > the block's own name > the library name.
+
+    A tier variant is a real substitution (a no-barbell room genuinely does a different
+    movement) so it still wins. Otherwise the coach's label for THIS block wins, so the
+    athlete sees "Back Squat - 2RM" on test day rather than the library's "Back Squat".
+  */
   const getDisplayName = (block, dayId) => {
     const f = exerciseFor(block);
-    if (f) return variantName(f, tierFor(block, dayId));
-    return block.exerciseName || "—";
+    if (f) {
+      const v = variantName(f, tierFor(block, dayId));
+      if (v && v !== f.name) return v;          // genuine equipment substitution
+    }
+    if (block.exerciseName) return block.exerciseName;
+    return f ? f.name : "—";
   };
   const getVideoUrl = (block) => {
     if (block.exerciseId) { const f = exercises.find(e => e.id === block.exerciseId); if (f && f.video_url) return f.video_url; }
@@ -520,7 +541,7 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
       sets: r.sets ?? "", reps: r.reps ?? "", load: r.load ?? "",
       rpe: r.rpe ?? "", notes: r.notes ?? "",
       exercise_status: r.status ?? "completed",
-      date: new Date().toISOString().slice(0, 10),
+      date: localDateISO(),
       week_label: weekLabel,
       day_label: day.label,
     };
@@ -562,6 +583,16 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
   };
 
   const updateResult = (blockId, field, value, block, day, weekLabel) => {
+    /*
+      Keep resultsRef in step SYNCHRONOUSLY.
+
+      resultsRef is otherwise only refreshed by a post-render effect. The status buttons
+      call this and then flushSave() in the same click handler, so saveBlockNow() read the
+      value from before the click: ticking an exercise with nothing else typed failed the
+      `filled` guard and wrote no row at all, while the UI showed a tick.
+    */
+    const cur = resultsRef.current || {};
+    resultsRef.current = { ...cur, [blockId]: { ...(cur[blockId] || {}), [field]: value } };
     setBlockResults(prev => ({ ...prev, [blockId]: { ...(prev[blockId] || {}), [field]: value } }));
     if (block && day) queueSave(block, day, weekLabel);
   };
@@ -587,7 +618,7 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
     // write the same exercise twice.
     (day.blocks || []).forEach(b => clearTimeout(timersRef.current[b.id]));
 
-    const date = new Date().toISOString().slice(0, 10);
+    const date = localDateISO();
     setSubmitting(day.id);
     try {
 
@@ -1269,7 +1300,7 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
 
 function AthleteLog({ addLog, athlete, exercises, cats, colors, isMobile, programs, logs }) {
   const [selectedWorkout, setSelectedWorkout] = useState("");
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(localDateISO());
   // Same rule as MyProgram: typed numbers survive a reload. See the comment there.
   const logResultsKey = `t2p_logpage_${athlete?.id || "x"}`;
   const [blockResults, setBlockResults] = useState(() => {
@@ -1307,8 +1338,10 @@ function AthleteLog({ addLog, athlete, exercises, cats, colors, isMobile, progra
   })();
   const logTier = loggedDayTier || "full_gym";
   const getDisplayName = (block) => {
-    if (block.exerciseId) { const f = exercises.find(e => e.id === block.exerciseId); if (f) return variantName(f, logTier); }
-    if (block.exerciseName) { const f = exercises.find(e => e.name === block.exerciseName); if (f) return variantName(f, logTier); return block.exerciseName; }
+    const fx = block.exerciseId ? exercises.find(e => e.id === block.exerciseId) : null;
+    if (fx) { const v = variantName(fx, logTier); if (v && v !== fx.name) return v; }
+    if (block.exerciseName) return block.exerciseName;
+    if (fx) return fx.name;
     return block.exerciseName || "Unknown";
   };
 
@@ -1646,7 +1679,7 @@ function MyVideos({ videoSubs, addVideoSub, deleteVideoSub, athlete, exercises, 
       await addVideoSub({
         athlete_id: athlete.id, athlete_name: athlete.name,
         exercise_name: form.exercise_name, video_url: form.video_url,
-        notes: form.notes, date: new Date().toISOString().slice(0, 10),
+        notes: form.notes, date: localDateISO(),
       });
     } else {
       if (!selectedFile) return;
@@ -1664,7 +1697,7 @@ function MyVideos({ videoSubs, addVideoSub, deleteVideoSub, athlete, exercises, 
         await addVideoSub({
           athlete_id: athlete.id, athlete_name: athlete.name,
           exercise_name: form.exercise_name, video_url: publicUrl,
-          notes: form.notes, date: new Date().toISOString().slice(0, 10),
+          notes: form.notes, date: localDateISO(),
         });
       } catch (err) {
         alert("Upload error: " + (err.message || "Unknown error"));
