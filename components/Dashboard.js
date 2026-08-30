@@ -73,10 +73,10 @@ export default function Dashboard({ athletes, programs, logs, cats, colors, isMo
     );
   }, [missing]);
 
-  // One athlete behind: no point making the coach click to see the one thing that matters.
+  // Always start collapsed, even for a single athlete. One consistent shape reads cleaner
+  // than a panel that changes layout depending on how many people are behind.
   const [openAthlete, setOpenAthlete] = useState(null);
-  const soleAthlete = byAthlete.length === 1 ? byAthlete[0].athlete.id : null;
-  const isOpen = (id) => (openAthlete === null ? id === soleAthlete : openAthlete === id);
+  const isOpen = (id) => openAthlete === id;
 
   return (
     <div>
@@ -110,7 +110,7 @@ export default function Dashboard({ athletes, programs, logs, cats, colors, isMo
               return (
                 <div key={ath.id} style={{ background: "#fff", border: "1px solid #FCA5A5", borderRadius: 8, overflow: "hidden" }}>
                   <button
-                    onClick={() => setOpenAthlete(open ? "" : ath.id)}
+                    onClick={() => setOpenAthlete(open ? null : ath.id)}
                     style={{
                       display: "flex", alignItems: "center", gap: 10, width: "100%", textAlign: "left",
                       padding: "11px 12px", background: "none", border: "none", cursor: "pointer", fontFamily: "inherit",
