@@ -1,5 +1,5 @@
 "use client";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Badge, Card } from "./ui";
 import { findMissingNumberSessions } from "../lib/logging";
 import { weekNumberLabel } from "../lib/weeks";
@@ -54,6 +54,30 @@ export default function Dashboard({ athletes, programs, logs, cats, colors, isMo
     return rows.sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
   }, [programs, athletes, logs]);
 
+  /*
+    Grouped by athlete rather than a flat list. A stack of sessions ordered only by date
+    reads as noise once more than one or two athletes are behind - the coach thinks in
+    people ("has Gus logged anything?"), not in a chronological feed of days.
+  */
+  const byAthlete = useMemo(() => {
+    const map = new Map();
+    missing.forEach(m => {
+      const e = map.get(m.athlete.id);
+      if (e) e.sessions.push(m);
+      else map.set(m.athlete.id, { athlete: m.athlete, sessions: [m] });
+    });
+    return [...map.values()].sort((a, b) =>
+      b.sessions.length - a.sessions.length ||
+      String(b.sessions[0].date || "").localeCompare(String(a.sessions[0].date || "")) ||
+      a.athlete.name.localeCompare(b.athlete.name)
+    );
+  }, [missing]);
+
+  // One athlete behind: no point making the coach click to see the one thing that matters.
+  const [openAthlete, setOpenAthlete] = useState(null);
+  const soleAthlete = byAthlete.length === 1 ? byAthlete[0].athlete.id : null;
+  const isOpen = (id) => (openAthlete === null ? id === soleAthlete : openAthlete === id);
+
   return (
     <div>
       <div style={{ marginBottom: isMobile ? 20 : 32 }}>
@@ -77,30 +101,58 @@ export default function Dashboard({ athletes, programs, logs, cats, colors, isMo
             <h3 style={{ margin: 0, fontSize: 16, color: "#991B1B" }}>Missing numbers</h3>
           </div>
           <p style={{ margin: "0 0 12px", fontSize: 12, color: "#7F1D1D" }}>
-            Sessions from this block where no lift, power or finisher was recorded.
-            Their own app is prompting them too.
+            {missing.length} session{missing.length !== 1 ? "s" : ""} across {byAthlete.length} athlete{byAthlete.length !== 1 ? "s" : ""} where
+            no lift, power or finisher was recorded. Their own app is prompting them too.
           </p>
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {missing.map((m, i) => (
-              <button
-                key={`${m.athlete.id}-${m.wi}-${m.day.id}-${i}`}
-                onClick={() => { if (onNavigate) onNavigate(m.athlete.id, "programs", { weekLabel: m.weekLabel, dayLabel: m.day.label }); }}
-                style={{
-                  display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10,
-                  width: "100%", textAlign: "left", padding: "10px 12px", borderRadius: 8,
-                  background: "#fff", border: "1px solid #FCA5A5",
-                  cursor: onNavigate ? "pointer" : "default", fontFamily: "inherit",
-                }}
-              >
-                <span style={{ minWidth: 0 }}>
-                  <span style={{ display: "block", fontSize: 14, fontWeight: 700, color: "#18181B" }}>{m.athlete.name}</span>
-                  <span style={{ display: "block", fontSize: 12, color: "#71717A", marginTop: 1, wordBreak: "break-word" }}>
-                    {weekNumberLabel(m.weekLabel, m.wi)} · {m.day.label} · {m.count} not recorded{m.date ? ` · ${m.date}` : ""}
-                  </span>
-                </span>
-                {onNavigate && <span style={{ flexShrink: 0, fontSize: 12, fontWeight: 700, color: "#DC2626", whiteSpace: "nowrap" }}>Open {"\u2192"}</span>}
-              </button>
-            ))}
+            {byAthlete.map(({ athlete: ath, sessions }) => {
+              const open = isOpen(ath.id);
+              return (
+                <div key={ath.id} style={{ background: "#fff", border: "1px solid #FCA5A5", borderRadius: 8, overflow: "hidden" }}>
+                  <button
+                    onClick={() => setOpenAthlete(open ? "" : ath.id)}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 10, width: "100%", textAlign: "left",
+                      padding: "11px 12px", background: "none", border: "none", cursor: "pointer", fontFamily: "inherit",
+                    }}
+                  >
+                    <span style={{ fontSize: 14, fontWeight: 700, color: "#18181B", flex: 1, minWidth: 0, wordBreak: "break-word" }}>
+                      {ath.name}
+                    </span>
+                    <span style={{ flexShrink: 0, fontSize: 11, fontWeight: 800, color: "#fff", background: "#DC2626", borderRadius: 999, padding: "2px 9px" }}>
+                      {sessions.length} session{sessions.length !== 1 ? "s" : ""}
+                    </span>
+                    <span style={{ flexShrink: 0, fontSize: 10, color: "#A1A1AA", transform: open ? "rotate(180deg)" : "none", transition: "transform .15s" }}>{"\u25BC"}</span>
+                  </button>
+                  {open && (
+                    <div style={{ borderTop: "1px solid #FEE2E2" }}>
+                      {sessions.map((m, i) => (
+                        <button
+                          key={`${m.wi}-${m.day.id}-${i}`}
+                          onClick={() => { if (onNavigate) onNavigate(ath.id, "programs", { weekLabel: m.weekLabel, dayLabel: m.day.label }); }}
+                          style={{
+                            display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10,
+                            width: "100%", textAlign: "left", padding: "9px 12px 9px 16px",
+                            background: "none", border: "none", borderTop: i ? "1px solid #F4F4F5" : "none",
+                            cursor: onNavigate ? "pointer" : "default", fontFamily: "inherit",
+                          }}
+                        >
+                          <span style={{ minWidth: 0 }}>
+                            <span style={{ display: "block", fontSize: 13, fontWeight: 600, color: "#18181B", wordBreak: "break-word" }}>
+                              {m.day.label}
+                            </span>
+                            <span style={{ display: "block", fontSize: 11, color: "#71717A", marginTop: 1 }}>
+                              {weekNumberLabel(m.weekLabel, m.wi)} · {m.count} not recorded{m.date ? ` · ${m.date}` : ""}
+                            </span>
+                          </span>
+                          {onNavigate && <span style={{ flexShrink: 0, fontSize: 12, fontWeight: 700, color: "#DC2626", whiteSpace: "nowrap" }}>Open {"\u2192"}</span>}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </Card>
       )}
