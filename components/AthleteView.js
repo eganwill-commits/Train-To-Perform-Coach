@@ -254,7 +254,7 @@ export default function AthleteView({ athlete, onLogout, readOnly }) {
         )}
         <main className="t2p-main" style={{ flex: 1, padding: isMobile ? "12px 10px" : 32, maxWidth: "100%", overflowX: "hidden" }}>
           {page === "my-program" && <MyProgram programs={programs} setPrograms={setPrograms} exercises={exercises} colors={colors} cats={cats} isMobile={isMobile} athlete={athlete} addLog={addLogRO} logs={logs} groups={groups} addVideoSub={addVideoSubRO} videoSubs={videoSubs} deleteVideoSub={deleteVideoSubRO} setLogs={setLogs} focusBlockId={focusRef} onFocusDone={() => setFocusRef(null)} />}
-          {page === "my-baselines" && <MyBaselines baselines={baselines} updateBaseline={updateBaselineRO} isMobile={isMobile} />}
+          {page === "my-baselines" && <MyBaselines baselines={baselines} groups={groups} updateBaseline={updateBaselineRO} isMobile={isMobile} />}
           {page === "my-logs" && <MyLogs logs={logs} colors={colors} cats={cats} isMobile={isMobile} deleteLog={deleteLogRO} deleteDayLogs={deleteDayLogsRO} />}
           {page === "my-videos" && <MyVideos videoSubs={videoSubs} addVideoSub={addVideoSubRO} deleteVideoSub={deleteVideoSubRO} athlete={athlete} exercises={exercises} cats={cats} colors={colors} isMobile={isMobile} focusId={focusRef} onFocusDone={() => setFocusRef(null)} />}
           {page === "messages" && (ro ? <div style={{ padding: 24, color: "#71717A", fontSize: 14 }}>Messaging is disabled in coach preview.</div> : <Messages currentUserId={athlete.id} currentUserName={athlete.name} isMobile={isMobile} />)}
@@ -1826,9 +1826,34 @@ function MyVideos({ videoSubs, addVideoSub, deleteVideoSub, athlete, exercises, 
   );
 }
 
-function MyBaselines({ baselines, updateBaseline, isMobile }) {
+function MyBaselines({ baselines, groups, updateBaseline, isMobile }) {
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState({});
+
+  // One heading per PROGRAM. Without this an athlete who has run more than one
+  // block sees every battery merged into a single list, with shared movements
+  // appearing once per block and no way to tell which is which.
+  const groupById = {};
+  (groups || []).forEach(g => { groupById[g.id] = g; });
+  const byBlock = {};
+  (baselines || []).forEach(b => {
+    const key = b.block || "__unassigned__";
+    (byBlock[key] = byBlock[key] || []).push(b);
+  });
+  const sections = Object.keys(byBlock).map(key => {
+    const g = groupById[key];
+    return {
+      key,
+      title: (g && g.name) || (key === "__unassigned__" ? "Benchmarks" : key),
+      started: (g && g.created_at) || null,
+      rows: byBlock[key].slice().sort((x, y) => (x.sort_order ?? 0) - (y.sort_order ?? 0)),
+    };
+  }).sort((a, b) => {
+    if (!a.started && !b.started) return a.title.localeCompare(b.title);
+    if (!a.started) return 1;
+    if (!b.started) return -1;
+    return new Date(a.started) - new Date(b.started);
+  });
 
   const startEdit = (b) => {
     if (!updateBaseline) return;
@@ -1851,7 +1876,16 @@ function MyBaselines({ baselines, updateBaseline, isMobile }) {
         <EmptyState icon="◎" title="No baselines set up yet" sub="Your coach will set up your baseline movements." />
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {baselines.map(b => {
+          {sections.map(section => (
+          <div key={section.key} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap", marginTop: 4 }}>
+              <h3 style={{ margin: 0, fontSize: isMobile ? 16 : 18, fontFamily: "'Space Mono', monospace" }}>{section.title}</h3>
+              <span style={{ fontSize: 12, color: "#A1A1AA" }}>
+                {section.rows.length} movement{section.rows.length === 1 ? "" : "s"}
+                {section.rows.filter(r => r.week1_result || r.week12_result).length > 0 && ` · ${section.rows.filter(r => r.week1_result || r.week12_result).length} recorded`}
+              </span>
+            </div>
+          {section.rows.map(b => {
             const isEditing = editing === b.id;
             const hasW1 = b.week1_result;
             const hasW12 = b.week12_result;
@@ -1913,6 +1947,8 @@ function MyBaselines({ baselines, updateBaseline, isMobile }) {
               </Card>
             );
           })}
+          </div>
+          ))}
         </div>
       )}
     </div>
