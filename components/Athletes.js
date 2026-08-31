@@ -41,7 +41,7 @@ export default function Athletes({ athletes, addAthlete, updateAthlete, deleteAt
   const [expandedDay, setExpandedDay] = useState(null);
   const [editingBaseline, setEditingBaseline] = useState(null);
   const [baselineForm, setBaselineForm] = useState({});
-  const [addingBaseline, setAddingBaseline] = useState(false);
+  const [addingBaseline, setAddingBaseline] = useState(null);
   const [newBaselineForm, setNewBaselineForm] = useState({ movement: "", target: "", units: "lbs" });
 
   // Open athlete from external navigation (alerts)
@@ -227,15 +227,52 @@ export default function Athletes({ athletes, addAthlete, updateAthlete, deleteAt
         {/* Baseline Testing */}
         {(() => {
           const athleteBaselines = (baselines || []).filter(b => b.athlete_id === activeAthlete.id);
+
+          // One card per PROGRAM. Previously every block's rows were rendered in a
+          // single list, so an athlete with a spring and a fall battery saw both
+          // interleaved by sort_order and every shared movement looked duplicated.
+          const groupById = {};
+          (groups || []).forEach(g => { groupById[g.id] = g; });
+          const byBlock = {};
+          athleteBaselines.forEach(b => {
+            const key = b.block || "__unassigned__";
+            (byBlock[key] = byBlock[key] || []).push(b);
+          });
+          let sections = Object.keys(byBlock).map(key => {
+            const g = groupById[key];
+            return {
+              key,
+              title: (g && g.name) || (key === "__unassigned__" ? "Unassigned Benchmarks" : key),
+              started: (g && g.created_at) || null,
+              rows: byBlock[key].slice().sort((x, y) => (x.sort_order ?? 0) - (y.sort_order ?? 0)),
+            };
+          }).sort((a, b) => {
+            // oldest program first; anything without a program record sinks to the bottom
+            if (!a.started && !b.started) return a.title.localeCompare(b.title);
+            if (!a.started) return 1;
+            if (!b.started) return -1;
+            return new Date(a.started) - new Date(b.started);
+          });
+          if (sections.length === 0) sections = [{ key: "__unassigned__", title: "Baseline Testing", started: null, rows: [] }];
+
+          return sections.map(section => {
+          const recorded = section.rows.filter(r => r.week1_result || r.week12_result).length;
           return (
-            <Card style={{ marginBottom: 20 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-                <h3 style={{ margin: 0, fontSize: 16 }}>Baseline Testing: Pre & Post</h3>
-                <button onClick={() => { setAddingBaseline(true); setNewBaselineForm({ movement: "", target: "", units: "lbs" }); }} style={{ background: "#18181B", color: "#fff", border: "none", borderRadius: 6, padding: "6px 14px", fontSize: 12, cursor: "pointer", fontFamily: "inherit", fontWeight: 600 }}>+ Add</button>
+            <Card key={section.key} style={{ marginBottom: 20 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, gap: 12 }}>
+                <div style={{ minWidth: 0 }}>
+                  <h3 style={{ margin: 0, fontSize: 16 }}>{section.title}</h3>
+                  <div style={{ fontSize: 12, color: "#71717A", marginTop: 2 }}>
+                    Baseline Testing: Pre &amp; Post · {section.rows.length} movement{section.rows.length === 1 ? "" : "s"}
+                    {section.rows.length > 0 && ` · ${recorded} recorded`}
+                    {section.started && ` · started ${new Date(section.started).toLocaleDateString("en-US", { month: "short", year: "numeric" })}`}
+                  </div>
+                </div>
+                <button onClick={() => { setAddingBaseline(section.key); setNewBaselineForm({ movement: "", target: "", units: "lbs" }); }} style={{ background: "#18181B", color: "#fff", border: "none", borderRadius: 6, padding: "6px 14px", fontSize: 12, cursor: "pointer", fontFamily: "inherit", fontWeight: 600, flexShrink: 0 }}>+ Add</button>
               </div>
 
               {/* Add new baseline form */}
-              {addingBaseline && (
+              {addingBaseline === section.key && (
                 <div style={{ padding: 12, background: "#F9FAFB", borderRadius: 8, border: "1px solid #E4E4E7", marginBottom: 12 }}>
                   <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr", gap: 8, marginBottom: 8 }}>
                     <label style={{ fontSize: 11, color: "#71717A" }}>Movement
@@ -252,16 +289,16 @@ export default function Athletes({ athletes, addAthlete, updateAthlete, deleteAt
                   </div>
                   <div style={{ display: "flex", gap: 6 }}>
                     <button disabled={!newBaselineForm.movement.trim()} onClick={async () => {
-                      await addBaseline({ athlete_id: activeAthlete.id, ...newBaselineForm, sort_order: athleteBaselines.length });
-                      setAddingBaseline(false);
+                      await addBaseline({ athlete_id: activeAthlete.id, ...newBaselineForm, block: section.key === "__unassigned__" ? null : section.key, sort_order: section.rows.length });
+                      setAddingBaseline(null);
                     }} style={{ background: "#18181B", color: "#fff", border: "none", borderRadius: 6, padding: "6px 14px", fontSize: 12, cursor: "pointer", fontFamily: "inherit", fontWeight: 600, opacity: newBaselineForm.movement.trim() ? 1 : 0.5 }}>Add Baseline</button>
-                    <button onClick={() => setAddingBaseline(false)} style={{ background: "none", border: "1px solid #D4D4D8", borderRadius: 6, padding: "6px 12px", fontSize: 12, cursor: "pointer", fontFamily: "inherit", color: "#71717A" }}>Cancel</button>
+                    <button onClick={() => setAddingBaseline(null)} style={{ background: "none", border: "1px solid #D4D4D8", borderRadius: 6, padding: "6px 12px", fontSize: 12, cursor: "pointer", fontFamily: "inherit", color: "#71717A" }}>Cancel</button>
                   </div>
                 </div>
               )}
 
-              {athleteBaselines.length === 0 && !addingBaseline ? (
-                <p style={{ color: "#A1A1AA", fontSize: 13, textAlign: "center", padding: 16 }}>No baselines yet. Click "+ Add" to create one.</p>
+              {section.rows.length === 0 && addingBaseline !== section.key ? (
+                <p style={{ color: "#A1A1AA", fontSize: 13, textAlign: "center", padding: 16 }}>No movements in this battery yet. Click "+ Add" to create one.</p>
               ) : (
                 <div style={{ overflowX: "auto" }}>
                   <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
@@ -276,7 +313,7 @@ export default function Athletes({ athletes, addAthlete, updateAthlete, deleteAt
                       </tr>
                     </thead>
                     <tbody>
-                      {athleteBaselines.map(b => {
+                      {section.rows.map(b => {
                         const isEditing = editingBaseline === b.id;
                         if (isEditing) {
                           return (
@@ -328,6 +365,7 @@ export default function Athletes({ athletes, addAthlete, updateAthlete, deleteAt
               )}
             </Card>
           );
+          });
         })()}
 
         {/* Video Submissions */}
