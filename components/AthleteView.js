@@ -24,7 +24,8 @@ import AthleteAlertsBell from "./AthleteAlertsBell";
 import ExerciseThread from "./ExerciseThread";
 import { weekStartFromLabel, weekNumberLabel, weekdayOffset } from "../lib/weeks";
 import { fetchAllComments } from "../lib/comments";
-import { MUST_LOG_CATS, findMissingNumberSessions, sessionLogProgress } from "../lib/logging";
+import { NUDGE_CATS, findMissingNumberSessions, sessionLogProgress } from "../lib/logging";
+import { fetchDismissals } from "../lib/dismissals";
 
 function useIsMobile(bp = 768) {
   const [m, setM] = useState(false);
@@ -477,6 +478,22 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
     lib/logging.js so the coach's roster panel and this banner can never disagree.
     Memoised: it walks every week x day x log, and used to re-run on every keystroke.
   */
+  /*
+    Sessions the coach has waved off. Read here rather than filtered coach-side, because
+    the coach's "you don't need to log that one" has to reach the athlete's phone - a
+    dismissal that only cleared the dashboard would leave the athlete staring at a red
+    banner for numbers nobody is waiting for any more.
+  */
+  const [dismissedKeys, setDismissedKeys] = useState(new Set());
+  useEffect(() => {
+    let live = true;
+    if (!athlete?.id) return;
+    fetchDismissals(athlete.id).then(({ byAthlete }) => {
+      if (live) setDismissedKeys(byAthlete.get(athlete.id) || new Set());
+    });
+    return () => { live = false; };
+  }, [athlete?.id, logs.length]);
+
   const gaps = useMemo(() => {
     if (!prog || !canPersist) return [];
     return findMissingNumberSessions({
@@ -484,8 +501,9 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
       logs,
       athleteId: athlete.id,
       displayName: (b, dayId) => getDisplayName(b, dayId),
+      dismissed: dismissedKeys,
     });
-  }, [prog, logs, athlete.id, canPersist, blockTier, dayTier]);
+  }, [prog, logs, athlete.id, canPersist, blockTier, dayTier, dismissedKeys]);
 
   /* ------------------------------------------------------------------
      SAVE AS HE TYPES
@@ -827,9 +845,9 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
               </span>
             </div>
             <div style={{ fontSize: 14, color: "#7F1D1D", lineHeight: 1.55, marginBottom: 10 }}>
-              These workouts are marked done but no weights, sets or reps were saved. Your
-              coach needs them to set your next loads. Tap a session below, enter what you
-              actually lifted, and watch for <b>{"✓ Saved"}</b> next to each exercise.
+              The exercises listed below are marked done but have no weights, sets or reps
+              saved. Your coach needs them to set your next loads. Tap a session, enter what
+              you actually lifted, and watch for <b>{"✓ Saved"}</b> next to each one.
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {gaps.map(g => (
@@ -837,7 +855,7 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
                   key={`${g.wi}-${g.day.id}`}
                   onClick={() => goToDay(g.wi, g.day.id)}
                   style={{
-                    display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10,
+                    display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10,
                     width: "100%", textAlign: "left", padding: "12px 14px", borderRadius: 10,
                     background: "#fff", border: "2px solid #FCA5A5", cursor: "pointer",
                     fontFamily: "inherit",
@@ -848,7 +866,26 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
                       {g.day.label}
                     </span>
                     <span style={{ display: "block", fontSize: 12, color: "#71717A", marginTop: 1 }}>
-                      {weekNumberLabel(g.weekLabel, g.wi)} · {g.count} lifts, power &amp; finisher exercises with nothing recorded
+                      {weekNumberLabel(g.weekLabel, g.wi)} · {g.count} of {g.total} to fill in
+                    </span>
+                    {/*
+                      Name them. "3 exercises with nothing recorded" told an athlete a session
+                      was wrong and left him to hunt through it for which part; these are the
+                      three he has to open, and nothing else.
+                    */}
+                    <span style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 6 }}>
+                      {g.missing.map(mv => (
+                        <span
+                          key={mv.id || mv.name}
+                          style={{
+                            fontSize: 12, fontWeight: 600, color: "#7F1D1D", background: "#FEF2F2",
+                            border: "1px solid #FECACA", borderRadius: 6, padding: "2px 7px", wordBreak: "break-word",
+                          }}
+                        >
+                          <span style={{ fontWeight: 800, opacity: 0.6, marginRight: 4 }}>{mv.category}</span>
+                          {mv.name}
+                        </span>
+                      ))}
                     </span>
                   </span>
                   <span style={{ flexShrink: 0, fontSize: 13, fontWeight: 800, color: "#DC2626", whiteSpace: "nowrap" }}>
@@ -1053,8 +1090,13 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
                       </div>
                       {hasInput && <span style={{ width: 7, height: 7, borderRadius: 4, background: "#16A34A", flexShrink: 0 }} />}
                       {!hasInput && loggedResult && <span style={{ width: 7, height: 7, borderRadius: 4, background: "#16A34A", flexShrink: 0 }} />}
-                      {/* A lift or a measurable power effort with nothing against it. */}
-                      {MUST_LOG_CATS.has(block.category) && !hasInput &&
+                      {/*
+                        A lift or a measurable power effort with nothing against it.
+                        NUDGE_CATS, not MUST_LOG_CATS: power work still gets the pill in front
+                        of the athlete at the moment he could log it, it just no longer raises
+                        a session-level alert to the coach on its own.
+                      */}
+                      {NUDGE_CATS.has(block.category) && !hasInput &&
                         !(loggedResult && ((loggedResult.load || "") !== "" || (loggedResult.sets || "") !== "" || (loggedResult.rpe || "") !== "")) && (
                         <span style={{ fontSize: 9, fontWeight: 800, color: "#fff", background: "#DC2626", padding: "1px 6px", borderRadius: 999, flexShrink: 0, whiteSpace: "nowrap" }}>
                           {block.category === "PWR" ? "MEASURE" : "LOG IT"}

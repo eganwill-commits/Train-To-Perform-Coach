@@ -1,7 +1,8 @@
 "use client";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Badge, Card } from "./ui";
 import { findMissingNumberSessions } from "../lib/logging";
+import { fetchDismissals, dismissedSetFor, dismissGap, undismissGap } from "../lib/dismissals";
 import { weekNumberLabel } from "../lib/weeks";
 
 export default function Dashboard({ athletes, programs, logs, cats, colors, isMobile, onNavigate }) {
@@ -33,6 +34,20 @@ export default function Dashboard({ athletes, programs, logs, cats, colors, isMo
   });
 
   /*
+    Sessions the coach has waved off. Loaded once and kept in state; every dismissal
+    re-reads rather than patching the set optimistically, so a write that silently failed
+    shows the gap again instead of hiding it here while the athlete keeps being nagged.
+  */
+  const [dismissedBy, setDismissedBy] = useState(new Map());
+  const [lastDismissed, setLastDismissed] = useState(null); // one-step undo
+  const [busyKey, setBusyKey] = useState(null);
+  const reloadDismissals = async () => {
+    const { byAthlete } = await fetchDismissals();
+    setDismissedBy(byAthlete);
+  };
+  useEffect(() => { reloadDismissals(); }, []);
+
+  /*
     Who has trained recently without recording the numbers that matter.
 
     The athlete's own app nags them; this is the coach's side of it - one place to see the
@@ -49,10 +64,59 @@ export default function Dashboard({ athletes, programs, logs, cats, colors, isMo
         logs,
         athleteId: p.athlete_id,
         displayName: (b) => b.exerciseName || "",
+        dismissed: dismissedSetFor(dismissedBy, p.athlete_id),
       }).forEach(g => rows.push({ ...g, athlete: ath, programName: p.name }));
     });
     return rows.sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
-  }, [programs, athletes, logs]);
+  }, [programs, athletes, logs, dismissedBy]);
+
+  /*
+    One dismissal or a whole row of them, through the same path.
+
+    The roster-wide case is not a nicety: the movements a session asks for come from one
+    shared program, so when a day is wrong for one athlete it is usually wrong for all six
+    - the Week 1 screen day flagged four athletes for the same five technique lifts on the
+    day this was built. Six clicks to say one thing is how a coach learns to ignore the
+    panel.
+  */
+  const dismissRows = async (rows, label, key) => {
+    setBusyKey(key);
+    const done = [];
+    for (const m of rows) {
+      const ok = await dismissGap({
+        athleteId: m.athlete.id,
+        weekLabel: m.weekLabel,
+        dayLabel: m.day.label,
+        movements: m.missing,
+      });
+      if (ok) done.push({ athleteId: m.athlete.id, weekLabel: m.weekLabel, dayLabel: m.day.label });
+    }
+    if (done.length) setLastDismissed({ label, rows: done });
+    await reloadDismissals();
+    setBusyKey(null);
+  };
+
+  const handleUndo = async () => {
+    if (!lastDismissed) return;
+    for (const r of lastDismissed.rows) await undismissGap(r);
+    setLastDismissed(null);
+    await reloadDismissals();
+  };
+
+  /*
+    Sessions flagged for more than one athlete, so they can be cleared in one go.
+  */
+  const sharedSessions = useMemo(() => {
+    const map = new Map();
+    missing.forEach(m => {
+      const e = map.get(m.key);
+      if (e) e.rows.push(m);
+      else map.set(m.key, { key: m.key, weekLabel: m.weekLabel, wi: m.wi, dayLabel: m.day.label, rows: [m] });
+    });
+    return [...map.values()]
+      .filter(s => s.rows.length > 1)
+      .sort((a, b) => b.rows.length - a.rows.length);
+  }, [missing]);
 
   /*
     Grouped by athlete rather than a flat list. A stack of sessions ordered only by date
@@ -93,6 +157,24 @@ export default function Dashboard({ athletes, programs, logs, cats, colors, isMo
         ))}
       </div>
 
+      {/*
+        Undo, outside the alert card on purpose: dismissing the last gap makes that card
+        disappear, and an undo that vanishes with the thing it undoes is not an undo.
+      */}
+      {lastDismissed && (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap", marginBottom: isMobile ? 16 : 24, padding: "10px 14px", borderRadius: 10, background: "#F4F4F5", border: "1px solid #E4E4E7" }}>
+          <span style={{ fontSize: 12, color: "#52525B", minWidth: 0, wordBreak: "break-word" }}>
+            Dismissed {lastDismissed.label}. It is off their app too.
+          </span>
+          <button
+            onClick={handleUndo}
+            style={{ flexShrink: 0, fontSize: 12, fontWeight: 700, color: "#18181B", background: "#fff", border: "1px solid #D4D4D8", borderRadius: 6, padding: "4px 12px", cursor: "pointer", fontFamily: "inherit" }}
+          >
+            Undo
+          </button>
+        </div>
+      )}
+
       {/* Who is missing numbers */}
       {missing.length > 0 && (
         <Card style={{ marginBottom: isMobile ? 16 : 24, border: "2px solid #FCA5A5", background: "#FEF2F2" }}>
@@ -101,9 +183,47 @@ export default function Dashboard({ athletes, programs, logs, cats, colors, isMo
             <h3 style={{ margin: 0, fontSize: 16, color: "#991B1B" }}>Missing numbers</h3>
           </div>
           <p style={{ margin: "0 0 12px", fontSize: 12, color: "#7F1D1D" }}>
-            {missing.length} session{missing.length !== 1 ? "s" : ""} across {byAthlete.length} athlete{byAthlete.length !== 1 ? "s" : ""} where
-            no lift, power or finisher was recorded. Their own app is prompting them too.
+            {missing.length} session{missing.length !== 1 ? "s" : ""} across {byAthlete.length} athlete{byAthlete.length !== 1 ? "s" : ""} with
+            a lift or finisher that has no numbers against it. The exact movements are listed below —
+            their own app is prompting them for the same ones. Dismiss anything you don{"’"}t need.
           </p>
+          {/*
+            The same day flagged across the roster. Everyone runs one shared program, so a
+            session that is wrong for one athlete is usually wrong for all of them - clearing
+            it six times teaches the coach to stop reading the panel.
+          */}
+          {sharedSessions.length > 0 && (
+            <div style={{ marginBottom: 10, padding: "9px 11px", background: "#fff", border: "1px dashed #FCA5A5", borderRadius: 8 }}>
+              <div style={{ fontSize: 11, fontWeight: 800, color: "#991B1B", textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 6 }}>
+                Flagged for more than one athlete
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {sharedSessions.map(s => (
+                  <div key={s.key} style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: "#18181B", wordBreak: "break-word" }}>{s.dayLabel}</div>
+                      <div style={{ fontSize: 11, color: "#71717A" }}>
+                        {weekNumberLabel(s.weekLabel, s.wi)} · {s.rows.map(r => r.athlete.name).join(", ")}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => dismissRows(s.rows, `${s.dayLabel} for ${s.rows.length} athletes`, `all::${s.key}`)}
+                      disabled={busyKey === `all::${s.key}`}
+                      style={{
+                        flexShrink: 0, fontSize: 11, fontWeight: 700, color: "#52525B",
+                        background: "#FAFAFA", border: "1px solid #E4E4E7", borderRadius: 6,
+                        padding: "4px 10px", cursor: busyKey === `all::${s.key}` ? "default" : "pointer",
+                        fontFamily: "inherit", opacity: busyKey === `all::${s.key}` ? 0.5 : 1,
+                      }}
+                    >
+                      {busyKey === `all::${s.key}` ? "Dismissing…" : `Dismiss for all ${s.rows.length}`}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {byAthlete.map(({ athlete: ath, sessions }) => {
               const open = isOpen(ath.id);
@@ -126,28 +246,79 @@ export default function Dashboard({ athletes, programs, logs, cats, colors, isMo
                   </button>
                   {open && (
                     <div style={{ borderTop: "1px solid #FEE2E2" }}>
-                      {sessions.map((m, i) => (
-                        <button
-                          key={`${m.wi}-${m.day.id}-${i}`}
-                          onClick={() => { if (onNavigate) onNavigate(ath.id, "programs", { weekLabel: m.weekLabel, dayLabel: m.day.label }); }}
-                          style={{
-                            display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10,
-                            width: "100%", textAlign: "left", padding: "9px 12px 9px 16px",
-                            background: "none", border: "none", borderTop: i ? "1px solid #F4F4F5" : "none",
-                            cursor: onNavigate ? "pointer" : "default", fontFamily: "inherit",
-                          }}
-                        >
-                          <span style={{ minWidth: 0 }}>
-                            <span style={{ display: "block", fontSize: 13, fontWeight: 600, color: "#18181B", wordBreak: "break-word" }}>
-                              {m.day.label}
-                            </span>
-                            <span style={{ display: "block", fontSize: 11, color: "#71717A", marginTop: 1 }}>
-                              {weekNumberLabel(m.weekLabel, m.wi)} · {m.count} not recorded{m.date ? ` · ${m.date}` : ""}
-                            </span>
-                          </span>
-                          {onNavigate && <span style={{ flexShrink: 0, fontSize: 12, fontWeight: 700, color: "#DC2626", whiteSpace: "nowrap" }}>Open {"\u2192"}</span>}
-                        </button>
-                      ))}
+                      {/*
+                        The movements themselves, not a count.
+
+                        "2 not recorded" made the coach open the session to find out which
+                        two, which is the whole job. Naming them means most of the time he
+                        can settle it from here - a missing Back Squat on a test day is not
+                        the same thing as a missing finisher on a screen day.
+                      */}
+                      {sessions.map((m, i) => {
+                        const bkey = `${ath.id}::${m.key}`;
+                        return (
+                          <div
+                            key={`${m.wi}-${m.day.id}-${i}`}
+                            style={{ padding: "9px 12px 10px 16px", borderTop: i ? "1px solid #F4F4F5" : "none" }}
+                          >
+                            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
+                              <div style={{ minWidth: 0 }}>
+                                <div style={{ fontSize: 13, fontWeight: 600, color: "#18181B", wordBreak: "break-word" }}>
+                                  {m.day.label}
+                                </div>
+                                <div style={{ fontSize: 11, color: "#71717A", marginTop: 1 }}>
+                                  {weekNumberLabel(m.weekLabel, m.wi)} · {m.count} of {m.total} missing{m.date ? ` · ${m.date}` : ""}
+                                </div>
+                              </div>
+                              {onNavigate && (
+                                <button
+                                  onClick={() => onNavigate(ath.id, "programs", { weekLabel: m.weekLabel, dayLabel: m.day.label })}
+                                  style={{
+                                    flexShrink: 0, fontSize: 12, fontWeight: 700, color: "#DC2626", whiteSpace: "nowrap",
+                                    background: "none", border: "none", cursor: "pointer", fontFamily: "inherit", padding: 0,
+                                  }}
+                                >
+                                  Open {"→"}
+                                </button>
+                              )}
+                            </div>
+                            {/* The specific movements with nothing against them. */}
+                            <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 6 }}>
+                              {m.missing.map(mv => (
+                                <span
+                                  key={mv.id || mv.name}
+                                  style={{
+                                    fontSize: 11, fontWeight: 600, color: "#7F1D1D", background: "#FEF2F2",
+                                    border: "1px solid #FECACA", borderRadius: 6, padding: "2px 7px", wordBreak: "break-word",
+                                  }}
+                                >
+                                  <span style={{ fontWeight: 800, opacity: 0.6, marginRight: 4 }}>{mv.category}</span>
+                                  {mv.name}
+                                </span>
+                              ))}
+                            </div>
+                            {/*
+                              Not every gap is a gap. A tap into a future week that saved a
+                              warm-up, a session the numbers were taken on paper for - the only
+                              way to clear those used to be typing fake numbers into the
+                              athlete's log, which is worse than the alert. This also clears the
+                              banner on the athlete's phone; that is the point.
+                            */}
+                            <button
+                              onClick={() => dismissRows([{ ...m, athlete: ath }], `${m.day.label} for ${ath.name}`, bkey)}
+                              disabled={busyKey === bkey}
+                              style={{
+                                marginTop: 7, fontSize: 11, fontWeight: 700, color: "#52525B",
+                                background: "#FAFAFA", border: "1px solid #E4E4E7", borderRadius: 6,
+                                padding: "4px 10px", cursor: busyKey === bkey ? "default" : "pointer",
+                                fontFamily: "inherit", opacity: busyKey === bkey ? 0.5 : 1,
+                              }}
+                            >
+                              {busyKey === bkey ? "Dismissing…" : "Dismiss"}
+                            </button>
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
                 </div>
