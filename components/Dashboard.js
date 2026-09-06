@@ -229,21 +229,52 @@ export default function Dashboard({ athletes, programs, logs, cats, colors, isMo
               const open = isOpen(ath.id);
               return (
                 <div key={ath.id} style={{ background: "#fff", border: "1px solid #FCA5A5", borderRadius: 8, overflow: "hidden" }}>
-                  <button
-                    onClick={() => setOpenAthlete(open ? null : ath.id)}
-                    style={{
-                      display: "flex", alignItems: "center", gap: 10, width: "100%", textAlign: "left",
-                      padding: "11px 12px", background: "none", border: "none", cursor: "pointer", fontFamily: "inherit",
-                    }}
-                  >
-                    <span style={{ fontSize: 14, fontWeight: 700, color: "#18181B", flex: 1, minWidth: 0, wordBreak: "break-word" }}>
-                      {ath.name}
-                    </span>
-                    <span style={{ flexShrink: 0, fontSize: 11, fontWeight: 800, color: "#fff", background: "#DC2626", borderRadius: 999, padding: "2px 9px" }}>
-                      {sessions.length} session{sessions.length !== 1 ? "s" : ""}
-                    </span>
-                    <span style={{ flexShrink: 0, fontSize: 10, color: "#A1A1AA", transform: open ? "rotate(180deg)" : "none", transition: "transform .15s" }}>{"\u25BC"}</span>
-                  </button>
+                  {/*
+                    Dismiss sits on the collapsed row, not only inside it.
+
+                    The panel opens with every athlete collapsed and most of them carrying a
+                    single session, so a dismiss that only existed one level down meant expand,
+                    dismiss, collapse for each person. It is a sibling of the expander rather
+                    than a child of it - a button inside a button is invalid and the click would
+                    toggle the accordion on its way past.
+                  */}
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "11px 12px" }}>
+                    <button
+                      onClick={() => setOpenAthlete(open ? null : ath.id)}
+                      style={{
+                        display: "flex", alignItems: "center", gap: 10, flex: 1, minWidth: 0, textAlign: "left",
+                        padding: 0, background: "none", border: "none", cursor: "pointer", fontFamily: "inherit",
+                      }}
+                    >
+                      <span style={{ fontSize: 14, fontWeight: 700, color: "#18181B", flex: 1, minWidth: 0, wordBreak: "break-word" }}>
+                        {ath.name}
+                      </span>
+                      <span style={{ flexShrink: 0, fontSize: 11, fontWeight: 800, color: "#fff", background: "#DC2626", borderRadius: 999, padding: "2px 9px" }}>
+                        {sessions.length} session{sessions.length !== 1 ? "s" : ""}
+                      </span>
+                      <span style={{ flexShrink: 0, fontSize: 10, color: "#A1A1AA", transform: open ? "rotate(180deg)" : "none", transition: "transform .15s" }}>{"\u25BC"}</span>
+                    </button>
+                    <button
+                      onClick={() => dismissRows(
+                        sessions.map(m => ({ ...m, athlete: ath })),
+                        sessions.length === 1
+                          ? `${sessions[0].day.label} for ${ath.name}`
+                          : `${sessions.length} sessions for ${ath.name}`,
+                        `ath::${ath.id}`
+                      )}
+                      disabled={busyKey === `ath::${ath.id}`}
+                      style={{
+                        flexShrink: 0, fontSize: 11, fontWeight: 700, color: "#52525B",
+                        background: "#FAFAFA", border: "1px solid #E4E4E7", borderRadius: 6,
+                        padding: "4px 10px", cursor: busyKey === `ath::${ath.id}` ? "default" : "pointer",
+                        fontFamily: "inherit", opacity: busyKey === `ath::${ath.id}` ? 0.5 : 1,
+                      }}
+                    >
+                      {busyKey === `ath::${ath.id}`
+                        ? "Dismissing\u2026"
+                        : sessions.length === 1 ? "Dismiss" : `Dismiss all ${sessions.length}`}
+                    </button>
+                  </div>
                   {open && (
                     <div style={{ borderTop: "1px solid #FEE2E2" }}>
                       {/*
