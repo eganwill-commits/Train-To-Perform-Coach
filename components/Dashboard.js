@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Badge, Card } from "./ui";
 import { findMissingNumberSessions } from "../lib/logging";
 import { fetchDismissals, dismissedSetFor, dismissGap, undismissGap } from "../lib/dismissals";
+import { fetchNudges, nudgeKey, draftNudge, sendNudge } from "../lib/nudges";
 import { weekNumberLabel } from "../lib/weeks";
 
 export default function Dashboard({ athletes, programs, logs, cats, colors, isMobile, onNavigate }) {
@@ -104,6 +105,55 @@ export default function Dashboard({ athletes, programs, logs, cats, colors, isMo
   };
 
   /*
+    Nudges: which movements the coach has already chased, and the one he is composing.
+
+    Composed before sending, never fired straight off the chip. The message goes out
+    under his own name into the athlete's thread, and a canned line there is worse than
+    no line - the athlete can tell, and the whole value of a nudge is that a person
+    noticed. So the chip drafts; he edits; he sends.
+  */
+  const [nudges, setNudges] = useState(new Map());
+  const [composing, setComposing] = useState(null); // {athlete, movement, weekLabel, dayLabel, wi, text, nkey}
+  const [sending, setSending] = useState(false);
+  const [justSent, setJustSent] = useState(null);
+  const reloadNudges = async () => setNudges(await fetchNudges());
+  useEffect(() => { reloadNudges(); }, []);
+
+  const openComposer = (ath, m, mv) => {
+    setJustSent(null);
+    setComposing({
+      athlete: ath,
+      movement: mv.name,
+      weekLabel: m.weekLabel,
+      dayLabel: m.day.label,
+      nkey: nudgeKey(ath.id, m.weekLabel, m.day.label, mv.name),
+      text: draftNudge({
+        athleteName: ath.name,
+        movement: mv.name,
+        dayLabel: m.day.label,
+        weekLabel: weekNumberLabel(m.weekLabel, m.wi),
+      }),
+    });
+  };
+
+  const handleSendNudge = async () => {
+    if (!composing) return;
+    setSending(true);
+    const res = await sendNudge({
+      athlete: composing.athlete,
+      movement: composing.movement,
+      weekLabel: composing.weekLabel,
+      dayLabel: composing.dayLabel,
+      text: composing.text,
+    });
+    setSending(false);
+    if (!res.ok) { setJustSent({ ok: false }); return; }
+    setJustSent({ ok: true, name: composing.athlete.name, movement: composing.movement });
+    setComposing(null);
+    await reloadNudges();
+  };
+
+  /*
     Sessions flagged for more than one athlete, so they can be cleared in one go.
   */
   const sharedSessions = useMemo(() => {
@@ -172,6 +222,23 @@ export default function Dashboard({ athletes, programs, logs, cats, colors, isMo
           >
             Undo
           </button>
+        </div>
+      )}
+
+      {/*
+        Sent confirmation. Outside the panel like the undo bar, because sending the last
+        nudge on the last flagged session takes the panel with it.
+      */}
+      {justSent && (
+        <div style={{
+          marginBottom: isMobile ? 16 : 24, padding: "10px 14px", borderRadius: 10, fontSize: 12,
+          background: justSent.ok ? "#F0FDF4" : "#FEF2F2",
+          border: `1px solid ${justSent.ok ? "#BBF7D0" : "#FCA5A5"}`,
+          color: justSent.ok ? "#166534" : "#991B1B",
+        }}>
+          {justSent.ok
+            ? <>Nudge sent to <b>{justSent.name}</b> about <b>{justSent.movement}</b> — it{"’"}s in their Messages.</>
+            : <>That nudge didn{"’"}t send. Nothing reached the athlete — try again.</>}
         </div>
       )}
 
@@ -313,21 +380,96 @@ export default function Dashboard({ athletes, programs, logs, cats, colors, isMo
                                 </button>
                               )}
                             </div>
-                            {/* The specific movements with nothing against them. */}
+                            {/*
+                              The specific movements with nothing against them — and each one
+                              is the nudge button for itself.
+
+                              Per movement rather than per session on purpose: chasing the
+                              Overhead Press and letting the neck isometrics go is a real
+                              coaching distinction, and one message per thing asked for is
+                              clearer to the athlete than a list they have to parse.
+                            */}
                             <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 6 }}>
-                              {m.missing.map(mv => (
-                                <span
-                                  key={mv.id || mv.name}
-                                  style={{
-                                    fontSize: 11, fontWeight: 600, color: "#7F1D1D", background: "#FEF2F2",
-                                    border: "1px solid #FECACA", borderRadius: 6, padding: "2px 7px", wordBreak: "break-word",
-                                  }}
-                                >
-                                  <span style={{ fontWeight: 800, opacity: 0.6, marginRight: 4 }}>{mv.category}</span>
-                                  {mv.name}
-                                </span>
-                              ))}
+                              {m.missing.map(mv => {
+                                const nkey = nudgeKey(ath.id, m.weekLabel, m.day.label, mv.name);
+                                const sent = nudges.get(nkey);
+                                const isOpenComposer = composing && composing.nkey === nkey;
+                                return (
+                                  <button
+                                    key={mv.id || mv.name}
+                                    onClick={() => (isOpenComposer ? setComposing(null) : openComposer(ath, m, mv))}
+                                    title={sent
+                                      ? `Nudged ${new Date(sent.sent_at).toLocaleDateString()} — send another?`
+                                      : `Nudge ${ath.name} about this`}
+                                    style={{
+                                      display: "inline-flex", alignItems: "center", gap: 5,
+                                      fontSize: 11, fontWeight: 600, textAlign: "left",
+                                      color: sent ? "#3F3F46" : "#7F1D1D",
+                                      background: isOpenComposer ? "#FEE2E2" : sent ? "#FAFAFA" : "#FEF2F2",
+                                      border: `1px solid ${isOpenComposer ? "#DC2626" : sent ? "#E4E4E7" : "#FECACA"}`,
+                                      borderRadius: 6, padding: "3px 8px", wordBreak: "break-word",
+                                      cursor: "pointer", fontFamily: "inherit",
+                                    }}
+                                  >
+                                    <span style={{ fontWeight: 800, opacity: 0.6 }}>{mv.category}</span>
+                                    <span>{mv.name}</span>
+                                    <span style={{ opacity: 0.65, whiteSpace: "nowrap" }}>
+                                      {sent
+                                        ? `· nudged ${new Date(sent.sent_at).toLocaleDateString(undefined, { month: "short", day: "numeric" })}`
+                                        : "· nudge"}
+                                    </span>
+                                  </button>
+                                );
+                              })}
                             </div>
+
+                            {/* Draft, edit, send. Never fires straight off the chip. */}
+                            {composing && composing.nkey.startsWith(`${ath.id}::${m.key}::`) && (
+                              <div style={{ marginTop: 8, padding: 10, background: "#fff", border: "2px solid #DC2626", borderRadius: 8 }}>
+                                <div style={{ fontSize: 11, color: "#71717A", marginBottom: 6 }}>
+                                  To <b style={{ color: "#18181B" }}>{composing.athlete.name}</b> in Messages, from you · about <b style={{ color: "#18181B" }}>{composing.movement}</b>
+                                </div>
+                                <textarea
+                                  value={composing.text}
+                                  onChange={e => setComposing({ ...composing, text: e.target.value })}
+                                  rows={3}
+                                  style={{
+                                    width: "100%", boxSizing: "border-box", fontSize: 13, lineHeight: 1.45,
+                                    fontFamily: "inherit", color: "#18181B", padding: 8,
+                                    border: "1px solid #D4D4D8", borderRadius: 6, resize: "vertical",
+                                  }}
+                                />
+                                <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 7, flexWrap: "wrap" }}>
+                                  <button
+                                    onClick={handleSendNudge}
+                                    disabled={sending || !composing.text.trim()}
+                                    style={{
+                                      fontSize: 12, fontWeight: 700, color: "#fff",
+                                      background: sending || !composing.text.trim() ? "#FCA5A5" : "#DC2626",
+                                      border: "none", borderRadius: 6, padding: "6px 14px",
+                                      cursor: sending || !composing.text.trim() ? "default" : "pointer", fontFamily: "inherit",
+                                    }}
+                                  >
+                                    {sending ? "Sending…" : "Send nudge"}
+                                  </button>
+                                  <button
+                                    onClick={() => setComposing(null)}
+                                    style={{
+                                      fontSize: 12, fontWeight: 700, color: "#52525B", background: "none",
+                                      border: "1px solid #E4E4E7", borderRadius: 6, padding: "6px 12px",
+                                      cursor: "pointer", fontFamily: "inherit",
+                                    }}
+                                  >
+                                    Cancel
+                                  </button>
+                                  {nudges.get(composing.nkey) && (
+                                    <span style={{ fontSize: 11, color: "#A16207" }}>
+                                      Already nudged {new Date(nudges.get(composing.nkey).sent_at).toLocaleDateString()} — this sends another.
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            )}
                             {/*
                               Not every gap is a gap. A tap into a future week that saved a
                               warm-up, a session the numbers were taken on paper for - the only
