@@ -25,7 +25,8 @@ import AthleteAlertsBell from "./AthleteAlertsBell";
 import ExerciseThread from "./ExerciseThread";
 import { weekStartFromLabel, weekNumberLabel, weekdayOffset } from "../lib/weeks";
 import { fetchAllComments } from "../lib/comments";
-import { MUST_LOG_CATS, findMissingNumberSessions, sessionLogProgress } from "../lib/logging";
+import { NUDGE_CATS, findMissingNumberSessions, sessionLogProgress } from "../lib/logging";
+import { fetchDismissals } from "../lib/dismissals";
 
 function useIsMobile(bp = 768) {
   const [m, setM] = useState(false);
@@ -255,7 +256,7 @@ export default function AthleteView({ athlete, onLogout, readOnly }) {
         )}
         <main className="t2p-main" style={{ flex: 1, padding: isMobile ? "12px 10px" : 32, maxWidth: "100%", overflowX: "hidden" }}>
           {page === "my-program" && <MyProgram programs={programs} setPrograms={setPrograms} exercises={exercises} colors={colors} cats={cats} isMobile={isMobile} athlete={athlete} addLog={addLogRO} logs={logs} groups={groups} addVideoSub={addVideoSubRO} videoSubs={videoSubs} deleteVideoSub={deleteVideoSubRO} setLogs={setLogs} focusBlockId={focusRef} onFocusDone={() => setFocusRef(null)} />}
-          {page === "my-baselines" && <MyBaselines baselines={baselines} updateBaseline={updateBaselineRO} isMobile={isMobile} />}
+          {page === "my-baselines" && <MyBaselines baselines={baselines} groups={groups} updateBaseline={updateBaselineRO} isMobile={isMobile} />}
           {page === "my-logs" && <MyLogs logs={logs} colors={colors} cats={cats} isMobile={isMobile} deleteLog={deleteLogRO} deleteDayLogs={deleteDayLogsRO} />}
           {page === "my-videos" && <MyVideos videoSubs={videoSubs} addVideoSub={addVideoSubRO} deleteVideoSub={deleteVideoSubRO} athlete={athlete} exercises={exercises} cats={cats} colors={colors} isMobile={isMobile} focusId={focusRef} onFocusDone={() => setFocusRef(null)} />}
           {page === "messages" && (ro ? <div style={{ padding: 24, color: "#71717A", fontSize: 14 }}>Messaging is disabled in coach preview.</div> : <Messages currentUserId={athlete.id} currentUserName={athlete.name} isMobile={isMobile} />)}
@@ -478,6 +479,22 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
     lib/logging.js so the coach's roster panel and this banner can never disagree.
     Memoised: it walks every week x day x log, and used to re-run on every keystroke.
   */
+  /*
+    Sessions the coach has waved off. Read here rather than filtered coach-side, because
+    the coach's "you don't need to log that one" has to reach the athlete's phone - a
+    dismissal that only cleared the dashboard would leave the athlete staring at a red
+    banner for numbers nobody is waiting for any more.
+  */
+  const [dismissedKeys, setDismissedKeys] = useState(new Set());
+  useEffect(() => {
+    let live = true;
+    if (!athlete?.id) return;
+    fetchDismissals(athlete.id).then(({ byAthlete }) => {
+      if (live) setDismissedKeys(byAthlete.get(athlete.id) || new Set());
+    });
+    return () => { live = false; };
+  }, [athlete?.id, logs.length]);
+
   const gaps = useMemo(() => {
     if (!prog || !canPersist) return [];
     return findMissingNumberSessions({
@@ -485,8 +502,9 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
       logs,
       athleteId: athlete.id,
       displayName: (b, dayId) => getDisplayName(b, dayId),
+      dismissed: dismissedKeys,
     });
-  }, [prog, logs, athlete.id, canPersist, blockTier, dayTier]);
+  }, [prog, logs, athlete.id, canPersist, blockTier, dayTier, dismissedKeys]);
 
   /* ------------------------------------------------------------------
      SAVE AS HE TYPES
@@ -828,9 +846,9 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
               </span>
             </div>
             <div style={{ fontSize: 14, color: "#7F1D1D", lineHeight: 1.55, marginBottom: 10 }}>
-              These workouts are marked done but no weights, sets or reps were saved. Your
-              coach needs them to set your next loads. Tap a session below, enter what you
-              actually lifted, and watch for <b>{"✓ Saved"}</b> next to each exercise.
+              The exercises listed below are marked done but have no weights, sets or reps
+              saved. Your coach needs them to set your next loads. Tap a session, enter what
+              you actually lifted, and watch for <b>{"✓ Saved"}</b> next to each one.
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {gaps.map(g => (
@@ -838,7 +856,7 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
                   key={`${g.wi}-${g.day.id}`}
                   onClick={() => goToDay(g.wi, g.day.id)}
                   style={{
-                    display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10,
+                    display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10,
                     width: "100%", textAlign: "left", padding: "12px 14px", borderRadius: 10,
                     background: "#fff", border: "2px solid #FCA5A5", cursor: "pointer",
                     fontFamily: "inherit",
@@ -849,7 +867,26 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
                       {g.day.label}
                     </span>
                     <span style={{ display: "block", fontSize: 12, color: "#71717A", marginTop: 1 }}>
-                      {weekNumberLabel(g.weekLabel, g.wi)} · {g.count} lifts, power &amp; finisher exercises with nothing recorded
+                      {weekNumberLabel(g.weekLabel, g.wi)} · {g.count} of {g.total} to fill in
+                    </span>
+                    {/*
+                      Name them. "3 exercises with nothing recorded" told an athlete a session
+                      was wrong and left him to hunt through it for which part; these are the
+                      three he has to open, and nothing else.
+                    */}
+                    <span style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 6 }}>
+                      {g.missing.map(mv => (
+                        <span
+                          key={mv.id || mv.name}
+                          style={{
+                            fontSize: 12, fontWeight: 600, color: "#7F1D1D", background: "#FEF2F2",
+                            border: "1px solid #FECACA", borderRadius: 6, padding: "2px 7px", wordBreak: "break-word",
+                          }}
+                        >
+                          <span style={{ fontWeight: 800, opacity: 0.6, marginRight: 4 }}>{mv.category}</span>
+                          {mv.name}
+                        </span>
+                      ))}
                     </span>
                   </span>
                   <span style={{ flexShrink: 0, fontSize: 13, fontWeight: 800, color: "#DC2626", whiteSpace: "nowrap" }}>
@@ -1058,8 +1095,13 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
                       </div>
                       {hasInput && <span style={{ width: 7, height: 7, borderRadius: 4, background: "#16A34A", flexShrink: 0 }} />}
                       {!hasInput && loggedResult && <span style={{ width: 7, height: 7, borderRadius: 4, background: "#16A34A", flexShrink: 0 }} />}
-                      {/* A lift or a measurable power effort with nothing against it. */}
-                      {MUST_LOG_CATS.has(block.category) && !hasInput &&
+                      {/*
+                        A lift or a measurable power effort with nothing against it.
+                        NUDGE_CATS, not MUST_LOG_CATS: power work still gets the pill in front
+                        of the athlete at the moment he could log it, it just no longer raises
+                        a session-level alert to the coach on its own.
+                      */}
+                      {NUDGE_CATS.has(block.category) && !hasInput &&
                         !(loggedResult && ((loggedResult.load || "") !== "" || (loggedResult.sets || "") !== "" || (loggedResult.rpe || "") !== "")) && (
                         <span style={{ fontSize: 9, fontWeight: 800, color: "#fff", background: "#DC2626", padding: "1px 6px", borderRadius: 999, flexShrink: 0, whiteSpace: "nowrap" }}>
                           {block.category === "PWR" ? "MEASURE" : "LOG IT"}
@@ -1863,9 +1905,34 @@ function MyVideos({ videoSubs, addVideoSub, deleteVideoSub, athlete, exercises, 
   );
 }
 
-function MyBaselines({ baselines, updateBaseline, isMobile }) {
+function MyBaselines({ baselines, groups, updateBaseline, isMobile }) {
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState({});
+
+  // One heading per PROGRAM. Without this an athlete who has run more than one
+  // block sees every battery merged into a single list, with shared movements
+  // appearing once per block and no way to tell which is which.
+  const groupById = {};
+  (groups || []).forEach(g => { groupById[g.id] = g; });
+  const byBlock = {};
+  (baselines || []).forEach(b => {
+    const key = b.block || "__unassigned__";
+    (byBlock[key] = byBlock[key] || []).push(b);
+  });
+  const sections = Object.keys(byBlock).map(key => {
+    const g = groupById[key];
+    return {
+      key,
+      title: (g && g.name) || (key === "__unassigned__" ? "Benchmarks" : key),
+      started: (g && g.created_at) || null,
+      rows: byBlock[key].slice().sort((x, y) => (x.sort_order ?? 0) - (y.sort_order ?? 0)),
+    };
+  }).sort((a, b) => {
+    if (!a.started && !b.started) return a.title.localeCompare(b.title);
+    if (!a.started) return 1;
+    if (!b.started) return -1;
+    return new Date(a.started) - new Date(b.started);
+  });
 
   const startEdit = (b) => {
     if (!updateBaseline) return;
@@ -1888,7 +1955,16 @@ function MyBaselines({ baselines, updateBaseline, isMobile }) {
         <EmptyState icon="◎" title="No baselines set up yet" sub="Your coach will set up your baseline movements." />
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {baselines.map(b => {
+          {sections.map(section => (
+          <div key={section.key} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap", marginTop: 4 }}>
+              <h3 style={{ margin: 0, fontSize: isMobile ? 16 : 18, fontFamily: "'Space Mono', monospace" }}>{section.title}</h3>
+              <span style={{ fontSize: 12, color: "#A1A1AA" }}>
+                {section.rows.length} movement{section.rows.length === 1 ? "" : "s"}
+                {section.rows.filter(r => r.week1_result || r.week12_result).length > 0 && ` · ${section.rows.filter(r => r.week1_result || r.week12_result).length} recorded`}
+              </span>
+            </div>
+          {section.rows.map(b => {
             const isEditing = editing === b.id;
             const hasW1 = b.week1_result;
             const hasW12 = b.week12_result;
@@ -1950,6 +2026,8 @@ function MyBaselines({ baselines, updateBaseline, isMobile }) {
               </Card>
             );
           })}
+          </div>
+          ))}
         </div>
       )}
     </div>
