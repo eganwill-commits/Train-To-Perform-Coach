@@ -1,8 +1,9 @@
 "use client";
 import { useState, useEffect } from "react";
-import { Badge, Btn, Card, Input, Modal, Select, EmptyState } from "./ui";
+import { Badge, Btn, Card, Input, Modal, Select, EmptyState, AutoGrow } from "./ui";
 import { raiseAlertReplacing, fetchAlertReceipts, ALERT_KIND, ALERT_PAGE } from "../lib/alerts";
 import FeedbackModal from "./FeedbackModal";
+import { supabase } from "../lib/supabase";
 
 function formatDate(d) {
   return new Date(d + "T12:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
@@ -41,7 +42,7 @@ export default function Athletes({ athletes, addAthlete, updateAthlete, deleteAt
   const [expandedDay, setExpandedDay] = useState(null);
   const [editingBaseline, setEditingBaseline] = useState(null);
   const [baselineForm, setBaselineForm] = useState({});
-  const [addingBaseline, setAddingBaseline] = useState(null);
+  const [addingBaseline, setAddingBaseline] = useState(false);
   const [newBaselineForm, setNewBaselineForm] = useState({ movement: "", target: "", units: "lbs" });
 
   // Open athlete from external navigation (alerts)
@@ -98,6 +99,88 @@ export default function Athletes({ athletes, addAthlete, updateAthlete, deleteAt
     if (edit) { await updateAthlete(edit, form); }
     else { await addAthlete({ ...form, access_code: makeAccessCode(form.name) }); }
     setModal(false);
+  };
+
+  /*
+    Send Note.
+
+    A note to one athlete used to mean leaving their profile, going to Messages,
+    finding them in a list and typing there. This is the same thread - it writes to
+    `messages` with the same shape Messages.js uses, so a note sent here and a message
+    sent there are one conversation, read in one place by the athlete.
+
+    Deliberately does NOT raise an athlete_alerts row: `messages` carries its own
+    read_at and the bell already reads both (see the header comment in lib/alerts.js).
+    Mirroring it here would give one unread state two sources of truth.
+  */
+  /*
+    Coach reference links.
+
+    A pinned link on the profile, coach view only. Built for the case that produced
+    it: an athlete with an individual addendum whose one-page card has to be openable
+    on a phone in the middle of a session, without going hunting for it. Stored on
+    `athletes.coach_links` as [{ label, url }] so it generalises past the one athlete.
+  */
+  const [addingLink, setAddingLink] = useState(false);
+  const [linkForm, setLinkForm] = useState({ label: "", url: "" });
+
+  const saveLink = async () => {
+    const label = linkForm.label.trim();
+    let url = linkForm.url.trim();
+    if (!label || !url || !activeAthlete) return;
+    if (!/^https?:\/\//i.test(url)) url = "https://" + url;
+    const next = [...(activeAthlete.coach_links || []), { label, url }];
+    await updateAthlete(activeAthlete.id, { coach_links: next });
+    setLinkForm({ label: "", url: "" });
+    setAddingLink(false);
+  };
+
+  const removeLink = async (i) => {
+    if (!activeAthlete) return;
+    const next = (activeAthlete.coach_links || []).filter((_, ix) => ix !== i);
+    await updateAthlete(activeAthlete.id, { coach_links: next });
+  };
+
+  const hostOf = (u) => { try { return new URL(u).hostname.replace(/^www\./, ""); } catch (_) { return u; } };
+
+  const [noteText, setNoteText] = useState("");
+  const [noteState, setNoteState] = useState(null); // null | "sending" | "sent" | "error"
+  const [recentNotes, setRecentNotes] = useState([]);
+
+  const loadRecentNotes = async (athleteId) => {
+    if (!athleteId) { setRecentNotes([]); return; }
+    const { data, error } = await supabase
+      .from("messages").select("*")
+      .eq("athlete_id", athleteId)
+      .order("created_at", { ascending: false })
+      .limit(5);
+    if (!error) setRecentNotes(data || []);
+  };
+  useEffect(() => {
+    setNoteText(""); setNoteState(null);
+    setAddingLink(false); setLinkForm({ label: "", url: "" });
+    loadRecentNotes(detail);
+  }, [detail]);
+
+  const sendNote = async () => {
+    const text = noteText.trim();
+    if (!text || !activeAthlete) return;
+    setNoteState("sending");
+    const { data, error } = await supabase.from("messages").insert([{
+      athlete_id: activeAthlete.id,
+      athlete_name: activeAthlete.name,
+      sender_id: "coach",
+      sender_name: "Coach",
+      sender_role: "coach",
+      content: text,
+      video_url: null,
+      media_url: null,
+      media_type: null,
+    }]).select().single();
+    if (error || !data) { setNoteState("error"); return; }
+    setNoteText("");
+    setNoteState("sent");
+    setRecentNotes(prev => [data, ...prev].slice(0, 5));
   };
 
   const activeAthlete = athletes.find(a => a.id === detail);
@@ -169,6 +252,89 @@ export default function Athletes({ athletes, addAthlete, updateAthlete, deleteAt
           </div>
         </Card>
 
+        {/* Coach Reference — first thing under the header, because the reason it
+            exists is being able to open it one-handed in the middle of a session. */}
+        <Card style={{ marginBottom: 20 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: (activeAthlete.coach_links || []).length || addingLink ? 10 : 0 }}>
+            <h3 style={{ margin: 0, fontSize: 16 }}>Coach Reference</h3>
+            <button onClick={() => setAddingLink(!addingLink)} style={{ background: "none", border: "1px solid #D4D4D8", borderRadius: 6, padding: "4px 10px", fontSize: 12, cursor: "pointer", fontFamily: "inherit", color: "#52525B" }}>
+              {addingLink ? "Cancel" : "+ Add link"}
+            </button>
+          </div>
+
+          {addingLink && (
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: 8, alignItems: "end", marginBottom: 12 }}>
+              <Input label="Label" value={linkForm.label} onChange={e => setLinkForm({ ...linkForm, label: e.target.value })} placeholder="Weak-Side Card" />
+              <Input label="URL" value={linkForm.url} onChange={e => setLinkForm({ ...linkForm, url: e.target.value })} placeholder="https://…" />
+              <Btn onClick={saveLink} disabled={!linkForm.label.trim() || !linkForm.url.trim()}>Save</Btn>
+            </div>
+          )}
+
+          {(activeAthlete.coach_links || []).length === 0 ? (
+            !addingLink && <div style={{ fontSize: 13, color: "#71717A", marginTop: 8 }}>No links pinned. Add the athlete&rsquo;s addendum, card or plan here so it is one tap away in the gym.</div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {(activeAthlete.coach_links || []).map((l, i) => (
+                <div key={i} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  {/* Big tap target on purpose - this gets used one-handed, mid-session. */}
+                  <a href={l.url} target="_blank" rel="noopener noreferrer" style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 10, textDecoration: "none", padding: "11px 14px", border: "1px solid #E4E4E7", borderLeft: "4px solid #C8922A", borderRadius: 8, background: "#FFFBEB" }}>
+                    <span style={{ fontSize: 15, flexShrink: 0 }}>&#128279;</span>
+                    <span style={{ minWidth: 0, flex: 1 }}>
+                      <span style={{ display: "block", fontSize: 14, fontWeight: 700, color: "#18181B", wordBreak: "break-word" }}>{l.label}</span>
+                      <span style={{ display: "block", fontSize: 11, color: "#92400E", marginTop: 1 }}>{hostOf(l.url)} &nbsp;&#8599;</span>
+                    </span>
+                  </a>
+                  <button onClick={() => removeLink(i)} title="Remove link" style={{ flexShrink: 0, background: "none", border: "none", fontSize: 16, cursor: "pointer", color: "#A1A1AA", padding: "6px 4px", fontFamily: "inherit" }}>&#10005;</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+
+        {/* Send Note — the whole point is not having to leave the profile to do it */}
+        <Card style={{ marginBottom: 20 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+            <h3 style={{ margin: 0, fontSize: 16 }}>Send Note</h3>
+            <span style={{ fontSize: 11, color: "#71717A" }}>
+              Goes to {activeAthlete.name.split(" ")[0]}&rsquo;s Messages. He gets a bell.
+            </span>
+          </div>
+          <AutoGrow
+            value={noteText}
+            onChange={e => { setNoteText(e.target.value); if (noteState) setNoteState(null); }}
+            placeholder={`Write a note to ${activeAthlete.name.split(" ")[0]}…`}
+            style={{ width: "100%", border: "1px solid #E4E4E7", borderRadius: 8, padding: "10px 12px", fontSize: 14, fontFamily: "inherit", boxSizing: "border-box", minHeight: 64 }}
+          />
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10, flexWrap: "wrap" }}>
+            <Btn onClick={sendNote} disabled={!noteText.trim() || noteState === "sending"}>
+              {noteState === "sending" ? "Sending…" : "Send Note"}
+            </Btn>
+            {noteState === "sent" && <span style={{ fontSize: 12, color: "#16A34A", fontWeight: 700 }}>✓ Sent</span>}
+            {noteState === "error" && <span style={{ fontSize: 12, color: "#DC2626", fontWeight: 700 }}>Not sent — try again</span>}
+          </div>
+
+          {recentNotes.length > 0 && (
+            <div style={{ marginTop: 14, borderTop: "1px solid #E4E4E7", paddingTop: 10 }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: "#71717A", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 6 }}>Recent</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {recentNotes.map(m => (
+                  <div key={m.id} style={{ display: "flex", gap: 8, alignItems: "baseline", fontSize: 13 }}>
+                    <span style={{ flexShrink: 0, fontSize: 10, fontWeight: 700, color: m.sender_role === "coach" ? "#2563EB" : "#16A34A", textTransform: "uppercase", letterSpacing: 0.4, width: 52 }}>
+                      {m.sender_role === "coach" ? "You" : "Athlete"}
+                    </span>
+                    <span style={{ flex: 1, color: "#18181B", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+                      {m.content || (m.video_url ? "(link)" : "(attachment)")}
+                    </span>
+                    <span style={{ flexShrink: 0, fontSize: 10, color: m.sender_role === "coach" && m.read_at ? "#16A34A" : "#A1A1AA" }}>
+                      {m.sender_role === "coach" ? (m.read_at ? "read" : "sent") : ""}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </Card>
+
         {/* Seasons */}
         {groups && groups.length > 0 && (
           <Card style={{ marginBottom: 20 }}>
@@ -227,59 +393,22 @@ export default function Athletes({ athletes, addAthlete, updateAthlete, deleteAt
         {/* Baseline Testing */}
         {(() => {
           const athleteBaselines = (baselines || []).filter(b => b.athlete_id === activeAthlete.id);
-
-          // One card per PROGRAM. Previously every block's rows were rendered in a
-          // single list, so an athlete with a spring and a fall battery saw both
-          // interleaved by sort_order and every shared movement looked duplicated.
-          const groupById = {};
-          (groups || []).forEach(g => { groupById[g.id] = g; });
-          const byBlock = {};
-          athleteBaselines.forEach(b => {
-            const key = b.block || "__unassigned__";
-            (byBlock[key] = byBlock[key] || []).push(b);
-          });
-          let sections = Object.keys(byBlock).map(key => {
-            const g = groupById[key];
-            return {
-              key,
-              title: (g && g.name) || (key === "__unassigned__" ? "Unassigned Benchmarks" : key),
-              started: (g && g.created_at) || null,
-              rows: byBlock[key].slice().sort((x, y) => (x.sort_order ?? 0) - (y.sort_order ?? 0)),
-            };
-          }).sort((a, b) => {
-            // oldest program first; anything without a program record sinks to the bottom
-            if (!a.started && !b.started) return a.title.localeCompare(b.title);
-            if (!a.started) return 1;
-            if (!b.started) return -1;
-            return new Date(a.started) - new Date(b.started);
-          });
-          if (sections.length === 0) sections = [{ key: "__unassigned__", title: "Baseline Testing", started: null, rows: [] }];
-
-          return sections.map(section => {
-          const recorded = section.rows.filter(r => r.week1_result || r.week12_result).length;
           return (
-            <Card key={section.key} style={{ marginBottom: 20 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, gap: 12 }}>
-                <div style={{ minWidth: 0 }}>
-                  <h3 style={{ margin: 0, fontSize: 16 }}>{section.title}</h3>
-                  <div style={{ fontSize: 12, color: "#71717A", marginTop: 2 }}>
-                    Baseline Testing: Pre &amp; Post · {section.rows.length} movement{section.rows.length === 1 ? "" : "s"}
-                    {section.rows.length > 0 && ` · ${recorded} recorded`}
-                    {section.started && ` · started ${new Date(section.started).toLocaleDateString("en-US", { month: "short", year: "numeric" })}`}
-                  </div>
-                </div>
-                <button onClick={() => { setAddingBaseline(section.key); setNewBaselineForm({ movement: "", target: "", units: "lbs" }); }} style={{ background: "#18181B", color: "#fff", border: "none", borderRadius: 6, padding: "6px 14px", fontSize: 12, cursor: "pointer", fontFamily: "inherit", fontWeight: 600, flexShrink: 0 }}>+ Add</button>
+            <Card style={{ marginBottom: 20 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+                <h3 style={{ margin: 0, fontSize: 16 }}>Baseline Testing: Pre & Post</h3>
+                <button onClick={() => { setAddingBaseline(true); setNewBaselineForm({ movement: "", target: "", units: "lbs" }); }} style={{ background: "#18181B", color: "#fff", border: "none", borderRadius: 6, padding: "6px 14px", fontSize: 12, cursor: "pointer", fontFamily: "inherit", fontWeight: 600 }}>+ Add</button>
               </div>
 
               {/* Add new baseline form */}
-              {addingBaseline === section.key && (
+              {addingBaseline && (
                 <div style={{ padding: 12, background: "#F9FAFB", borderRadius: 8, border: "1px solid #E4E4E7", marginBottom: 12 }}>
                   <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr", gap: 8, marginBottom: 8 }}>
                     <label style={{ fontSize: 11, color: "#71717A" }}>Movement
-                      <input value={newBaselineForm.movement} onChange={e => setNewBaselineForm({ ...newBaselineForm, movement: e.target.value })} placeholder="e.g. Back Squat 1RM" style={{ width: "100%", padding: "6px 8px", border: "1px solid #E4E4E7", borderRadius: 6, fontSize: 13, fontFamily: "inherit", marginTop: 2, boxSizing: "border-box" }} />
+                      <AutoGrow singleLine value={newBaselineForm.movement} onChange={e => setNewBaselineForm({ ...newBaselineForm, movement: e.target.value })} placeholder="e.g. Back Squat 1RM" style={{ width: "100%", padding: "6px 8px", border: "1px solid #E4E4E7", borderRadius: 6, fontSize: 13, fontFamily: "inherit", marginTop: 2, boxSizing: "border-box" }} />
                     </label>
                     <label style={{ fontSize: 11, color: "#71717A" }}>Target
-                      <input value={newBaselineForm.target} onChange={e => setNewBaselineForm({ ...newBaselineForm, target: e.target.value })} placeholder="e.g. 185" style={{ width: "100%", padding: "6px 8px", border: "1px solid #E4E4E7", borderRadius: 6, fontSize: 13, fontFamily: "inherit", marginTop: 2, boxSizing: "border-box" }} />
+                      <AutoGrow singleLine value={newBaselineForm.target} onChange={e => setNewBaselineForm({ ...newBaselineForm, target: e.target.value })} placeholder="e.g. 185" style={{ width: "100%", padding: "6px 8px", border: "1px solid #E4E4E7", borderRadius: 6, fontSize: 13, fontFamily: "inherit", marginTop: 2, boxSizing: "border-box" }} />
                     </label>
                     <label style={{ fontSize: 11, color: "#71717A" }}>Units
                       <select value={newBaselineForm.units} onChange={e => setNewBaselineForm({ ...newBaselineForm, units: e.target.value })} style={{ width: "100%", padding: "6px 8px", border: "1px solid #E4E4E7", borderRadius: 6, fontSize: 13, fontFamily: "inherit", marginTop: 2, boxSizing: "border-box", background: "#fff" }}>
@@ -289,16 +418,16 @@ export default function Athletes({ athletes, addAthlete, updateAthlete, deleteAt
                   </div>
                   <div style={{ display: "flex", gap: 6 }}>
                     <button disabled={!newBaselineForm.movement.trim()} onClick={async () => {
-                      await addBaseline({ athlete_id: activeAthlete.id, ...newBaselineForm, block: section.key === "__unassigned__" ? null : section.key, sort_order: section.rows.length });
-                      setAddingBaseline(null);
+                      await addBaseline({ athlete_id: activeAthlete.id, ...newBaselineForm, sort_order: athleteBaselines.length });
+                      setAddingBaseline(false);
                     }} style={{ background: "#18181B", color: "#fff", border: "none", borderRadius: 6, padding: "6px 14px", fontSize: 12, cursor: "pointer", fontFamily: "inherit", fontWeight: 600, opacity: newBaselineForm.movement.trim() ? 1 : 0.5 }}>Add Baseline</button>
-                    <button onClick={() => setAddingBaseline(null)} style={{ background: "none", border: "1px solid #D4D4D8", borderRadius: 6, padding: "6px 12px", fontSize: 12, cursor: "pointer", fontFamily: "inherit", color: "#71717A" }}>Cancel</button>
+                    <button onClick={() => setAddingBaseline(false)} style={{ background: "none", border: "1px solid #D4D4D8", borderRadius: 6, padding: "6px 12px", fontSize: 12, cursor: "pointer", fontFamily: "inherit", color: "#71717A" }}>Cancel</button>
                   </div>
                 </div>
               )}
 
-              {section.rows.length === 0 && addingBaseline !== section.key ? (
-                <p style={{ color: "#A1A1AA", fontSize: 13, textAlign: "center", padding: 16 }}>No movements in this battery yet. Click "+ Add" to create one.</p>
+              {athleteBaselines.length === 0 && !addingBaseline ? (
+                <p style={{ color: "#A1A1AA", fontSize: 13, textAlign: "center", padding: 16 }}>No baselines yet. Click "+ Add" to create one.</p>
               ) : (
                 <div style={{ overflowX: "auto" }}>
                   <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
@@ -313,30 +442,30 @@ export default function Athletes({ athletes, addAthlete, updateAthlete, deleteAt
                       </tr>
                     </thead>
                     <tbody>
-                      {section.rows.map(b => {
+                      {athleteBaselines.map(b => {
                         const isEditing = editingBaseline === b.id;
                         if (isEditing) {
                           return (
                             <tr key={b.id} style={{ borderBottom: "1px solid #F4F4F5", background: "#FAFAFA" }}>
                               <td style={{ padding: "6px 8px" }}>
-                                <input value={baselineForm.movement || ""} onChange={e => setBaselineForm({ ...baselineForm, movement: e.target.value })} style={{ width: "100%", padding: "4px 6px", border: "1px solid #E4E4E7", borderRadius: 4, fontSize: 13, fontFamily: "inherit", boxSizing: "border-box", fontWeight: 600 }} />
+                                <AutoGrow singleLine value={baselineForm.movement || ""} onChange={e => setBaselineForm({ ...baselineForm, movement: e.target.value })} style={{ width: "100%", padding: "4px 6px", border: "1px solid #E4E4E7", borderRadius: 4, fontSize: 13, fontFamily: "inherit", boxSizing: "border-box", fontWeight: 600 }} />
                               </td>
                               <td style={{ padding: "6px 8px" }}>
                                 <div style={{ display: "flex", gap: 4 }}>
-                                  <input value={baselineForm.target || ""} onChange={e => setBaselineForm({ ...baselineForm, target: e.target.value })} style={{ width: "60%", padding: "4px 6px", border: "1px solid #E4E4E7", borderRadius: 4, fontSize: 13, fontFamily: "inherit", boxSizing: "border-box" }} />
+                                  <AutoGrow singleLine value={baselineForm.target || ""} onChange={e => setBaselineForm({ ...baselineForm, target: e.target.value })} style={{ width: "60%", padding: "4px 6px", border: "1px solid #E4E4E7", borderRadius: 4, fontSize: 13, fontFamily: "inherit", boxSizing: "border-box" }} />
                                   <select value={baselineForm.units || "lbs"} onChange={e => setBaselineForm({ ...baselineForm, units: e.target.value })} style={{ width: "40%", padding: "4px 4px", border: "1px solid #E4E4E7", borderRadius: 4, fontSize: 11, fontFamily: "inherit", boxSizing: "border-box", background: "#fff" }}>
                                     <option>lbs</option><option>kg</option><option>inches</option><option>cm</option><option>seconds</option><option>minutes</option><option>reps</option><option>meters</option><option>feet</option>
                                   </select>
                                 </div>
                               </td>
                               <td style={{ padding: "6px 8px" }}>
-                                <input value={baselineForm.week1_result || ""} onChange={e => setBaselineForm({ ...baselineForm, week1_result: e.target.value })} style={{ width: "100%", padding: "4px 6px", border: "1px solid #E4E4E7", borderRadius: 4, fontSize: 13, fontFamily: "inherit", boxSizing: "border-box" }} />
+                                <AutoGrow singleLine value={baselineForm.week1_result || ""} onChange={e => setBaselineForm({ ...baselineForm, week1_result: e.target.value })} style={{ width: "100%", padding: "4px 6px", border: "1px solid #E4E4E7", borderRadius: 4, fontSize: 13, fontFamily: "inherit", boxSizing: "border-box" }} />
                               </td>
                               <td style={{ padding: "6px 8px" }}>
-                                <input value={baselineForm.week12_result || ""} onChange={e => setBaselineForm({ ...baselineForm, week12_result: e.target.value })} style={{ width: "100%", padding: "4px 6px", border: "1px solid #E4E4E7", borderRadius: 4, fontSize: 13, fontFamily: "inherit", boxSizing: "border-box" }} />
+                                <AutoGrow singleLine value={baselineForm.week12_result || ""} onChange={e => setBaselineForm({ ...baselineForm, week12_result: e.target.value })} style={{ width: "100%", padding: "4px 6px", border: "1px solid #E4E4E7", borderRadius: 4, fontSize: 13, fontFamily: "inherit", boxSizing: "border-box" }} />
                               </td>
                               <td style={{ padding: "6px 8px" }}>
-                                <input value={baselineForm.week1_notes || ""} onChange={e => setBaselineForm({ ...baselineForm, week1_notes: e.target.value })} style={{ width: "100%", padding: "4px 6px", border: "1px solid #E4E4E7", borderRadius: 4, fontSize: 13, fontFamily: "inherit", boxSizing: "border-box" }} />
+                                <AutoGrow value={baselineForm.week1_notes || ""} onChange={e => setBaselineForm({ ...baselineForm, week1_notes: e.target.value })} style={{ width: "100%", padding: "4px 6px", border: "1px solid #E4E4E7", borderRadius: 4, fontSize: 13, fontFamily: "inherit", boxSizing: "border-box" }} />
                               </td>
                               <td style={{ padding: "6px 8px", display: "flex", gap: 4 }}>
                                 <button onClick={async () => { await updateBaseline(b.id, baselineForm); setEditingBaseline(null); }} style={{ background: "#18181B", color: "#fff", border: "none", borderRadius: 4, padding: "4px 10px", fontSize: 12, cursor: "pointer", fontFamily: "inherit", fontWeight: 600 }}>Save</button>
@@ -365,7 +494,6 @@ export default function Athletes({ athletes, addAthlete, updateAthlete, deleteAt
               )}
             </Card>
           );
-          });
         })()}
 
         {/* Video Submissions */}

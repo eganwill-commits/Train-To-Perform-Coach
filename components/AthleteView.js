@@ -2,7 +2,8 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { supabase } from "../lib/supabase";
 import { PILLAR_COLORS, ATHLETE_NAV, EQUIP_OPTIONS, EQUIP_LABEL, roomLabel } from "../lib/constants";
-import { Badge, Btn, Card, Input, Select, Modal, EmptyState, SearchableSelect } from "./ui";
+import { Badge, Btn, Card, Input, Select, Modal, EmptyState, SearchableSelect, AutoGrow, ScoreField, SideScoreField } from "./ui";
+import { scoreSpecFor, parseSides, formatSides } from "../lib/logging";
 import { printDay } from "./printHelper";
 import T2PLogo from "./T2PLogo";
 import AIChat from "./AIChat";
@@ -24,8 +25,7 @@ import AthleteAlertsBell from "./AthleteAlertsBell";
 import ExerciseThread from "./ExerciseThread";
 import { weekStartFromLabel, weekNumberLabel, weekdayOffset } from "../lib/weeks";
 import { fetchAllComments } from "../lib/comments";
-import { NUDGE_CATS, findMissingNumberSessions, sessionLogProgress } from "../lib/logging";
-import { fetchDismissals } from "../lib/dismissals";
+import { MUST_LOG_CATS, findMissingNumberSessions, sessionLogProgress } from "../lib/logging";
 
 function useIsMobile(bp = 768) {
   const [m, setM] = useState(false);
@@ -255,7 +255,7 @@ export default function AthleteView({ athlete, onLogout, readOnly }) {
         )}
         <main className="t2p-main" style={{ flex: 1, padding: isMobile ? "12px 10px" : 32, maxWidth: "100%", overflowX: "hidden" }}>
           {page === "my-program" && <MyProgram programs={programs} setPrograms={setPrograms} exercises={exercises} colors={colors} cats={cats} isMobile={isMobile} athlete={athlete} addLog={addLogRO} logs={logs} groups={groups} addVideoSub={addVideoSubRO} videoSubs={videoSubs} deleteVideoSub={deleteVideoSubRO} setLogs={setLogs} focusBlockId={focusRef} onFocusDone={() => setFocusRef(null)} />}
-          {page === "my-baselines" && <MyBaselines baselines={baselines} groups={groups} updateBaseline={updateBaselineRO} isMobile={isMobile} />}
+          {page === "my-baselines" && <MyBaselines baselines={baselines} updateBaseline={updateBaselineRO} isMobile={isMobile} />}
           {page === "my-logs" && <MyLogs logs={logs} colors={colors} cats={cats} isMobile={isMobile} deleteLog={deleteLogRO} deleteDayLogs={deleteDayLogsRO} />}
           {page === "my-videos" && <MyVideos videoSubs={videoSubs} addVideoSub={addVideoSubRO} deleteVideoSub={deleteVideoSubRO} athlete={athlete} exercises={exercises} cats={cats} colors={colors} isMobile={isMobile} focusId={focusRef} onFocusDone={() => setFocusRef(null)} />}
           {page === "messages" && (ro ? <div style={{ padding: 24, color: "#71717A", fontSize: 14 }}>Messaging is disabled in coach preview.</div> : <Messages currentUserId={athlete.id} currentUserName={athlete.name} isMobile={isMobile} />)}
@@ -478,22 +478,6 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
     lib/logging.js so the coach's roster panel and this banner can never disagree.
     Memoised: it walks every week x day x log, and used to re-run on every keystroke.
   */
-  /*
-    Sessions the coach has waved off. Read here rather than filtered coach-side, because
-    the coach's "you don't need to log that one" has to reach the athlete's phone - a
-    dismissal that only cleared the dashboard would leave the athlete staring at a red
-    banner for numbers nobody is waiting for any more.
-  */
-  const [dismissedKeys, setDismissedKeys] = useState(new Set());
-  useEffect(() => {
-    let live = true;
-    if (!athlete?.id) return;
-    fetchDismissals(athlete.id).then(({ byAthlete }) => {
-      if (live) setDismissedKeys(byAthlete.get(athlete.id) || new Set());
-    });
-    return () => { live = false; };
-  }, [athlete?.id, logs.length]);
-
   const gaps = useMemo(() => {
     if (!prog || !canPersist) return [];
     return findMissingNumberSessions({
@@ -501,9 +485,8 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
       logs,
       athleteId: athlete.id,
       displayName: (b, dayId) => getDisplayName(b, dayId),
-      dismissed: dismissedKeys,
     });
-  }, [prog, logs, athlete.id, canPersist, blockTier, dayTier, dismissedKeys]);
+  }, [prog, logs, athlete.id, canPersist, blockTier, dayTier]);
 
   /* ------------------------------------------------------------------
      SAVE AS HE TYPES
@@ -845,9 +828,9 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
               </span>
             </div>
             <div style={{ fontSize: 14, color: "#7F1D1D", lineHeight: 1.55, marginBottom: 10 }}>
-              The exercises listed below are marked done but have no weights, sets or reps
-              saved. Your coach needs them to set your next loads. Tap a session, enter what
-              you actually lifted, and watch for <b>{"✓ Saved"}</b> next to each one.
+              These workouts are marked done but no weights, sets or reps were saved. Your
+              coach needs them to set your next loads. Tap a session below, enter what you
+              actually lifted, and watch for <b>{"✓ Saved"}</b> next to each exercise.
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {gaps.map(g => (
@@ -855,7 +838,7 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
                   key={`${g.wi}-${g.day.id}`}
                   onClick={() => goToDay(g.wi, g.day.id)}
                   style={{
-                    display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10,
+                    display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10,
                     width: "100%", textAlign: "left", padding: "12px 14px", borderRadius: 10,
                     background: "#fff", border: "2px solid #FCA5A5", cursor: "pointer",
                     fontFamily: "inherit",
@@ -866,26 +849,7 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
                       {g.day.label}
                     </span>
                     <span style={{ display: "block", fontSize: 12, color: "#71717A", marginTop: 1 }}>
-                      {weekNumberLabel(g.weekLabel, g.wi)} · {g.count} of {g.total} to fill in
-                    </span>
-                    {/*
-                      Name them. "3 exercises with nothing recorded" told an athlete a session
-                      was wrong and left him to hunt through it for which part; these are the
-                      three he has to open, and nothing else.
-                    */}
-                    <span style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 6 }}>
-                      {g.missing.map(mv => (
-                        <span
-                          key={mv.id || mv.name}
-                          style={{
-                            fontSize: 12, fontWeight: 600, color: "#7F1D1D", background: "#FEF2F2",
-                            border: "1px solid #FECACA", borderRadius: 6, padding: "2px 7px", wordBreak: "break-word",
-                          }}
-                        >
-                          <span style={{ fontWeight: 800, opacity: 0.6, marginRight: 4 }}>{mv.category}</span>
-                          {mv.name}
-                        </span>
-                      ))}
+                      {weekNumberLabel(g.weekLabel, g.wi)} · {g.count} lifts, power &amp; finisher exercises with nothing recorded
                     </span>
                   </span>
                   <span style={{ flexShrink: 0, fontSize: 13, fontWeight: 800, color: "#DC2626", whiteSpace: "nowrap" }}>
@@ -1054,6 +1018,10 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
               const effLoad = result.load ?? loggedResult?.load ?? "";
               const effRpe = result.rpe ?? loggedResult?.rpe ?? "";
               const effNotes = result.notes ?? loggedResult?.notes ?? "";
+              // A test block gets one unmistakable score box instead of a Load field
+              // it shares with four other inputs. See lib/logging.js.
+              const spec = scoreSpecFor(block);
+              const sideVals = spec.sides ? parseSides(effLoad) : null;
 
               const exStatus = result.status ?? loggedResult?.exercise_status ?? null;
               const borderLeftColor = exStatus === "completed" ? "#16A34A" : exStatus === "missed" ? "#DC2626" : (cc?.bg || "#999");
@@ -1090,13 +1058,8 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
                       </div>
                       {hasInput && <span style={{ width: 7, height: 7, borderRadius: 4, background: "#16A34A", flexShrink: 0 }} />}
                       {!hasInput && loggedResult && <span style={{ width: 7, height: 7, borderRadius: 4, background: "#16A34A", flexShrink: 0 }} />}
-                      {/*
-                        A lift or a measurable power effort with nothing against it.
-                        NUDGE_CATS, not MUST_LOG_CATS: power work still gets the pill in front
-                        of the athlete at the moment he could log it, it just no longer raises
-                        a session-level alert to the coach on its own.
-                      */}
-                      {NUDGE_CATS.has(block.category) && !hasInput &&
+                      {/* A lift or a measurable power effort with nothing against it. */}
+                      {MUST_LOG_CATS.has(block.category) && !hasInput &&
                         !(loggedResult && ((loggedResult.load || "") !== "" || (loggedResult.sets || "") !== "" || (loggedResult.rpe || "") !== "")) && (
                         <span style={{ fontSize: 9, fontWeight: 800, color: "#fff", background: "#DC2626", padding: "1px 6px", borderRadius: 999, flexShrink: 0, whiteSpace: "nowrap" }}>
                           {block.category === "PWR" ? "MEASURE" : "LOG IT"}
@@ -1176,13 +1139,29 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
                           {saveState[block.id] === "saved" && <span style={{ fontSize: 10, color: "#16A34A", fontWeight: 700 }}>✓ Saved</span>}
                           {saveState[block.id] === "error" && <span style={{ fontSize: 10, color: "#DC2626", fontWeight: 700 }}>Not saved — check signal</span>}
                         </div>
+                        {/* THE SCORE. On a test block this is the only place the number
+                            goes, it says what unit it is in, and a two-sided test gets two
+                            boxes so the sides can never collapse into one string. */}
+                        {spec.isTest && !spec.sides && (
+                          <ScoreField unit={spec.unit} value={effLoad}
+                            onChange={e => updateResult(block.id, "load", e.target.value, block, day, week.label)}
+                            onBlur={() => flushSave(block, day, week.label)} />
+                        )}
+                        {spec.isTest && spec.sides && (
+                          <SideScoreField unit={spec.unit} left={sideVals.left} right={sideVals.right} raw={sideVals.raw}
+                            onLeft={e => updateResult(block.id, "load", formatSides(e.target.value, sideVals.right), block, day, week.label)}
+                            onRight={e => updateResult(block.id, "load", formatSides(sideVals.left, e.target.value), block, day, week.label)}
+                            onBlur={() => flushSave(block, day, week.label)} />
+                        )}
                         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
                           <label style={{ fontSize: 10, color: "#71717A" }}>Sets<input type="number" value={effSets} onChange={e => updateResult(block.id, "sets", e.target.value, block, day, week.label)} onBlur={() => flushSave(block, day, week.label)} placeholder={block.sets || ""} style={inputStyle} /></label>
-                          <label style={{ fontSize: 10, color: "#71717A" }}>Reps<input value={effReps} onChange={e => updateResult(block.id, "reps", e.target.value, block, day, week.label)} onBlur={() => flushSave(block, day, week.label)} placeholder={block.reps || ""} style={inputStyle} /></label>
-                          <label style={{ fontSize: 10, color: "#71717A" }}>{block.category === "PWR" ? "Height / dist / load" : "Load"}<input value={effLoad} onChange={e => updateResult(block.id, "load", e.target.value, block, day, week.label)} onBlur={() => flushSave(block, day, week.label)} placeholder={block.category === "PWR" ? (block.load || "e.g. 30in box, 7ft") : (block.load || "lbs")} style={inputStyle} /></label>
+                          <label style={{ fontSize: 10, color: "#71717A" }}>Reps<AutoGrow singleLine value={effReps} onChange={e => updateResult(block.id, "reps", e.target.value, block, day, week.label)} onBlur={() => flushSave(block, day, week.label)} placeholder={block.reps || ""} style={inputStyle} /></label>
+                          {!spec.isTest && (
+                            <label style={{ fontSize: 10, color: "#71717A" }}>{spec.label}{spec.unit ? ` (${spec.unit})` : ""}<AutoGrow singleLine value={effLoad} onChange={e => updateResult(block.id, "load", e.target.value, block, day, week.label)} onBlur={() => flushSave(block, day, week.label)} placeholder={block.category === "PWR" ? (block.load || "e.g. 30in box, 7ft") : (block.load || spec.unit || "lbs")} style={inputStyle} /></label>
+                          )}
                           <label style={{ fontSize: 10, color: "#71717A" }}>RPE<input value={effRpe} onChange={e => updateResult(block.id, "rpe", e.target.value, block, day, week.label)} onBlur={() => flushSave(block, day, week.label)} placeholder="1-10" style={inputStyle} /></label>
                         </div>
-                        <label style={{ fontSize: 10, color: "#71717A", display: "block", marginTop: 6 }}>Notes<input value={effNotes} onChange={e => updateResult(block.id, "notes", e.target.value, block, day, week.label)} onBlur={() => flushSave(block, day, week.label)} placeholder="How did it feel?" style={inputStyle} /></label>
+                        <label style={{ fontSize: 10, color: "#71717A", display: "block", marginTop: 6 }}>Notes<AutoGrow value={effNotes} onChange={e => updateResult(block.id, "notes", e.target.value, block, day, week.label)} onBlur={() => flushSave(block, day, week.label)} placeholder="How did it feel?" style={inputStyle} /></label>
                         {loggedResult && <div style={{ fontSize: 10, color: "#A1A1AA", marginTop: 4 }}>Logged {new Date(loggedResult.date + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}</div>}
                         {/* The coach answering a note the athlete left here. Shown on the
                             exercise it belongs to, so the reply sits next to what it is about. */}
@@ -1462,6 +1441,9 @@ function AthleteLog({ addLog, athlete, exercises, cats, colors, isMobile, progra
               const videoUrl = matchedEx?.video_url || "";
               const isOpen = !isMobile || expandedEx === block.id;
               const hasInput = result.sets || result.reps || result.load || result.rpe || result.notes;
+              // Same score rules as the main program card - one number, one place.
+              const spec = scoreSpecFor(block);
+              const sideVals = spec.sides ? parseSides(result.load ?? "") : null;
 
               return (
                 <Card key={block.id} style={{ padding: 0, borderLeft: `4px solid ${cc?.bg || "#999"}`, overflow: "hidden" }}>
@@ -1491,13 +1473,26 @@ function AthleteLog({ addLog, athlete, exercises, cats, colors, isMobile, progra
                         <a href={videoUrl} target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, color: "#fff", background: "#2563EB", textDecoration: "none", fontWeight: 700, padding: "4px 12px", borderRadius: 999, marginTop: 6, marginBottom: 8 }}>▶ Watch Movement Video</a>
                       )}
                       <div style={{ fontSize: 11, fontWeight: 700, color: "#71717A", textTransform: "uppercase", letterSpacing: 0.5, marginTop: 8, marginBottom: 6 }}>Your Results</div>
+                      {/* THE SCORE — same rule as the program card: one number, one
+                          place, unit stated, and two boxes when the test has two sides. */}
+                      {spec.isTest && !spec.sides && (
+                        <ScoreField unit={spec.unit} value={result.load ?? ""}
+                          onChange={e => updateResult(block.id, "load", e.target.value)} />
+                      )}
+                      {spec.isTest && spec.sides && (
+                        <SideScoreField unit={spec.unit} left={sideVals.left} right={sideVals.right} raw={sideVals.raw}
+                          onLeft={e => updateResult(block.id, "load", formatSides(e.target.value, sideVals.right))}
+                          onRight={e => updateResult(block.id, "load", formatSides(sideVals.left, e.target.value))} />
+                      )}
                       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
                         <label style={{ fontSize: 10, color: "#71717A" }}>Sets<input type="number" value={result.sets ?? ""} onChange={e => updateResult(block.id, "sets", e.target.value)} placeholder={block.sets || ""} style={{ width: "100%", padding: "8px 8px", border: "1px solid #E4E4E7", borderRadius: 6, fontSize: 16, fontFamily: "inherit", marginTop: 2, boxSizing: "border-box" }} /></label>
-                        <label style={{ fontSize: 10, color: "#71717A" }}>Reps<input value={result.reps ?? ""} onChange={e => updateResult(block.id, "reps", e.target.value)} placeholder={block.reps || ""} style={{ width: "100%", padding: "8px 8px", border: "1px solid #E4E4E7", borderRadius: 6, fontSize: 16, fontFamily: "inherit", marginTop: 2, boxSizing: "border-box" }} /></label>
-                        <label style={{ fontSize: 10, color: "#71717A" }}>Load<input value={result.load ?? ""} onChange={e => updateResult(block.id, "load", e.target.value)} placeholder={block.load || "lbs"} style={{ width: "100%", padding: "8px 8px", border: "1px solid #E4E4E7", borderRadius: 6, fontSize: 16, fontFamily: "inherit", marginTop: 2, boxSizing: "border-box" }} /></label>
+                        <label style={{ fontSize: 10, color: "#71717A" }}>Reps<AutoGrow singleLine value={result.reps ?? ""} onChange={e => updateResult(block.id, "reps", e.target.value)} placeholder={block.reps || ""} style={{ width: "100%", padding: "8px 8px", border: "1px solid #E4E4E7", borderRadius: 6, fontSize: 16, fontFamily: "inherit", marginTop: 2, boxSizing: "border-box" }} /></label>
+                        {!spec.isTest && (
+                          <label style={{ fontSize: 10, color: "#71717A" }}>Load<AutoGrow singleLine value={result.load ?? ""} onChange={e => updateResult(block.id, "load", e.target.value)} placeholder={block.load || "lbs"} style={{ width: "100%", padding: "8px 8px", border: "1px solid #E4E4E7", borderRadius: 6, fontSize: 16, fontFamily: "inherit", marginTop: 2, boxSizing: "border-box" }} /></label>
+                        )}
                         <label style={{ fontSize: 10, color: "#71717A" }}>RPE<input value={result.rpe ?? ""} onChange={e => updateResult(block.id, "rpe", e.target.value)} placeholder="1-10" style={{ width: "100%", padding: "8px 8px", border: "1px solid #E4E4E7", borderRadius: 6, fontSize: 16, fontFamily: "inherit", marginTop: 2, boxSizing: "border-box" }} /></label>
                       </div>
-                      <label style={{ fontSize: 10, color: "#71717A", display: "block", marginTop: 6 }}>Notes<input value={result.notes ?? ""} onChange={e => updateResult(block.id, "notes", e.target.value)} placeholder="How did it feel?" style={{ width: "100%", padding: "8px 8px", border: "1px solid #E4E4E7", borderRadius: 6, fontSize: 16, fontFamily: "inherit", marginTop: 2, boxSizing: "border-box" }} /></label>
+                      <label style={{ fontSize: 10, color: "#71717A", display: "block", marginTop: 6 }}>Notes<AutoGrow value={result.notes ?? ""} onChange={e => updateResult(block.id, "notes", e.target.value)} placeholder="How did it feel?" style={{ width: "100%", padding: "8px 8px", border: "1px solid #E4E4E7", borderRadius: 6, fontSize: 16, fontFamily: "inherit", marginTop: 2, boxSizing: "border-box" }} /></label>
                     </div>
                   )}
                 </Card>
@@ -1868,34 +1863,9 @@ function MyVideos({ videoSubs, addVideoSub, deleteVideoSub, athlete, exercises, 
   );
 }
 
-function MyBaselines({ baselines, groups, updateBaseline, isMobile }) {
+function MyBaselines({ baselines, updateBaseline, isMobile }) {
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState({});
-
-  // One heading per PROGRAM. Without this an athlete who has run more than one
-  // block sees every battery merged into a single list, with shared movements
-  // appearing once per block and no way to tell which is which.
-  const groupById = {};
-  (groups || []).forEach(g => { groupById[g.id] = g; });
-  const byBlock = {};
-  (baselines || []).forEach(b => {
-    const key = b.block || "__unassigned__";
-    (byBlock[key] = byBlock[key] || []).push(b);
-  });
-  const sections = Object.keys(byBlock).map(key => {
-    const g = groupById[key];
-    return {
-      key,
-      title: (g && g.name) || (key === "__unassigned__" ? "Benchmarks" : key),
-      started: (g && g.created_at) || null,
-      rows: byBlock[key].slice().sort((x, y) => (x.sort_order ?? 0) - (y.sort_order ?? 0)),
-    };
-  }).sort((a, b) => {
-    if (!a.started && !b.started) return a.title.localeCompare(b.title);
-    if (!a.started) return 1;
-    if (!b.started) return -1;
-    return new Date(a.started) - new Date(b.started);
-  });
 
   const startEdit = (b) => {
     if (!updateBaseline) return;
@@ -1918,16 +1888,7 @@ function MyBaselines({ baselines, groups, updateBaseline, isMobile }) {
         <EmptyState icon="◎" title="No baselines set up yet" sub="Your coach will set up your baseline movements." />
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {sections.map(section => (
-          <div key={section.key} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap", marginTop: 4 }}>
-              <h3 style={{ margin: 0, fontSize: isMobile ? 16 : 18, fontFamily: "'Space Mono', monospace" }}>{section.title}</h3>
-              <span style={{ fontSize: 12, color: "#A1A1AA" }}>
-                {section.rows.length} movement{section.rows.length === 1 ? "" : "s"}
-                {section.rows.filter(r => r.week1_result || r.week12_result).length > 0 && ` · ${section.rows.filter(r => r.week1_result || r.week12_result).length} recorded`}
-              </span>
-            </div>
-          {section.rows.map(b => {
+          {baselines.map(b => {
             const isEditing = editing === b.id;
             const hasW1 = b.week1_result;
             const hasW12 = b.week12_result;
@@ -1951,19 +1912,19 @@ function MyBaselines({ baselines, groups, updateBaseline, isMobile }) {
                       <div style={{ padding: "10px", background: "#FFF7ED", borderRadius: 8, border: "1px solid #FED7AA" }}>
                         <div style={{ fontSize: 11, fontWeight: 700, color: "#F97316", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 6 }}>Week 1</div>
                         <label style={{ fontSize: 11, color: "#71717A", display: "block", marginBottom: 6 }}>Result
-                          <input value={form.week1_result} onChange={e => setForm({ ...form, week1_result: e.target.value })} placeholder={`e.g. ${b.target}`} style={{ width: "100%", padding: "8px", border: "1px solid #FED7AA", borderRadius: 6, fontSize: 16, fontFamily: "inherit", marginTop: 2, boxSizing: "border-box" }} />
+                          <AutoGrow singleLine value={form.week1_result} onChange={e => setForm({ ...form, week1_result: e.target.value })} placeholder={`e.g. ${b.target}`} style={{ width: "100%", padding: "8px", border: "1px solid #FED7AA", borderRadius: 6, fontSize: 16, fontFamily: "inherit", marginTop: 2, boxSizing: "border-box" }} />
                         </label>
                         <label style={{ fontSize: 11, color: "#71717A", display: "block" }}>Notes
-                          <input value={form.week1_notes} onChange={e => setForm({ ...form, week1_notes: e.target.value })} placeholder="How did it feel?" style={{ width: "100%", padding: "8px", border: "1px solid #FED7AA", borderRadius: 6, fontSize: 14, fontFamily: "inherit", marginTop: 2, boxSizing: "border-box" }} />
+                          <AutoGrow value={form.week1_notes} onChange={e => setForm({ ...form, week1_notes: e.target.value })} placeholder="How did it feel?" style={{ width: "100%", padding: "8px", border: "1px solid #FED7AA", borderRadius: 6, fontSize: 14, fontFamily: "inherit", marginTop: 2, boxSizing: "border-box" }} />
                         </label>
                       </div>
                       <div style={{ padding: "10px", background: "#F0FDF4", borderRadius: 8, border: "1px solid #BBF7D0" }}>
                         <div style={{ fontSize: 11, fontWeight: 700, color: "#16A34A", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 6 }}>Week 12</div>
                         <label style={{ fontSize: 11, color: "#71717A", display: "block", marginBottom: 6 }}>Result
-                          <input value={form.week12_result} onChange={e => setForm({ ...form, week12_result: e.target.value })} placeholder={`e.g. ${b.target}`} style={{ width: "100%", padding: "8px", border: "1px solid #BBF7D0", borderRadius: 6, fontSize: 16, fontFamily: "inherit", marginTop: 2, boxSizing: "border-box" }} />
+                          <AutoGrow singleLine value={form.week12_result} onChange={e => setForm({ ...form, week12_result: e.target.value })} placeholder={`e.g. ${b.target}`} style={{ width: "100%", padding: "8px", border: "1px solid #BBF7D0", borderRadius: 6, fontSize: 16, fontFamily: "inherit", marginTop: 2, boxSizing: "border-box" }} />
                         </label>
                         <label style={{ fontSize: 11, color: "#71717A", display: "block" }}>Notes
-                          <input value={form.week12_notes} onChange={e => setForm({ ...form, week12_notes: e.target.value })} placeholder="How did it feel?" style={{ width: "100%", padding: "8px", border: "1px solid #BBF7D0", borderRadius: 6, fontSize: 14, fontFamily: "inherit", marginTop: 2, boxSizing: "border-box" }} />
+                          <AutoGrow value={form.week12_notes} onChange={e => setForm({ ...form, week12_notes: e.target.value })} placeholder="How did it feel?" style={{ width: "100%", padding: "8px", border: "1px solid #BBF7D0", borderRadius: 6, fontSize: 14, fontFamily: "inherit", marginTop: 2, boxSizing: "border-box" }} />
                         </label>
                       </div>
                     </div>
@@ -1989,8 +1950,6 @@ function MyBaselines({ baselines, groups, updateBaseline, isMobile }) {
               </Card>
             );
           })}
-          </div>
-          ))}
         </div>
       )}
     </div>

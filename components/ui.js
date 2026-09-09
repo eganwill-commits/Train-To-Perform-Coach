@@ -80,7 +80,77 @@ export function SearchableSelect({ label, value, onChange, options, placeholder 
 export function Card({ children, style = {}, onClick }) { return <div onClick={onClick} style={{ background: "#fff", borderRadius: 12, border: "1px solid #E4E4E7", padding: 20, cursor: onClick ? "pointer" : "default", ...style }}>{children}</div>; }
 export function Modal({ open, onClose, title, children }) { if (!open) return null; return <div style={{ position: "fixed", inset: 0, zIndex: 1200, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,.45)", padding: 12 }} onClick={onClose}><div onClick={e => e.stopPropagation()} style={{ background: "#fff", borderRadius: 16, width: 480, maxWidth: "95vw", maxHeight: "85vh", overflow: "auto", padding: 24 }}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}><h2 style={{ margin: 0, fontSize: 20 }}>{title}</h2><button onClick={onClose} style={{ background: "none", border: "none", fontSize: 22, cursor: "pointer", color: "#71717A" }}>✕</button></div>{children}</div></div>; }
 export function EmptyState({ icon, title, sub, action, onAction }) { return <div style={{ textAlign: "center", padding: "60px 20px", color: "#71717A" }}><div style={{ fontSize: 48, marginBottom: 12 }}>{icon}</div><h3 style={{ margin: 0, color: "#18181B", fontSize: 18 }}>{title}</h3><p style={{ fontSize: 14, marginTop: 6 }}>{sub}</p>{action && <Btn onClick={onAction} style={{ marginTop: 16 }}>{action}</Btn>}</div>; }
-export function BlurInput({ value, onSave, multiline, debounceMs, ...props }) {
+/* Set a textarea's height to exactly fit its content.
+
+   Naively assigning scrollHeight leaves every one of these boxes ~2px short:
+   with box-sizing: border-box the height property covers the borders, but
+   scrollHeight does not - so the last line stays fractionally clipped forever.
+   Add the borders back (or subtract padding, for content-box).
+
+   Pass `max` to cap the growth and hand back a scrollbar past that point. */
+export function fitHeight(el, max) {
+  if (!el) return;
+  el.style.height = "auto";
+  const cs = window.getComputedStyle(el);
+  const num = (v) => parseFloat(v) || 0;
+  const want = cs.boxSizing === "border-box"
+    ? el.scrollHeight + num(cs.borderTopWidth) + num(cs.borderBottomWidth)
+    : el.scrollHeight - num(cs.paddingTop) - num(cs.paddingBottom);
+  const h = max ? Math.min(want, max) : want;
+  el.style.height = h + "px";
+  el.style.overflowY = max && want > max ? "auto" : "hidden";
+}
+
+export function useAutoGrow(value) {
+  const ref = useRef(null);
+  const fit = () => fitHeight(ref.current);
+  useEffect(fit, [value]);
+  useEffect(() => {
+    window.addEventListener("resize", fit);
+    return () => window.removeEventListener("resize", fit);
+  }, []);
+  return [ref, fit];
+}
+
+/* On a phone the on-screen keyboard covers the bottom half of the screen, so a
+   field tapped down there vanishes the moment it gets focus. Nudge it up - but
+   only on narrow screens, and only when it is actually low enough to be covered.
+   On a laptop this does nothing, so clicking through a day's blocks never jumps. */
+export function keepInView(el) {
+  if (!el || typeof el.scrollIntoView !== "function") return;
+  if (typeof window === "undefined" || window.innerWidth > 820) return;
+  setTimeout(() => {
+    try {
+      const r = el.getBoundingClientRect();
+      if (r.bottom < window.innerHeight * 0.5) return;
+      el.scrollIntoView({ block: "center", behavior: "smooth" });
+    } catch (_) {}
+  }, 300);
+}
+
+/* A textarea that starts one line tall and grows to fit whatever is typed,
+   so nothing ever scrolls out of sight. Drop-in replacement for <input>. */
+export function AutoGrow({ value, style = {}, onFocus, onKeyDown, singleLine, ...props }) {
+  const [ref] = useAutoGrow(value);
+  return (
+    <textarea
+      {...props}
+      ref={ref}
+      rows={1}
+      value={value ?? ""}
+      onFocus={e => { keepInView(e.target); if (onFocus) onFocus(e); }}
+      onKeyDown={e => {
+        // singleLine fields wrap instead of scrolling, but Enter still commits
+        // rather than inserting a newline - they hold a number, not a paragraph.
+        if (singleLine && e.key === "Enter") { e.preventDefault(); e.target.blur(); }
+        if (onKeyDown) onKeyDown(e);
+      }}
+      style={{ resize: "none", overflow: "hidden", lineHeight: 1.4, display: "block", ...style }}
+    />
+  );
+}
+
+export function BlurInput({ value, onSave, multiline, grow, debounceMs, ...props }) {
   const [local, setLocal] = useState(value ?? "");
   const prev = useRef(value);
   const timerRef = useRef(null);
@@ -88,6 +158,11 @@ export function BlurInput({ value, onSave, multiline, debounceMs, ...props }) {
   onSaveRef.current = onSave;
   const localRef = useRef(local);
   localRef.current = local;
+  const taRef = useRef(null);
+  useEffect(() => {
+    if (!multiline && !grow) return;
+    fitHeight(taRef.current);
+  }, [local, multiline, grow]);
 
   useEffect(() => { if (value !== prev.current) { setLocal(value ?? ""); prev.current = value; } }, [value]);
 
@@ -114,5 +189,94 @@ export function BlurInput({ value, onSave, multiline, debounceMs, ...props }) {
   };
 
   const shared = { ...props, value: local, onChange: handleChange, onBlur: handleBlur };
-  return multiline ? <textarea {...shared} /> : <input {...shared} />;
+  if (!multiline && !grow) return <input {...shared} />;
+  // grow: behaves like a one-line input (Enter commits) but wraps instead of
+  // scrolling text out of sight. multiline: a real multi-line note field.
+  const growHandlers = grow
+    ? { rows: 1, type: undefined, onKeyDown: e => { if (e.key === "Enter") { e.preventDefault(); e.target.blur(); } } }
+    : {};
+  return (
+    <textarea
+      {...shared}
+      {...growHandlers}
+      ref={taRef}
+      onFocus={e => { keepInView(e.target); if (props.onFocus) props.onFocus(e); }}
+      style={{ ...(props.style || {}), resize: "none", overflow: "hidden" }}
+    />
+  );
+}
+
+
+/* ---------------------------------------------------------------------------
+   THE SCORE BOX
+
+   One place on a test block that says, unmistakably, "this is the number, and
+   this is the unit". Everything else on the card - sets, reps, RPE, notes - is
+   secondary and looks it.
+
+   Two boxes when the test has a left and a right. One box is exactly how five
+   athletes ended up recording the same LSI test as "78 both", "50 left 54 right",
+   "79, 79.5", "78L,81R" and "R55,L50", none of which a comparison can read.
+   --------------------------------------------------------------------------- */
+
+const SCORE_WRAP = {
+  marginBottom: 8, padding: "8px 10px 10px",
+  background: "#FFFBEB", border: "2px solid #C8922A", borderRadius: 8,
+};
+const SCORE_LABEL = {
+  fontSize: 10, fontWeight: 800, color: "#92400E",
+  textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 4,
+};
+const SCORE_UNIT = { fontWeight: 700, letterSpacing: 0.3, textTransform: "none", color: "#B45309" };
+const SCORE_INPUT = {
+  width: "100%", padding: "9px 10px", border: "1px solid #C8922A", borderRadius: 6,
+  fontSize: 18, fontWeight: 700, fontFamily: "inherit", background: "#fff",
+  boxSizing: "border-box",
+};
+const SIDE_LABEL = { fontSize: 10, fontWeight: 800, color: "#92400E", letterSpacing: 0.4 };
+
+export function ScoreField({ label = "Score", unit, value, onChange, onBlur, placeholder }) {
+  return (
+    <div style={SCORE_WRAP}>
+      <div style={SCORE_LABEL}>
+        {label}{unit ? <span style={SCORE_UNIT}> — in {unit}</span> : null}
+      </div>
+      <input
+        inputMode="decimal"
+        value={value ?? ""}
+        onChange={onChange}
+        onBlur={onBlur}
+        placeholder={placeholder || unit || ""}
+        style={SCORE_INPUT}
+      />
+    </div>
+  );
+}
+
+export function SideScoreField({ label = "Score", unit, left, right, raw, onLeft, onRight, onBlur }) {
+  return (
+    <div style={SCORE_WRAP}>
+      <div style={SCORE_LABEL}>
+        {label} — left and right{unit ? <span style={SCORE_UNIT}> — in {unit}</span> : null}
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+        <label style={SIDE_LABEL}>LEFT
+          <input inputMode="decimal" value={left ?? ""} onChange={onLeft} onBlur={onBlur} placeholder={unit || ""} style={{ ...SCORE_INPUT, marginTop: 2 }} />
+        </label>
+        <label style={SIDE_LABEL}>RIGHT
+          <input inputMode="decimal" value={right ?? ""} onChange={onRight} onBlur={onBlur} placeholder={unit || ""} style={{ ...SCORE_INPUT, marginTop: 2 }} />
+        </label>
+      </div>
+      <div style={{ fontSize: 10, color: "#B45309", marginTop: 5 }}>
+        Record both. The gap between the sides is the point, not the total.
+      </div>
+      {/* An older entry we could not split (e.g. "13 40") is shown rather than
+          dropped, so typing into a box never quietly destroys what was there. */}
+      {raw ? (
+        <div style={{ fontSize: 10, color: "#92400E", marginTop: 4, fontWeight: 700 }}>
+          Previously entered, side unclear: “{raw}”
+        </div>
+      ) : null}
+    </div>
+  );
 }
