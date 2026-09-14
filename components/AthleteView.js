@@ -444,10 +444,36 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
     if (block.exerciseName) { const f = exercises.find(e => e.name === block.exerciseName); if (f) return f; }
     return null;
   };
+  /*
+    What the coach wrote in the program IS the prescription, and it always wins.
+
+    This used to return the library variant whenever a block resolved to a library row,
+    which meant the library name overrode the coach's. That is backwards. The block
+    carries the numbers that matter for the week — "race to 140 cal", "5 x 90s hard /
+    2:00 easy", the exact AMRAP — and a library row is shared across all twelve weeks,
+    so it cannot carry any of them. Athletes were shown a generic movement name instead
+    of the session, and in three cases the literal placeholder text "As written".
+
+    The equipment substitution is now additive: see getSubstitution below. It appears
+    UNDER the prescription, never in place of it.
+  */
   const getDisplayName = (block, dayId) => {
     const f = exerciseFor(block);
-    if (f) return variantName(f, tierFor(block, dayId));
-    return block.exerciseName || "—";
+    return block.exerciseName || (f && f.name) || "—";
+  };
+
+  /*
+    The swap for an athlete training somewhere without the full gym. Returns "" when
+    there is nothing to say — same environment, no variant, or a variant that just
+    repeats the prescription — so the caller can render nothing rather than noise.
+  */
+  const getSubstitution = (block, dayId) => {
+    const f = exerciseFor(block);
+    const tier = tierFor(block, dayId);
+    if (!f || !f.variants || tier === "full_gym") return "";
+    const v = f.variants[tier];
+    if (!v || v === block.exerciseName || v === f.name || v === "As written") return "";
+    return v;
   };
   const getVideoUrl = (block) => {
     if (block.exerciseId) { const f = exercises.find(e => e.id === block.exerciseId); if (f && f.video_url) return f.video_url; }
@@ -1067,6 +1093,12 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
                       <Badge color={cc?.bg || "#999"}>{block.category}</Badge>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontWeight: 600, fontSize: 13, lineHeight: 1.3, textDecoration: exStatus === "missed" ? "line-through" : "none", wordBreak: "break-word" }}>{getDisplayName(block, day.id)}</div>
+                        {(() => {
+                          // Equipment swap shown UNDER the prescription, never instead of it.
+                          const sub = getSubstitution(block, day.id);
+                          if (!sub) return null;
+                          return <div style={{ fontSize: 11.5, color: "#B45309", lineHeight: 1.35, marginTop: 2, wordBreak: "break-word" }}>↳ {sub}</div>;
+                        })()}
                         {!isOpen && <div style={{ fontSize: 11, color: "#71717A" }}>{[block.sets && block.reps ? `${block.sets}×${block.reps}` : null, block.load ? `@ ${block.load}` : null].filter(Boolean).join(" ") || ""}</div>}
                       </div>
                       {hasInput && <span style={{ width: 7, height: 7, borderRadius: 4, background: "#16A34A", flexShrink: 0 }} />}
@@ -1365,10 +1397,12 @@ function AthleteLog({ addLog, athlete, exercises, cats, colors, isMobile, progra
     try { return (JSON.parse(window.localStorage.getItem(`t2p_equip_day_${athlete?.id || "x"}`) || "{}"))[selected.day.id] || null; } catch { return null; }
   })();
   const logTier = loggedDayTier || "full_gym";
+  // Same rule as My Program: the coach's text is the prescription and is what gets
+  // logged, so the log reads back the same name the athlete saw in the session.
   const getDisplayName = (block) => {
-    if (block.exerciseId) { const f = exercises.find(e => e.id === block.exerciseId); if (f) return variantName(f, logTier); }
-    if (block.exerciseName) { const f = exercises.find(e => e.name === block.exerciseName); if (f) return variantName(f, logTier); return block.exerciseName; }
-    return block.exerciseName || "Unknown";
+    if (block.exerciseName) return block.exerciseName;
+    if (block.exerciseId) { const f = exercises.find(e => e.id === block.exerciseId); if (f) return f.name; }
+    return "Unknown";
   };
 
   const updateResult = (blockId, field, value) => {
