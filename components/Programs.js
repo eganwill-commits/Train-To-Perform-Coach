@@ -117,9 +117,18 @@ export default function Programs({ programs, addProgram, updateProgram, deletePr
 
   // Re-ID helper for deep copying weeks/days/blocks
   const reId = (obj) => ({ ...obj, id: uid() });
+  /*
+    A copied program is a FRESH START for the athlete receiving it.
+
+    `status` on a week or a day is per-athlete completion state, not part of the
+    programming. Re-iding without clearing it hands the new athlete someone else's
+    history: sessions marked done that they never trained, an attendance figure they
+    did not earn, and a "current week" pointing at the first day the original athlete
+    had not got to yet. Clear it here so every clone path is covered at once.
+  */
   const reIdBlocks = (blocks) => blocks.map(b => reId(b));
-  const reIdDays = (days) => days.map(d => ({ ...reId(d), blocks: reIdBlocks(d.blocks) }));
-  const reIdWeeks = (weeks) => weeks.map(w => ({ ...reId(w), days: reIdDays(w.days) }));
+  const reIdDays = (days) => days.map(d => ({ ...reId(d), status: "", blocks: reIdBlocks(d.blocks) }));
+  const reIdWeeks = (weeks) => weeks.map(w => ({ ...reId(w), status: "", days: reIdDays(w.days) }));
 
   const findTargetProgram = (athId, sourceProgram) => {
     // Find target athlete's program: prefer same base name, else largest
@@ -146,13 +155,17 @@ export default function Programs({ programs, addProgram, updateProgram, deletePr
           description: sourceProgram.description || "",
           weeks,
           group_id: sourceProgram.group_id || "",
+          // Carry the start date across. Without it weekStartFromLabel falls back to a
+          // hardcoded April 2026, so a copied program shows week dates months away from
+          // the ones baked into its own day labels — and it looks like real data.
+          start_date: sourceProgram.start_date || null,
         });
       } else if (mode === "week") {
         const target = findTargetProgram(athId, sourceProgram);
         const srcWeek = (sourceProgram.weeks || [])[weekIndex];
         if (!srcWeek) continue;
         const copiedWeek = JSON.parse(JSON.stringify(srcWeek));
-        const newWeek = { ...copiedWeek, id: uid(), days: reIdDays(copiedWeek.days) };
+        const newWeek = { ...copiedWeek, id: uid(), status: "", days: reIdDays(copiedWeek.days) };
 
         if (target) {
           const targetWeeks = JSON.parse(JSON.stringify(target.weeks || []));
@@ -168,7 +181,7 @@ export default function Programs({ programs, addProgram, updateProgram, deletePr
           // No existing program, create one
           const athName = athletes.find(a => a.id === athId)?.name || "";
           const baseName = sourceProgram.name.replace(/^[^—]*—\s*/, "").trim();
-          await addProgram({ name: `${athName} — ${baseName}`, athlete_id: athId, description: sourceProgram.description || "", weeks: [newWeek], group_id: sourceProgram.group_id || "" });
+          await addProgram({ name: `${athName} — ${baseName}`, athlete_id: athId, description: sourceProgram.description || "", weeks: [newWeek], group_id: sourceProgram.group_id || "", start_date: sourceProgram.start_date || null });
         }
       } else if (mode === "day") {
         const target = findTargetProgram(athId, sourceProgram);
@@ -176,7 +189,7 @@ export default function Programs({ programs, addProgram, updateProgram, deletePr
         const srcDay = srcWeek?.days?.[dayIndex];
         if (!srcDay) continue;
         const copiedDay = JSON.parse(JSON.stringify(srcDay));
-        const newDay = { ...copiedDay, id: uid(), blocks: reIdBlocks(copiedDay.blocks) };
+        const newDay = { ...copiedDay, id: uid(), status: "", blocks: reIdBlocks(copiedDay.blocks) };
 
         if (target) {
           const targetWeeks = JSON.parse(JSON.stringify(target.weeks || []));
@@ -196,7 +209,7 @@ export default function Programs({ programs, addProgram, updateProgram, deletePr
           const baseName = sourceProgram.name.replace(/^[^—]*—\s*/, "").trim();
           const days = [];
           for (let d = 0; d < 4; d++) days.push({ id: uid(), label: ["Mon", "Tue", "Thu", "Fri"][d], blocks: d === dayIndex ? newDay.blocks : [] });
-          await addProgram({ name: `${athName} — ${baseName}`, athlete_id: athId, description: sourceProgram.description || "", weeks: [{ id: uid(), label: srcWeek.label, days }], group_id: sourceProgram.group_id || "" });
+          await addProgram({ name: `${athName} — ${baseName}`, athlete_id: athId, description: sourceProgram.description || "", weeks: [{ id: uid(), label: srcWeek.label, days }], group_id: sourceProgram.group_id || "", start_date: sourceProgram.start_date || null });
         }
       }
     }
@@ -227,7 +240,7 @@ export default function Programs({ programs, addProgram, updateProgram, deletePr
     const source = folder.programs[0];
     for (const athId of targetIds) {
       const weeks = reIdWeeks(JSON.parse(JSON.stringify(source?.weeks || [])));
-      await addProgram({ name: folder.name, athlete_id: athId, description: source?.description || "", weeks, group_id: source?.group_id || "" });
+      await addProgram({ name: folder.name, athlete_id: athId, description: source?.description || "", weeks, group_id: source?.group_id || "", start_date: source?.start_date || null });
       // Keep Program ↔ Season in sync: if this folder is linked to a season, enroll them too.
       if (source?.group_id && addSeasonMembership) await addSeasonMembership(source.group_id, athId);
     }
