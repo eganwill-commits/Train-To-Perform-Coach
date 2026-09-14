@@ -23,7 +23,7 @@ const localDateISO = () => {
 
 import AthleteAlertsBell from "./AthleteAlertsBell";
 import ExerciseThread from "./ExerciseThread";
-import { weekStartFromLabel, weekNumberLabel, weekdayOffset } from "../lib/weeks";
+import { weekStartFromLabel, weekNumberLabel, weekdayOffset, currentWeekIndex as weekCurrentIndex } from "../lib/weeks";
 import { fetchAllComments } from "../lib/comments";
 import { NUDGE_CATS, findMissingNumberSessions, sessionLogProgress } from "../lib/logging";
 import { fetchDismissals } from "../lib/dismissals";
@@ -359,30 +359,11 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
   const prog = programs.find(p => p.id === selectedProg);
 
   // Compute current week index (don't auto-navigate, just track it)
-  const currentWeekIndex = (() => {
-    if (!prog) return 0;
-    const weeks = prog.weeks || [];
-    const wi = weeks.findIndex(w => {
-      if (w.status === "completed" || w.status === "missed") return false;
-      const days = w.days || [];
-      if (days.length === 0) return true;
-      return !days.every(d => d.status === "completed" || d.status === "missed");
-    });
-    return wi >= 0 ? wi : weeks.length - 1;
-  })();
+  const currentWeekIndex = prog ? weekCurrentIndex(prog.weeks || [], prog.start_date) : 0;
 
   useEffect(() => {
     if (prog) {
-      const weeks = prog.weeks || [];
-      // Find current week: first week with any day not yet completed/missed
-      const currentWi = weeks.findIndex(w => {
-        if (w.status === "completed" || w.status === "missed") return false;
-        const days = w.days || [];
-        if (days.length === 0) return true;
-        const allDaysDone = days.every(d => d.status === "completed" || d.status === "missed");
-        return !allDaysDone;
-      });
-      setAw(currentWi >= 0 ? currentWi : weeks.length - 1);
+      setAw(weekCurrentIndex(prog.weeks || [], prog.start_date));
       setExpandedBlock(null);
       // Deliberately NOT clearing blockResults here. It is keyed by block id, so it is
       // already program-scoped, and clearing it threw away unsaved numbers on every
@@ -904,12 +885,7 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
 
       {/* Week tabs — current and past only */}
       {(() => {
-        const currentWi = weeks.findIndex(w => {
-          if (w.status === "completed" || w.status === "missed") return false;
-          const days = w.days || [];
-          if (days.length === 0) return true;
-          return !days.every(d => d.status === "completed" || d.status === "missed");
-        });
+        const currentWi = weekCurrentIndex(weeks, prog?.start_date);
         return (
           <>
           <div style={{ display: "flex", gap: 4, marginBottom: 4, flexWrap: "wrap", alignItems: "center" }}>

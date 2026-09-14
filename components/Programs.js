@@ -7,7 +7,7 @@ import { printDay } from "./printHelper";
 import NotesBoard from "./NotesBoard";
 import FeedbackModal from "./FeedbackModal";
 import ExerciseThread from "./ExerciseThread";
-import { weekStartFromLabel, weekNumberLabel, weekdayOffset } from "../lib/weeks";
+import { weekStartFromLabel, weekNumberLabel, weekdayOffset, currentWeekIndex as weekCurrentIndex } from "../lib/weeks";
 import { fetchAllComments } from "../lib/comments";
 import ProgramBrief, { briefSummary } from "./ProgramBrief";
 
@@ -532,19 +532,7 @@ function ProgramDetail({ program, programs, exercises, cats, colors, addBlock, u
   const programRef = useRef(program);
   programRef.current = program;
 
-  const [aw, setAw] = useState(() => {
-    const weeks = program.weeks || [];
-    // Find current week: first week that has any day not yet completed/missed
-    const currentWi = weeks.findIndex(w => {
-      if (w.status === "completed" || w.status === "missed") return false;
-      const days = w.days || [];
-      if (days.length === 0) return true;
-      // If all days have a status, this week is done — move to next
-      const allDaysDone = days.every(d => d.status === "completed" || d.status === "missed");
-      return !allDaysDone;
-    });
-    return currentWi >= 0 ? currentWi : weeks.length - 1;
-  });
+  const [aw, setAw] = useState(() => weekCurrentIndex(program.weeks || [], program.start_date));
   const [submitting, setSubmitting] = useState(null);
   const [unlogging, setUnlogging] = useState(null);
   const [submitDates, setSubmitDates] = useState({});
@@ -627,16 +615,7 @@ function ProgramDetail({ program, programs, exercises, cats, colors, addBlock, u
   };
 
   // Compute current week (for the "back to current" button) but don't auto-navigate
-  const currentWeekIndex = (() => {
-    const weeks = program.weeks || [];
-    const wi = weeks.findIndex(w => {
-      if (w.status === "completed" || w.status === "missed") return false;
-      const days = w.days || [];
-      if (days.length === 0) return true;
-      return !days.every(d => d.status === "completed" || d.status === "missed");
-    });
-    return wi >= 0 ? wi : weeks.length - 1;
-  })();
+  const currentWeekIndex = weekCurrentIndex(program.weeks || [], program.start_date);
 
   const setWeekStatus = async (weekIndex, status) => {
     const weeks = JSON.parse(JSON.stringify(programRef.current.weeks));
