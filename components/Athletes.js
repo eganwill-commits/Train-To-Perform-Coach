@@ -19,16 +19,30 @@ const TIER_OPTIONS = [
 ];
 const TIER_LABEL = Object.fromEntries(TIER_OPTIONS.map(o => [o.value, o.label]));
 
-// 8 characters: 3 from the name + 5 random. Alphabet excludes I/O/0/1 so a code
+// 6 characters: 3 from the name + 3 random. Alphabet excludes I/O/0/1 so a code
 // can be read aloud or typed from a text message without ambiguity.
+//
+// SIX, not eight. Every working code in the system is six characters and sign-in
+// rejects anything longer, so a generated 8-character code locks the athlete out
+// of the account it was just created for. Do not lengthen this without changing
+// sign-in to match.
+const CODE_LENGTH = 3;
 const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-function makeAccessCode(name) {
+function makeAccessCode(name, taken = []) {
   const prefix = (name || "ATH").replace(/[^a-zA-Z]/g, "").slice(0, 3).toUpperCase().padEnd(3, "X");
-  let rest = "";
-  const buf = new Uint32Array(5);
-  (globalThis.crypto || window.crypto).getRandomValues(buf);
-  for (let i = 0; i < 5; i++) rest += CODE_ALPHABET[buf[i] % CODE_ALPHABET.length];
-  return prefix + rest;
+  const used = new Set((taken || []).filter(Boolean).map((c) => String(c).toUpperCase()));
+  let code = "";
+  // Two athletes with the same first three letters share a prefix, so check the
+  // suffix against codes already issued rather than trusting randomness alone.
+  for (let attempt = 0; attempt < 50; attempt++) {
+    let rest = "";
+    const buf = new Uint32Array(CODE_LENGTH);
+    (globalThis.crypto || window.crypto).getRandomValues(buf);
+    for (let i = 0; i < CODE_LENGTH; i++) rest += CODE_ALPHABET[buf[i] % CODE_ALPHABET.length];
+    code = prefix + rest;
+    if (!used.has(code)) return code;
+  }
+  return code;
 }
 
 export default function Athletes({ athletes, addAthlete, updateAthlete, deleteAthlete, logs, colors, cats, isMobile, groups, groupAthletes, addAthleteToGroup, removeAthleteFromGroup, baselines, updateBaseline, addBaseline, deleteBaseline, videoSubs, updateVideoSub, deleteVideoSub, viewAsAthlete, focusAthleteId, onFocusClear, provisionLogin }) {
@@ -97,7 +111,7 @@ export default function Athletes({ athletes, addAthlete, updateAthlete, deleteAt
   const save = async () => {
     if (!form.name.trim()) return;
     if (edit) { await updateAthlete(edit, form); }
-    else { await addAthlete({ ...form, access_code: makeAccessCode(form.name) }); }
+    else { await addAthlete({ ...form, access_code: makeAccessCode(form.name, (athletes || []).map((a) => a.access_code)) }); }
     setModal(false);
   };
 
