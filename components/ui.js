@@ -1,6 +1,6 @@
 "use client";
 import { useState, useRef, useEffect } from "react";
-export function Badge({ color, children }) { return <span style={{ background: color, color: "#fff", padding: "2px 10px", borderRadius: 999, fontSize: 11, fontWeight: 700, letterSpacing: 0.5, textTransform: "uppercase", whiteSpace: "nowrap" }}>{children}</span>; }
+export function Badge({ color, children }) { return <span style={{ background: color, color: "#fff", padding: "2px 10px", borderRadius: 999, fontSize: 11, fontWeight: 700, letterSpacing: 0.5, textTransform: "uppercase", whiteSpace: "nowrap", display: "inline-block", maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", verticalAlign: "middle", boxSizing: "border-box" }}>{children}</span>; }
 export function Btn({ children, onClick, variant = "primary", small, style = {}, disabled }) {
   const base = { border: "none", borderRadius: 8, cursor: disabled ? "default" : "pointer", fontWeight: 600, fontSize: small ? 12 : 14, padding: small ? "5px 12px" : "10px 20px", transition: "all .15s", opacity: disabled ? 0.4 : 1, whiteSpace: "nowrap" };
   const v = { primary: { background: "#18181B", color: "#fff" }, secondary: { background: "#F4F4F5", color: "#18181B" }, danger: { background: "#FEE2E2", color: "#DC2626" }, ghost: { background: "transparent", color: "#18181B" }, accent: { background: "#F97316", color: "#fff" } };

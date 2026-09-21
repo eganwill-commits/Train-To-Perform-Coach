@@ -396,9 +396,9 @@ export default function Programs({ programs, addProgram, updateProgram, deletePr
               const missed = wks.filter(w => w.status === "missed").length;
               return (
                 <Card key={p.id} onClick={() => setDetail(p.id)} style={{ cursor: "pointer", padding: isMobile ? 14 : 20 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between" }}>
-                    <div>
-                      <div style={{ fontWeight: 700, fontSize: 16 }}>{folder.name}</div>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div style={{ fontWeight: 700, fontSize: 16, overflowWrap: "anywhere" }}>{folder.name}</div>
                       <div style={{ fontSize: 13, color: "#71717A", marginTop: 2 }}>{ath?.name || "Unassigned"} · {wks.length}wk</div>
                       {grp && <div style={{ marginTop: 4 }}><Badge color="#16A34A">{grp.name}</Badge></div>}
                     </div>
@@ -886,7 +886,7 @@ function ProgramDetail({ program, programs, exercises, cats, colors, addBlock, u
         </button>
         {week.status && <span style={{ fontSize: 11, color: "#A1A1AA" }}>Click again to clear</span>}
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fit, minmax(260px, 1fr))", gap: 12 }}>
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fit, minmax(320px, 1fr))", gap: 12 }}>
         {week.days.map((day, di) => {
           const date = getDateForDay(day.id);
           const dayLogs = getDayLogs(date, day.label);
@@ -1008,12 +1008,12 @@ function ProgramDetail({ program, programs, exercises, cats, colors, addBlock, u
                               <div style={{ marginBottom: 6 }}>
                                 <SearchableSelect value={resolvedId} onChange={e => updateBlock(aw, di, bi, "exerciseId", e.target.value)} options={allOptions} groupBy placeholder={getDisplayName(block) || "Select exercise…"} />
                               </div>
-                              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 4 }}>
+                              <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 0.8fr) minmax(0, 1.4fr) minmax(0, 1.1fr)", gap: 4 }}>
                                 {[["Sets", "sets", "number"], ["Reps", "reps", "text"], ["Load", "load", "text"]].map(([lb, f, t]) => (
-                                  <label key={f} style={{ fontSize: 10, color: "#71717A" }}>{lb}<BlurInput type={t} value={block[f]} onSave={v => updateBlock(aw, di, bi, f, v)} placeholder={f === "load" ? "lbs" : ""} style={{ width: "100%", padding: "6px 5px", border: "1px solid #E4E4E7", borderRadius: 6, fontSize: 14, fontFamily: "inherit", marginTop: 1, boxSizing: "border-box" }} /></label>
+                                  <label key={f} style={{ fontSize: 10, color: "#71717A", minWidth: 0 }}>{lb}<BlurInput type={t} value={block[f]} onSave={v => updateBlock(aw, di, bi, f, v)} placeholder={f === "load" ? "kg / lbs" : ""} style={{ width: "100%", minWidth: 0, padding: "6px 5px", border: "1px solid #E4E4E7", borderRadius: 6, fontSize: 14, fontFamily: "inherit", marginTop: 1, boxSizing: "border-box" }} /></label>
                                 ))}
                               </div>
-                              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4, marginTop: 4 }}>
+                              <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 4, marginTop: 4 }}>
                                 {[["Tempo", "tempo", "3-1-2-0"], ["Rest(s)", "rest", ""]].map(([lb, f, ph]) => (
                                   <label key={f} style={{ fontSize: 10, color: "#71717A" }}>{lb}<BlurInput value={block[f]} onSave={v => updateBlock(aw, di, bi, f, v)} placeholder={ph} style={{ width: "100%", padding: "6px 5px", border: "1px solid #E4E4E7", borderRadius: 6, fontSize: 14, fontFamily: "inherit", marginTop: 1, boxSizing: "border-box" }} /></label>
                                 ))}
@@ -1069,8 +1069,8 @@ function ProgramDetail({ program, programs, exercises, cats, colors, addBlock, u
                     })() : (
                       /* Desktop: full expanded view */
                       <div style={{ padding: 10 }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6, flexWrap: "wrap", gap: 4, minWidth: 0 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", minWidth: 0, flex: 1 }}>
                             <div style={{ display: "flex", gap: 2, flexShrink: 0 }}>
                               <button onClick={() => toggleExerciseStatus(logEntry, "completed", block, day.label)} style={{ width: 22, height: 22, borderRadius: 4, border: exStatus === "completed" ? "2px solid #16A34A" : "1px solid #D4D4D8", background: exStatus === "completed" ? "#16A34A" : "transparent", color: exStatus === "completed" ? "#fff" : "#A1A1AA", fontSize: 11, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}>✓</button>
                               <button onClick={() => toggleExerciseStatus(logEntry, "missed", block, day.label)} style={{ width: 22, height: 22, borderRadius: 4, border: exStatus === "missed" ? "2px solid #DC2626" : "1px solid #D4D4D8", background: exStatus === "missed" ? "#DC2626" : "transparent", color: exStatus === "missed" ? "#fff" : "#A1A1AA", fontSize: 11, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }} title="Mark missed">✗</button>
@@ -1086,17 +1086,17 @@ function ProgramDetail({ program, programs, exercises, cats, colors, addBlock, u
                               <a href={videoUrl} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, color: "#fff", background: "#2563EB", textDecoration: "none", fontWeight: 700, padding: "3px 10px", borderRadius: 999, letterSpacing: 0.3 }}>▶ Video</a>
                             )}
                           </div>
-                          <button onClick={() => removeBlock(aw, di, bi)} style={{ background: "none", border: "none", cursor: "pointer", color: "#A1A1AA", fontSize: 14 }}>✕</button>
+                          <button onClick={() => removeBlock(aw, di, bi)} style={{ background: "none", border: "none", cursor: "pointer", color: "#A1A1AA", fontSize: 14, marginLeft: "auto", flexShrink: 0 }}>✕</button>
                         </div>
                         <div style={{ marginBottom: 4 }}>
                           <SearchableSelect value={resolvedId} onChange={e => updateBlock(aw, di, bi, "exerciseId", e.target.value)} options={allOptions} groupBy placeholder={getDisplayName(block) || "Select exercise…"} />
                         </div>
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 4, marginTop: 4 }}>
+                        <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 0.8fr) minmax(0, 1.4fr) minmax(0, 1.1fr)", gap: 4, marginTop: 4 }}>
                           {[["Sets", "sets", "number"], ["Reps", "reps", "text"], ["Load", "load", "text"]].map(([lb, f, t]) => (
-                            <label key={f} style={{ fontSize: 10, color: "#71717A" }}>{lb}<BlurInput type={t} value={block[f]} onSave={v => updateBlock(aw, di, bi, f, v)} placeholder={f === "load" ? "lbs" : ""} style={{ width: "100%", padding: "4px 5px", border: "1px solid #E4E4E7", borderRadius: 6, fontSize: 13, fontFamily: "inherit", marginTop: 1, boxSizing: "border-box" }} /></label>
+                            <label key={f} style={{ fontSize: 10, color: "#71717A", minWidth: 0 }}>{lb}<BlurInput type={t} value={block[f]} onSave={v => updateBlock(aw, di, bi, f, v)} placeholder={f === "load" ? "kg / lbs" : ""} style={{ width: "100%", minWidth: 0, padding: "4px 5px", border: "1px solid #E4E4E7", borderRadius: 6, fontSize: 13, fontFamily: "inherit", marginTop: 1, boxSizing: "border-box" }} /></label>
                           ))}
                         </div>
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4, marginTop: 4 }}>
+                        <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 4, marginTop: 4 }}>
                           {[["Tempo", "tempo", "3-1-2-0"], ["Rest(s)", "rest", ""]].map(([lb, f, ph]) => (
                             <label key={f} style={{ fontSize: 10, color: "#71717A" }}>{lb}<BlurInput value={block[f]} onSave={v => updateBlock(aw, di, bi, f, v)} placeholder={ph} style={{ width: "100%", padding: "4px 5px", border: "1px solid #E4E4E7", borderRadius: 6, fontSize: 13, fontFamily: "inherit", marginTop: 1, boxSizing: "border-box" }} /></label>
                           ))}
