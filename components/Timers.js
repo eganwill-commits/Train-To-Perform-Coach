@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState, useCallback } from "react";
 import { supabase } from "../lib/supabase";
 import { Btn, Card } from "./ui";
 import TimerRunner from "./TimerRunner";
-import { FORMATS, FORMAT_LABEL, DEFAULT_CONFIG, PRESETS, normalizeConfig, summarize, fmt, makeSlug } from "../lib/timerEngine";
+import { FORMATS, FORMAT_LABEL, DEFAULT_CONFIG, PRESETS, normalizeConfig, summarize, fmt, makeSlug, DEFAULT_VOICE_LINE } from "../lib/timerEngine";
 
 /* Timers: build, save and run station / EMOM / Tabata / AMRAP / For Time / clock
    workouts. Coaches build and share; athletes build their own or customize a
@@ -87,6 +87,28 @@ function Editor({ draft, setDraft, role, exercises, onSave, onRun, onCancel, sav
             {[0, 5, 10, 15, 20, 30].map(v => <option key={v} value={v}>{v ? `:${String(v).padStart(2, "0")}` : "None"}</option>)}
           </select>
         </label>
+      </div>
+
+      <div style={{ display: "flex", gap: 18, flexWrap: "wrap", alignItems: "flex-start", background: "#FAFAFA", border: "1px solid #F4F4F5", borderRadius: 10, padding: 12 }}>
+        <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>
+          <input type="checkbox" checked={c.beeps !== false} onChange={e => setC({ beeps: e.target.checked })} style={{ width: 18, height: 18 }} />
+          3-2-1 countdown beeps
+        </label>
+        <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>
+          <input type="checkbox" checked={!!c.voice} onChange={e => setC({ voice: e.target.checked, voiceLines: c.voiceLines && c.voiceLines.length ? c.voiceLines : [DEFAULT_VOICE_LINE] })} style={{ width: 18, height: 18 }} />
+          Voice call on "Go"
+        </label>
+        {c.voice && (
+          <label style={{ ...label, flex: "1 1 280px" }}>
+            What it says (one per line, picks one at random each time)
+            <textarea rows={3} value={(c.voiceLines && c.voiceLines.length ? c.voiceLines : [DEFAULT_VOICE_LINE]).join("\n")}
+              onChange={e => setC({ voiceLines: e.target.value.split("\n") })} style={{ ...field, resize: "vertical", fontFamily: "inherit" }} />
+            <span style={{ display: "flex", gap: 8, alignItems: "center", fontWeight: 500, color: "#71717A" }}>
+              <Btn small variant="secondary" onClick={() => { try { const t = (c.voiceLines || []).map(x => (x || "").trim()).filter(Boolean); const u = new window.SpeechSynthesisUtterance(t[Math.floor(Math.random() * t.length)] || DEFAULT_VOICE_LINE); window.speechSynthesis.cancel(); window.speechSynthesis.speak(u); } catch {} }}>▶ Test voice</Btn>
+              Uses the device's built-in voice.
+            </span>
+          </label>
+        )}
       </div>
 
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>

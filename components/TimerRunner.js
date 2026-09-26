@@ -104,6 +104,33 @@ export default function TimerRunner({ timer, onExit, tv = false }) {
   const rootRef = useRef(null);
   const startBtn = useRef(null);
   const [zoom, setZoom] = useState(0.92);
+  // Sound settings start from the saved timer and can be flipped on screen for this session.
+  const [beepsOn, setBeepsOn] = useState(config.beeps !== false);
+  const [voiceOn, setVoiceOn] = useState(!!config.voice);
+  const canSpeak = typeof window !== "undefined" && "speechSynthesis" in window && typeof window.SpeechSynthesisUtterance === "function";
+  const voiceLines = (config.voiceLines || []).map(l => (l || "").trim()).filter(Boolean);
+  const lastLine = useRef(-1);
+  const speak = useCallback((text) => {
+    if (!canSpeak || !text) return false;
+    try {
+      const synth = window.speechSynthesis;
+      synth.cancel();
+      const u = new window.SpeechSynthesisUtterance(text);
+      u.rate = 1.05; u.pitch = 1; u.volume = 1;
+      const voices = synth.getVoices ? synth.getVoices() : [];
+      const en = voices.find(v => /en[-_]US/i.test(v.lang) && /male|daniel|alex|fred|google us/i.test(v.name)) || voices.find(v => /^en/i.test(v.lang));
+      if (en) u.voice = en;
+      synth.speak(u);
+      return true;
+    } catch { return false; }
+  }, [canSpeak]);
+  const goCall = useCallback(() => {
+    if (!voiceOn || !voiceLines.length) return false;
+    let i = 0;
+    if (voiceLines.length > 1) { do { i = Math.floor(Math.random() * voiceLines.length); } while (i === lastLine.current); }
+    lastLine.current = i;
+    return speak(voiceLines[i]);
+  }, [voiceOn, voiceLines, speak]);
   const [flow, setFlow] = useState(false);
 
   const elapsedMs = () => acc.current + (since.current != null ? performance.now() - since.current : 0);
@@ -170,17 +197,19 @@ export default function TimerRunner({ timer, onExit, tv = false }) {
       if (seg.dur != null) {
         const left = Math.ceil(seg.start + seg.dur - t);
         const key = si + ":" + left;
-        if (left <= 3 && left >= 1 && lastBeep.current !== key) { lastBeep.current = key; beep(660, 0.1); }
+        if (left <= 3 && left >= 1 && lastBeep.current !== key) { lastBeep.current = key; if (beepsOn) beep(660, 0.1); }
       }
       const enterKey = "enter:" + si;
       if (si > 0 && lastBeep.current !== enterKey && !lastBeep.current.startsWith(si + ":")) {
         lastBeep.current = enterKey;
-        beep(seg.kind === "work" || seg.kind === "cap" || seg.kind === "up" ? 1046 : 440, 0.4);
+        const isGo = seg.kind === "work" || seg.kind === "cap" || seg.kind === "up";
+        if (isGo) { beep(1046, 0.25); goCall(); }
+        else beep(440, 0.4);
       }
       setTick(x => x + 1);
     }, 100);
     return () => clearInterval(id);
-  }, [running, segs, endAt, finish, beep, format]);
+  }, [running, segs, endAt, finish, beep, format, beepsOn, goCall]);
 
   useEffect(() => () => releaseWake(), []);
   useEffect(() => { startBtn.current?.focus(); }, []);
@@ -195,6 +224,8 @@ export default function TimerRunner({ timer, onExit, tv = false }) {
     since.current = performance.now();
     setRunning(true); setStarted(true);
     beep(segs[0].kind === "ready" ? 880 : 1046, 0.25);
+    if (voiceOn && canSpeak) { try { const u = new window.SpeechSynthesisUtterance(" "); u.volume = 0; window.speechSynthesis.speak(u); } catch {} }
+    if (segs[0].kind !== "ready" && !started) goCall();
     requestWake();
   };
   const pause = () => { acc.current = elapsedMs(); since.current = null; setRunning(false); releaseWake(); };
@@ -314,6 +345,8 @@ export default function TimerRunner({ timer, onExit, tv = false }) {
                 <button className="t2pt-btn" onClick={reset}>Reset</button>
                 {!flow && <button className="t2pt-btn" onClick={() => changeZoom(-0.05)} aria-label="Smaller">A−</button>}
                 {!flow && <button className="t2pt-btn" onClick={() => changeZoom(0.05)} aria-label="Bigger">A+</button>}
+                <button className="t2pt-btn" onClick={() => setBeepsOn(v => !v)} aria-pressed={beepsOn}>{beepsOn ? "3-2-1 On" : "3-2-1 Off"}</button>
+                {canSpeak && <button className="t2pt-btn" onClick={() => { if (!voiceOn) speak(voiceLines[0] || ""); setVoiceOn(!voiceOn); }} aria-pressed={voiceOn}>{voiceOn ? "Voice On" : "Voice Off"}</button>}
                 <button className="t2pt-btn" onClick={fullscreen}>Full screen</button>
                 {onExit && <button className="t2pt-btn" onClick={onExit}>Exit</button>}
               </div>
