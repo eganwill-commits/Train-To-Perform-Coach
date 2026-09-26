@@ -5,7 +5,7 @@ import { supabaseUrl, supabaseAnonKey } from "../../../lib/supabase";
 // Character voices for timer voice lines, via ElevenLabs.
 //   GET  /api/voice          -> list of available voices (name, description, preview)
 //   POST /api/voice {text, voice_id} -> MP3 of that line in that voice
-// Needs ELEVENLABS_API_KEY in the Vercel environment. Only a signed-in coach can
+// Needs ELEVENLABS_API_KEY in the Vercel environment. Only the coach login can
 // call it, so athletes and the public TV pages can't spend voice credits.
 
 export const runtime = "nodejs";
@@ -20,8 +20,9 @@ async function requireCoach(req) {
   const sb = createClient(supabaseUrl, supabaseAnonKey, { auth: { persistSession: false }, global: { headers: { Authorization: `Bearer ${token}` } } });
   const { data, error } = await sb.auth.getUser(token);
   if (error || !data?.user) return false;
-  const { data: athlete } = await sb.from("athletes").select("id").eq("auth_user_id", data.user.id).maybeSingle();
-  return !athlete; // coaches are signed-in users with no athlete row
+  // Same rule the database enforces on voice lines: only the T2P coach login.
+  const { data: ok } = await sb.rpc("is_t2p_coach");
+  return ok === true;
 }
 
 function keyOrError() {
