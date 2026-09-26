@@ -198,7 +198,13 @@ function Editor({ draft, setDraft, role, exercises, onSave, onRun, onCancel, sav
 async function testVoice(lines) {
   try {
     let list = (lines || []).map(x => (x || "").trim()).filter(Boolean);
-    if (!lines) { const { data } = await supabase.from("voice_lines").select("text").eq("enabled", true); list = (data || []).map(r => r.text); }
+    if (!lines) {
+      const [{ data }, { data: vs }] = await Promise.all([supabase.from("voice_lines").select("text, audio_url, audio_key").eq("enabled", true), supabase.from("app_settings").select("value").eq("key", "voice").maybeSingle()]);
+      const vid = vs?.value?.voice_id;
+      const pick = (data || [])[Math.floor(Math.random() * (data || []).length)];
+      if (pick && vid && pick.audio_url && pick.audio_key === `${vid}|${pick.text.trim()}`) { new Audio(pick.audio_url).play().catch(() => {}); return; }
+      list = pick ? [pick.text] : [];
+    }
     const text = list[Math.floor(Math.random() * list.length)] || DEFAULT_VOICE_LINE;
     window.speechSynthesis.cancel();
     window.speechSynthesis.speak(new window.SpeechSynthesisUtterance(text));
@@ -275,15 +281,106 @@ function TimerCard({ t, mine, role, ownerName, onRun, onEdit, onCopy, onDelete, 
 }
 
 const VOICE_CATS = ["Hype", "Grit", "Team", "Other"];
+
+async function authHeader() {
+  const { data } = await supabase.auth.getSession();
+  const t = data?.session?.access_token;
+  return t ? { Authorization: `Bearer ${t}` } : {};
+}
+let _player = null;
+function playUrl(url) { try { if (_player) _player.pause(); _player = new Audio(url); _player.play().catch(() => {}); } catch {} }
+function sayDevice(text) { try { window.speechSynthesis.cancel(); window.speechSynthesis.speak(new window.SpeechSynthesisUtterance(text)); } catch {} }
+
+function VoicePicker({ current, onPick, onClose }) {
+  const [voices, setVoices] = useState(null);
+  const [err, setErr] = useState("");
+  const [q, setQ] = useState("");
+  useEffect(() => {
+    (async () => {
+      try {
+        const r = await fetch("/api/voice", { headers: await authHeader() });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) { setErr(j.message || (r.status === 401 ? "Sign in as the coach to choose a voice." : "Couldn't load voices.")); setVoices([]); return; }
+        setVoices(j.voices || []);
+      } catch { setErr("Couldn't reach the voice service."); setVoices([]); }
+    })();
+  }, []);
+  const shown = (voices || []).filter(v => !q || `${v.name} ${v.description} ${v.accent} ${v.gender} ${v.use}`.toLowerCase().includes(q.toLowerCase()));
+  return (
+    <div style={{ border: "1px solid #E4E4E7", borderRadius: 10, padding: 12, display: "flex", flexDirection: "column", gap: 10, background: "#FAFAFA" }}>
+      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+        <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search voices (deep, british, announcer…)" style={{ ...field, flex: "1 1 220px" }} />
+        <Btn small variant="ghost" onClick={onClose}>Cancel</Btn>
+      </div>
+      {err && <div style={{ color: "#B91C1C", fontSize: 13, fontWeight: 600 }}>{err}</div>}
+      {!voices ? <div style={{ color: "#A1A1AA", fontSize: 13 }}>Loading voices…</div> : (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(230px, 1fr))", gap: 8, maxHeight: 360, overflow: "auto" }}>
+          {shown.map(v => (
+            <div key={v.id} style={{ background: "#fff", border: `2px solid ${current === v.id ? "#F97316" : "#E4E4E7"}`, borderRadius: 8, padding: 10, display: "flex", flexDirection: "column", gap: 6 }}>
+              <div style={{ fontWeight: 800 }}>{v.name}</div>
+              <div style={{ fontSize: 12, color: "#71717A", lineHeight: 1.4 }}>{[v.gender, v.age, v.accent, v.use].filter(Boolean).join(" · ")}{v.description ? ` — ${v.description}` : ""}</div>
+              <div style={{ display: "flex", gap: 6, marginTop: "auto" }}>
+                {v.preview && <Btn small variant="secondary" onClick={() => playUrl(v.preview)}>▶ Sample</Btn>}
+                <Btn small variant={current === v.id ? "accent" : "primary"} onClick={() => onPick(v)}>{current === v.id ? "Selected" : "Use this voice"}</Btn>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function VoiceLibrary({ onClose, onSaved }) {
   const [rows, setRows] = useState(null);
   const [removed, setRemoved] = useState([]);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
-  useEffect(() => { supabase.from("voice_lines").select("*").order("sort").then(({ data }) => setRows(data || [])); }, []);
+  const [voice, setVoice] = useState(null);        // { voice_id, voice_name }
+  const [picking, setPicking] = useState(false);
+  const [progress, setProgress] = useState(null);  // { done, total }
+  const loadRows = async () => { const { data } = await supabase.from("voice_lines").select("*").order("sort"); setRows(data || []); return data || []; };
+  useEffect(() => {
+    loadRows();
+    supabase.from("app_settings").select("value").eq("key", "voice").maybeSingle().then(({ data }) => setVoice(data?.value || {}));
+  }, []);
   const upd = (i, patch) => setRows(r => r.map((x, j) => (j === i ? { ...x, ...patch } : x)));
   const move = (i, d) => setRows(r => { const j = i + d; if (j < 0 || j >= r.length) return r; const c = [...r]; [c[i], c[j]] = [c[j], c[i]]; return c; });
-  const say = (text) => { try { window.speechSynthesis.cancel(); window.speechSynthesis.speak(new window.SpeechSynthesisUtterance(text)); } catch {} };
+  const keyFor = (text, vid) => `${vid}|${(text || "").trim()}`;
+  const isCurrent = (r) => voice?.voice_id && r.audio_url && r.audio_key === keyFor(r.text, voice.voice_id);
+  const play = (r) => (isCurrent(r) ? playUrl(r.audio_url) : sayDevice(r.text));
+
+  // Record every enabled line that has no clip in the current voice (or whose wording changed).
+  const record = async (list, vid, vname) => {
+    if (!vid) return;
+    const todo = list.filter(r => r.id && r.enabled && (r.text || "").trim() && r.audio_key !== keyFor(r.text, vid));
+    if (!todo.length) return;
+    const headers = { "Content-Type": "application/json", ...(await authHeader()) };
+    setProgress({ done: 0, total: todo.length });
+    for (let i = 0; i < todo.length; i++) {
+      const r = todo[i];
+      const res = await fetch("/api/voice", { method: "POST", headers, body: JSON.stringify({ text: r.text, voice_id: vid }) });
+      if (!res.ok) { const j = await res.json().catch(() => ({})); setProgress(null); setMsg("Couldn't record voice clips: " + (j.message || res.status)); return; }
+      const blob = await res.blob();
+      const path = `${r.id}-${Date.now()}.mp3`;
+      const up = await supabase.storage.from("voice-lines").upload(path, blob, { contentType: "audio/mpeg", upsert: false });
+      if (up.error) { setProgress(null); setMsg("Couldn't store a voice clip: " + up.error.message); return; }
+      const url = supabase.storage.from("voice-lines").getPublicUrl(path).data.publicUrl;
+      await supabase.from("voice_lines").update({ audio_url: url, audio_key: keyFor(r.text, vid) }).eq("id", r.id);
+      setProgress({ done: i + 1, total: todo.length });
+    }
+    setProgress(null);
+    await loadRows();
+    setMsg(`Done. All lines are recorded in ${vname || voice?.voice_name || "the new voice"}.`);
+  };
+
+  const pickVoice = async (v) => {
+    const value = { voice_id: v.id, voice_name: v.name };
+    setVoice(value); setPicking(false); setMsg("");
+    await supabase.from("app_settings").upsert({ key: "voice", value, updated_at: new Date().toISOString() });
+    await record(rows || [], v.id, v.name);
+  };
+
   const save = async () => {
     setSaving(true); setMsg("");
     const keep = rows.map((r, i) => ({ ...r, text: (r.text || "").trim(), sort: i + 1 })).filter(r => r.text);
@@ -294,12 +391,15 @@ function VoiceLibrary({ onClose, onSaved }) {
     const e2 = fresh.length ? (await supabase.from("voice_lines").insert(fresh)).error : null;
     setSaving(false);
     if (e1 || e2) { setMsg("Couldn't save: " + (e1 || e2).message); return; }
-    const { data } = await supabase.from("voice_lines").select("*").order("sort");
-    setRows(data || []); setRemoved([]); setMsg("Saved. Every timer using the library picks these up next time it starts.");
+    const data = await loadRows();
+    setRemoved([]); setMsg("Saved.");
     onSaved && onSaved();
+    if (voice?.voice_id) await record(data, voice.voice_id);
   };
+
   if (!rows) return <Card><div style={{ color: "#A1A1AA" }}>Loading…</div></Card>;
   const on = rows.filter(r => r.enabled && (r.text || "").trim()).length;
+  const missing = voice?.voice_id ? rows.filter(r => r.id && r.enabled && (r.text || "").trim() && !isCurrent(r)).length : 0;
   return (
     <Card style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "flex-start" }}>
@@ -309,10 +409,23 @@ function VoiceLibrary({ onClose, onSaved }) {
         </div>
         <div style={{ display: "flex", gap: 8 }}>
           <Btn variant="ghost" onClick={onClose}>Close</Btn>
-          <Btn variant="accent" onClick={save} disabled={saving}>{saving ? "Saving…" : "Save"}</Btn>
+          <Btn variant="accent" onClick={save} disabled={saving || !!progress}>{saving ? "Saving…" : "Save"}</Btn>
         </div>
       </div>
+
+      <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", background: "#18181B", color: "#fff", borderRadius: 10, padding: "10px 14px" }}>
+        <span style={{ fontSize: 13, color: "#A1A1AA", fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5 }}>Voice</span>
+        <span style={{ fontWeight: 800, fontSize: 16 }}>{voice?.voice_name || "Device voice (built in)"}</span>
+        <span style={{ fontSize: 12, color: "#A1A1AA" }}>{voice?.voice_id ? "Recorded once, sounds the same on every device" : "Pick a character voice to record your lines"}</span>
+        <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
+          {voice?.voice_id && missing > 0 && !progress && <Btn small variant="secondary" onClick={() => record(rows, voice.voice_id)}>Record {missing} missing</Btn>}
+          <Btn small variant="accent" onClick={() => setPicking(p => !p)}>{voice?.voice_id ? "Change voice" : "Choose voice"}</Btn>
+        </div>
+      </div>
+      {picking && <VoicePicker current={voice?.voice_id} onPick={pickVoice} onClose={() => setPicking(false)} />}
+      {progress && <div style={{ fontSize: 13, fontWeight: 700, color: "#C2410C" }}>Recording line {progress.done + 1 > progress.total ? progress.total : progress.done + 1} of {progress.total}… keep this page open.</div>}
       {msg && <div style={{ fontSize: 13, color: msg.startsWith("Couldn't") ? "#B91C1C" : "#15803D", fontWeight: 600 }}>{msg}</div>}
+
       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
         {rows.map((r, i) => (
           <div key={r.id || "n" + i} style={{ display: "grid", gridTemplateColumns: "auto minmax(0,1fr) 110px auto", gap: 6, alignItems: "center", opacity: r.enabled ? 1 : 0.5 }}>
@@ -320,7 +433,7 @@ function VoiceLibrary({ onClose, onSaved }) {
             <input value={r.text} onChange={e => upd(i, { text: e.target.value })} placeholder="Type a line…" style={field} />
             <select value={r.category || "Hype"} onChange={e => upd(i, { category: e.target.value })} style={field}>{VOICE_CATS.map(c => <option key={c}>{c}</option>)}</select>
             <div style={{ display: "flex", gap: 2 }}>
-              <button type="button" onClick={() => say(r.text)} style={iconBtn} aria-label="Play">▶</button>
+              <button type="button" onClick={() => play(r)} style={{ ...iconBtn, color: isCurrent(r) ? "#F97316" : "#52525B" }} aria-label="Play" title={isCurrent(r) ? "Play recorded clip" : "Play with device voice (not recorded yet)"}>▶</button>
               <button type="button" onClick={() => move(i, -1)} style={iconBtn} aria-label="Move up">↑</button>
               <button type="button" onClick={() => move(i, 1)} style={iconBtn} aria-label="Move down">↓</button>
               <button type="button" onClick={() => { if (r.id) setRemoved(x => [...x, r.id]); setRows(rs => rs.filter((_, j) => j !== i)); }} style={{ ...iconBtn, color: "#DC2626" }} aria-label="Delete">✕</button>

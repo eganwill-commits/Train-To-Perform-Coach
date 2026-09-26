@@ -110,18 +110,38 @@ export default function TimerRunner({ timer, onExit, tv = false }) {
   const [voiceOn, setVoiceOn] = useState(!!config.voice);
   const canSpeak = typeof window !== "undefined" && "speechSynthesis" in window && typeof window.SpeechSynthesisUtterance === "function";
   // Voice lines come from the coach's shared library unless this timer has its own list.
+  // Library lines may have a recorded character-voice clip; others use the device voice.
   const [libLines, setLibLines] = useState(null);
   useEffect(() => {
     if (config.voiceSource === "custom") return;
     let off = false;
-    supabase.from("voice_lines").select("text").eq("enabled", true).order("sort").then(({ data }) => { if (!off) setLibLines((data || []).map(r => r.text)); });
+    (async () => {
+      const [{ data }, { data: vs }] = await Promise.all([
+        supabase.from("voice_lines").select("text, audio_url, audio_key").eq("enabled", true).order("sort"),
+        supabase.from("app_settings").select("value").eq("key", "voice").maybeSingle(),
+      ]);
+      if (off) return;
+      const vid = vs?.value?.voice_id;
+      setLibLines((data || []).map(r => ({ text: r.text, url: vid && r.audio_url && r.audio_key === `${vid}|${(r.text || "").trim()}` ? r.audio_url : null })));
+    })();
     return () => { off = true; };
   }, [config.voiceSource]);
-  const voiceLines = useMemo(() => {
-    const src = config.voiceSource === "custom" ? (config.voiceLines || []) : (libLines && libLines.length ? libLines : [DEFAULT_VOICE_LINE]);
-    const clean = src.map(l => (l || "").trim()).filter(Boolean);
-    return clean.length ? clean : [DEFAULT_VOICE_LINE];
+  const voiceItems = useMemo(() => {
+    const src = config.voiceSource === "custom" ? (config.voiceLines || []).map(t => ({ text: t, url: null })) : (libLines && libLines.length ? libLines : [{ text: DEFAULT_VOICE_LINE, url: null }]);
+    const clean = src.map(x => ({ text: (x.text || "").trim(), url: x.url })).filter(x => x.text);
+    return clean.length ? clean : [{ text: DEFAULT_VOICE_LINE, url: null }];
   }, [config.voiceSource, config.voiceLines, libLines]);
+  const voiceLines = useMemo(() => voiceItems.map(x => x.text), [voiceItems]);
+  const clipBuffers = useRef(new Map()); // url -> AudioBuffer (decoded after Start)
+  const loadClips = useCallback(() => {
+    const a = audio.current;
+    if (!a) return;
+    voiceItems.forEach(({ url }) => {
+      if (!url || clipBuffers.current.has(url)) return;
+      clipBuffers.current.set(url, null);
+      fetch(url).then(r => r.arrayBuffer()).then(b => new Promise((res, rej) => a.decodeAudioData(b, res, rej))).then(buf => clipBuffers.current.set(url, buf)).catch(() => clipBuffers.current.delete(url));
+    });
+  }, [voiceItems]);
   const lastLine = useRef(-1);
   const speak = useCallback((text) => {
     if (!canSpeak || !text) return false;
@@ -137,13 +157,25 @@ export default function TimerRunner({ timer, onExit, tv = false }) {
       return true;
     } catch { return false; }
   }, [canSpeak]);
+  const playClip = useCallback((url) => {
+    const a = audio.current, buf = clipBuffers.current.get(url);
+    if (a && buf) {
+      try { const src = a.createBufferSource(), g = a.createGain(); g.gain.value = 1; src.buffer = buf; src.connect(g); g.connect(a.destination); src.start(); return true; } catch {}
+    }
+    try { const el = new Audio(url); el.play().catch(() => {}); return true; } catch { return false; }
+  }, []);
+  const sayItem = useCallback((item) => {
+    if (!item) return false;
+    if (item.url) return playClip(item.url);
+    return speak(item.text);
+  }, [playClip, speak]);
   const goCall = useCallback(() => {
-    if (!voiceOn || !voiceLines.length) return false;
+    if (!voiceOn || !voiceItems.length) return false;
     let i = 0;
-    if (voiceLines.length > 1) { do { i = Math.floor(Math.random() * voiceLines.length); } while (i === lastLine.current); }
+    if (voiceItems.length > 1) { do { i = Math.floor(Math.random() * voiceItems.length); } while (i === lastLine.current); }
     lastLine.current = i;
-    return speak(voiceLines[i]);
-  }, [voiceOn, voiceLines, speak]);
+    return sayItem(voiceItems[i]);
+  }, [voiceOn, voiceItems, sayItem]);
   const [flow, setFlow] = useState(false);
 
   const elapsedMs = () => acc.current + (since.current != null ? performance.now() - since.current : 0);
@@ -262,6 +294,7 @@ export default function TimerRunner({ timer, onExit, tv = false }) {
     setRunning(true); setStarted(true);
     beep(segs[0].kind === "ready" ? 880 : 1046, 0.25);
     if (voiceOn && canSpeak) { try { const u = new window.SpeechSynthesisUtterance(" "); u.volume = 0; window.speechSynthesis.speak(u); } catch {} }
+    loadClips();
     if (segs[0].kind !== "ready" && !started) goCall();
     requestWake();
   };
@@ -383,7 +416,7 @@ export default function TimerRunner({ timer, onExit, tv = false }) {
                 {!flow && <button className="t2pt-btn" onClick={() => changeZoom(-0.05)} aria-label="Smaller">A−</button>}
                 {!flow && <button className="t2pt-btn" onClick={() => changeZoom(0.05)} aria-label="Bigger">A+</button>}
                 <button className="t2pt-btn" onClick={() => setBeepsOn(v => !v)} aria-pressed={beepsOn}>{beepsOn ? "3-2-1 On" : "3-2-1 Off"}</button>
-                {canSpeak && <button className="t2pt-btn" onClick={() => { if (!voiceOn) speak(voiceLines[Math.floor(Math.random() * voiceLines.length)] || ""); setVoiceOn(!voiceOn); }} aria-pressed={voiceOn}>{voiceOn ? "Voice On" : "Voice Off"}</button>}
+                {(canSpeak || voiceItems.some(x => x.url)) && <button className="t2pt-btn" onClick={() => { if (!voiceOn) { ensureAudio(); loadClips(); sayItem(voiceItems[Math.floor(Math.random() * voiceItems.length)]); } setVoiceOn(!voiceOn); }} aria-pressed={voiceOn}>{voiceOn ? "Voice On" : "Voice Off"}</button>}
                 <button className="t2pt-btn" onClick={fullscreen}>Full screen</button>
                 {onExit && <button className="t2pt-btn" onClick={onExit}>Exit</button>}
               </div>
