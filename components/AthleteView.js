@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { supabase } from "../lib/supabase";
 import { PILLAR_COLORS, ATHLETE_NAV, EQUIP_OPTIONS, EQUIP_LABEL, roomLabel } from "../lib/constants";
+import Timers from "./Timers";
 import { Badge, Btn, Card, Input, Select, Modal, EmptyState, SearchableSelect, AutoGrow, ScoreField, SideScoreField } from "./ui";
 import { scoreSpecFor, parseSides, formatSides } from "../lib/logging";
 import { printDay } from "./printHelper";
@@ -258,6 +259,7 @@ export default function AthleteView({ athlete, onLogout, readOnly }) {
           {page === "my-program" && <MyProgram programs={programs} setPrograms={setPrograms} exercises={exercises} colors={colors} cats={cats} isMobile={isMobile} athlete={athlete} addLog={addLogRO} logs={logs} groups={groups} addVideoSub={addVideoSubRO} videoSubs={videoSubs} deleteVideoSub={deleteVideoSubRO} setLogs={setLogs} focusBlockId={focusRef} onFocusDone={() => setFocusRef(null)} />}
           {page === "my-baselines" && <MyBaselines baselines={baselines} groups={groups} updateBaseline={updateBaselineRO} isMobile={isMobile} />}
           {page === "my-logs" && <MyLogs logs={logs} colors={colors} cats={cats} isMobile={isMobile} deleteLog={deleteLogRO} deleteDayLogs={deleteDayLogsRO} />}
+          {page === "timers" && <Timers role="athlete" athlete={athlete} exercises={exercises} isMobile={isMobile} readOnly={ro} />}
           {page === "my-videos" && <MyVideos videoSubs={videoSubs} addVideoSub={addVideoSubRO} deleteVideoSub={deleteVideoSubRO} athlete={athlete} exercises={exercises} cats={cats} colors={colors} isMobile={isMobile} focusId={focusRef} onFocusDone={() => setFocusRef(null)} />}
           {page === "messages" && (ro ? <div style={{ padding: 24, color: "#71717A", fontSize: 14 }}>Messaging is disabled in coach preview.</div> : <Messages currentUserId={athlete.id} currentUserName={athlete.name} isMobile={isMobile} />)}
           {page === "ai-chat" && <AIChat isMobile={isMobile} athleteName={athlete.name} athlete={athlete} programs={programs} logs={logs} baselines={baselines} videoSubs={videoSubs} />}

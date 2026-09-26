@@ -1,0 +1,320 @@
+"use client";
+import { useEffect, useMemo, useState, useCallback } from "react";
+import { supabase } from "../lib/supabase";
+import { Btn, Card } from "./ui";
+import TimerRunner from "./TimerRunner";
+import { FORMATS, FORMAT_LABEL, DEFAULT_CONFIG, PRESETS, normalizeConfig, summarize, fmt, makeSlug } from "../lib/timerEngine";
+
+/* Timers: build, save and run station / EMOM / Tabata / AMRAP / For Time / clock
+   workouts. Coaches build and share; athletes build their own or customize a
+   copy of a shared one. Every saved timer has a no-login TV link: /tv/<code>. */
+
+const FORMAT_COLOR = { stations: "#CC1F1F", emom: "#C8922A", intervals: "#7C3AED", amrap: "#DB2777", fortime: "#2563EB", clock: "#52525B" };
+const label = { fontSize: 12, fontWeight: 700, color: "#52525B", display: "flex", flexDirection: "column", gap: 4 };
+const field = { border: "1px solid #E4E4E7", borderRadius: 8, padding: "8px 10px", fontFamily: "inherit", width: "100%", boxSizing: "border-box", background: "#fff" };
+
+function NumField({ lab, value, onChange, min = 0, suffix, width = 110 }) {
+  return (
+    <label style={{ ...label, width }}>
+      {lab}
+      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <input type="number" inputMode="numeric" min={min} value={value} onChange={e => onChange(e.target.value === "" ? "" : Number(e.target.value))} style={field} />
+        {suffix && <span style={{ fontSize: 12, color: "#71717A", fontWeight: 600 }}>{suffix}</span>}
+      </div>
+    </label>
+  );
+}
+
+function DurField({ lab, seconds, onChange, allowNone }) {
+  const m = Math.floor((seconds || 0) / 60), s = (seconds || 0) % 60;
+  const set = (mm, ss) => onChange(Math.max(0, (Number(mm) || 0) * 60 + (Number(ss) || 0)));
+  return (
+    <label style={{ ...label, width: 170 }}>
+      {lab}{allowNone && <span style={{ fontWeight: 500, color: "#A1A1AA" }}>0:00 = no cap</span>}
+      <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+        <input type="number" inputMode="numeric" min={0} value={m} onChange={e => set(e.target.value, s)} style={{ ...field, width: 70 }} aria-label="minutes" />
+        <span style={{ fontWeight: 700 }}>:</span>
+        <input type="number" inputMode="numeric" min={0} max={59} value={String(s).padStart(2, "0")} onChange={e => set(m, e.target.value)} style={{ ...field, width: 70 }} aria-label="seconds" />
+      </div>
+    </label>
+  );
+}
+
+function MoveList({ title, hint, rows, onChange, listId, placeholder = "Movement" }) {
+  const upd = (i, k, v) => onChange(rows.map((r, j) => (j === i ? { ...r, [k]: v } : r)));
+  const move = (i, d) => { const j = i + d; if (j < 0 || j >= rows.length) return; const c = [...rows]; [c[i], c[j]] = [c[j], c[i]]; onChange(c); };
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: "#18181B" }}>{title}</div>
+        {hint && <div style={{ fontSize: 12, color: "#71717A" }}>{hint}</div>}
+      </div>
+      {rows.map((r, i) => (
+        <div key={i} style={{ display: "grid", gridTemplateColumns: "22px minmax(0,2fr) minmax(0,1.2fr) auto", gap: 6, alignItems: "center" }}>
+          <span style={{ fontSize: 12, fontWeight: 700, color: "#A1A1AA", textAlign: "right" }}>{i + 1}</span>
+          <input list={listId} value={r.name} placeholder={placeholder} onChange={e => upd(i, "name", e.target.value)} style={field} />
+          <input value={r.detail || ""} placeholder="Load / reps / note" onChange={e => upd(i, "detail", e.target.value)} style={field} />
+          <div style={{ display: "flex", gap: 2 }}>
+            <button type="button" onClick={() => move(i, -1)} style={iconBtn} aria-label="Move up">↑</button>
+            <button type="button" onClick={() => move(i, 1)} style={iconBtn} aria-label="Move down">↓</button>
+            <button type="button" onClick={() => onChange(rows.filter((_, j) => j !== i))} style={{ ...iconBtn, color: "#DC2626" }} aria-label="Remove">✕</button>
+          </div>
+        </div>
+      ))}
+      <div><Btn small variant="secondary" onClick={() => onChange([...rows, { name: "", detail: "" }])}>+ Add</Btn></div>
+    </div>
+  );
+}
+const iconBtn = { border: "1px solid #E4E4E7", background: "#fff", borderRadius: 6, width: 30, height: 34, cursor: "pointer", fontWeight: 700, color: "#52525B", padding: 0 };
+
+function Editor({ draft, setDraft, role, exercises, onSave, onRun, onCancel, saving }) {
+  const c = draft.config;
+  const setC = (patch) => setDraft(d => ({ ...d, config: { ...d.config, ...patch } }));
+  const changeFormat = (f) => setDraft(d => ({ ...d, format: f, config: { ...DEFAULT_CONFIG[f], movements: d.config.movements?.length ? d.config.movements : DEFAULT_CONFIG[f].movements, warmup: d.config.warmup || [], countdown: d.config.countdown ?? 10 } }));
+  const [showWarm, setShowWarm] = useState((c.warmup || []).length > 0);
+  const names = useMemo(() => Array.from(new Set((exercises || []).map(e => e.name).filter(Boolean))).sort(), [exercises]);
+  const f = draft.format;
+
+  return (
+    <Card style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+      <datalist id="t2p-ex-names">{names.map(n => <option key={n} value={n} />)}</datalist>
+      <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end" }}>
+        <label style={{ ...label, flex: "1 1 260px" }}>Name
+          <input value={draft.name} placeholder="e.g. Fifty And Fit · Stations" onChange={e => setDraft(d => ({ ...d, name: e.target.value }))} style={field} />
+        </label>
+        <label style={{ ...label, width: 200 }}>Countdown before start
+          <select value={c.countdown ?? 10} onChange={e => setC({ countdown: Number(e.target.value) })} style={field}>
+            {[0, 5, 10, 15, 20, 30].map(v => <option key={v} value={v}>{v ? `:${String(v).padStart(2, "0")}` : "None"}</option>)}
+          </select>
+        </label>
+      </div>
+
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        {FORMATS.map(o => (
+          <button key={o.value} type="button" onClick={() => changeFormat(o.value)} style={{
+            border: `2px solid ${f === o.value ? FORMAT_COLOR[o.value] : "#E4E4E7"}`, background: f === o.value ? FORMAT_COLOR[o.value] : "#fff",
+            color: f === o.value ? "#fff" : "#18181B", borderRadius: 999, padding: "6px 14px", fontWeight: 700, cursor: "pointer", fontFamily: "inherit",
+          }}>{o.label}</button>
+        ))}
+      </div>
+      <div style={{ fontSize: 13, color: "#71717A", marginTop: -8 }}>{FORMATS.find(o => o.value === f)?.blurb}</div>
+
+      <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+        {f === "stations" && <>
+          <NumField lab="Work" value={c.work} onChange={v => setC({ work: v })} suffix="sec" min={1} />
+          <NumField lab="Transition" value={c.rest} onChange={v => setC({ rest: v })} suffix="sec" />
+          <NumField lab="Rounds" value={c.rounds} onChange={v => setC({ rounds: v })} min={1} width={90} />
+          <NumField lab="Rest between rounds" value={c.roundRest} onChange={v => setC({ roundRest: v })} suffix="sec" width={160} />
+        </>}
+        {f === "emom" && <>
+          <label style={{ ...label, width: 170 }}>Every
+            <select value={[60, 120, 180, 30, 45, 90].includes(c.interval) ? c.interval : "custom"} onChange={e => e.target.value !== "custom" && setC({ interval: Number(e.target.value) })} style={field}>
+              <option value={60}>1:00 (EMOM)</option><option value={120}>2:00 (E2MOM)</option><option value={180}>3:00 (E3MOM)</option>
+              <option value={30}>0:30</option><option value={45}>0:45</option><option value={90}>1:30</option>
+              {![60, 120, 180, 30, 45, 90].includes(c.interval) && <option value="custom">{fmt(c.interval)}</option>}
+            </select>
+          </label>
+          <NumField lab="Intervals" value={c.rounds} onChange={v => setC({ rounds: v })} min={1} width={100} />
+        </>}
+        {f === "intervals" && <>
+          <NumField lab="Work" value={c.work} onChange={v => setC({ work: v })} suffix="sec" min={1} />
+          <NumField lab="Rest" value={c.rest} onChange={v => setC({ rest: v })} suffix="sec" />
+          <NumField lab="Rounds" value={c.rounds} onChange={v => setC({ rounds: v })} min={1} width={90} />
+          <NumField lab="Sets" value={c.sets} onChange={v => setC({ sets: v })} min={1} width={80} />
+          {c.sets > 1 && <NumField lab="Rest between sets" value={c.setRest} onChange={v => setC({ setRest: v })} suffix="sec" width={150} />}
+          <div style={{ alignSelf: "flex-end" }}><Btn small variant="secondary" onClick={() => setC({ work: 20, rest: 10, rounds: 8 })}>Tabata 20/10 × 8</Btn></div>
+        </>}
+        {f === "amrap" && <DurField lab="Time" seconds={c.cap} onChange={v => setC({ cap: v })} />}
+        {f === "fortime" && <DurField lab="Time cap" seconds={c.cap} onChange={v => setC({ cap: v })} allowNone />}
+      </div>
+
+      {f !== "clock" && (
+        <MoveList
+          title={f === "stations" ? "Stations" : f === "emom" ? "Movements" : f === "intervals" ? "Movements (optional)" : "Workout"}
+          hint={f === "stations" ? "One per station, in rotation order" : f === "emom" ? "Rotates each interval: 1, 2, 3, 1…" : f === "intervals" ? "Rotates each round" : "Shown next to the clock"}
+          rows={c.movements || []} onChange={rows => setC({ movements: rows })} listId="t2p-ex-names"
+        />
+      )}
+
+      {showWarm ? (
+        <MoveList title="Warm-up (shown on screen)" rows={c.warmup || []} onChange={rows => setC({ warmup: rows })} listId="t2p-ex-names" placeholder="Warm-up movement" />
+      ) : (
+        <div><Btn small variant="ghost" onClick={() => { setShowWarm(true); if (!(c.warmup || []).length) setC({ warmup: [{ name: "", detail: "" }] }); }}>+ Add a warm-up list</Btn></div>
+      )}
+
+      {role === "coach" && (
+        <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>
+          <input type="checkbox" checked={!!draft.shared} onChange={e => setDraft(d => ({ ...d, shared: e.target.checked }))} style={{ width: 18, height: 18 }} />
+          Share with athletes (they can run it or customize a copy)
+        </label>
+      )}
+
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", borderTop: "1px solid #F4F4F5", paddingTop: 14 }}>
+        <div style={{ fontSize: 14, fontWeight: 700 }}>{summarize(f, c)}</div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <Btn variant="ghost" onClick={onCancel}>Cancel</Btn>
+          <Btn variant="secondary" onClick={onRun}>Run without saving</Btn>
+          {onSave && <Btn variant="accent" onClick={onSave} disabled={saving}>{saving ? "Saving…" : draft.id ? "Save changes" : "Save"}</Btn>}
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+function TimerCard({ t, mine, role, ownerName, onRun, onEdit, onCopy, onDelete, onShareToggle }) {
+  const [tvOpen, setTvOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const url = typeof window !== "undefined" ? `${window.location.origin}/tv/${t.slug}` : `/tv/${t.slug}`;
+  const copy = async () => { try { await navigator.clipboard.writeText(url); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch {} };
+  return (
+    <Card style={{ padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start" }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontWeight: 700, fontSize: 16, lineHeight: 1.25, wordBreak: "break-word" }}>{t.name}</div>
+          <div style={{ fontSize: 13, color: "#71717A", marginTop: 2 }}>{summarize(t.format, t.config)}</div>
+        </div>
+        <span style={{ background: FORMAT_COLOR[t.format], color: "#fff", borderRadius: 999, padding: "2px 10px", fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5, whiteSpace: "nowrap" }}>{FORMAT_LABEL[t.format]}</span>
+      </div>
+      {(ownerName || (role === "coach" && t.created_by_role === "coach")) && (
+        <div style={{ fontSize: 12, color: "#71717A" }}>
+          {ownerName ? `Built by ${ownerName}` : t.shared ? "Shared with athletes" : "Coach only"}
+        </div>
+      )}
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        <Btn small onClick={onRun}>▶ Run</Btn>
+        {mine && <Btn small variant="secondary" onClick={onEdit}>Edit</Btn>}
+        <Btn small variant="secondary" onClick={onCopy}>{mine ? "Duplicate" : "Customize"}</Btn>
+        <Btn small variant="secondary" onClick={() => setTvOpen(o => !o)}>📺 TV link</Btn>
+        {role === "coach" && t.created_by_role === "coach" && <Btn small variant="ghost" onClick={onShareToggle}>{t.shared ? "Unshare" : "Share"}</Btn>}
+        {mine && <Btn small variant="danger" onClick={onDelete}>Delete</Btn>}
+      </div>
+      {tvOpen && (
+        <div style={{ background: "#FAFAFA", border: "1px solid #E4E4E7", borderRadius: 8, padding: 12, fontSize: 13, display: "flex", flexDirection: "column", gap: 8 }}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <code style={{ fontSize: 14, fontWeight: 700, wordBreak: "break-all", userSelect: "all" }}>{url.replace(/^https?:\/\//, "")}</code>
+            <Btn small variant="secondary" onClick={copy}>{copied ? "Copied" : "Copy"}</Btn>
+          </div>
+          <div style={{ color: "#52525B", lineHeight: 1.5 }}>
+            No login needed. Open it in the TV's browser (Fire TV Silk, Google TV, smart TV), or open it on your phone or laptop and AirPlay / cast to the TV. On the TV you can also go to <b>{typeof window !== "undefined" ? window.location.host : ""}/tv</b> and enter code <b style={{ fontFamily: "monospace", fontSize: 15 }}>{t.slug}</b>.
+          </div>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+export default function Timers({ role = "coach", athlete, athletes = [], exercises = [], isMobile, readOnly }) {
+  const [timers, setTimers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [draft, setDraft] = useState(null);
+  const [running, setRunning] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const canWrite = !readOnly;
+  const athleteName = useMemo(() => Object.fromEntries((athletes || []).map(a => [a.id, a.name])), [athletes]);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    let q = supabase.from("timers").select("*").order("updated_at", { ascending: false });
+    if (role === "athlete") q = q.or(`athlete_id.eq.${athlete.id},and(created_by_role.eq.coach,shared.eq.true)`);
+    const { data, error: e } = await q;
+    if (e) setError("Couldn't load timers. Check your connection and reload.");
+    setTimers(data || []);
+    setLoading(false);
+  }, [role, athlete]);
+  useEffect(() => { load(); }, [load]);
+
+  const isMine = (t) => (role === "coach" ? t.created_by_role === "coach" : t.athlete_id === athlete?.id);
+
+  const newDraft = (preset) => setDraft({
+    name: preset ? preset.name : "",
+    format: preset ? preset.format : "stations",
+    config: preset ? JSON.parse(JSON.stringify(preset.config)) : JSON.parse(JSON.stringify(DEFAULT_CONFIG.stations)),
+    shared: role === "coach",
+  });
+
+  const save = async () => {
+    if (!canWrite) return;
+    setSaving(true); setError("");
+    const config = normalizeConfig(draft.format, draft.config);
+    config.movements = config.movements.filter(m => (m.name || "").trim());
+    config.warmup = config.warmup.filter(m => (m.name || "").trim());
+    const row = {
+      name: (draft.name || "").trim() || FORMAT_LABEL[draft.format],
+      format: draft.format, config,
+      shared: role === "coach" ? !!draft.shared : false,
+      updated_at: new Date().toISOString(),
+    };
+    let res;
+    if (draft.id) res = await supabase.from("timers").update(row).eq("id", draft.id).select().single();
+    else {
+      for (let tries = 0; tries < 4; tries++) {
+        res = await supabase.from("timers").insert({ ...row, slug: makeSlug(), created_by_role: role, athlete_id: role === "athlete" ? athlete.id : null }).select().single();
+        if (!res.error || !String(res.error.message || "").includes("slug")) break;
+      }
+    }
+    setSaving(false);
+    if (res.error) { setError("Couldn't save the timer: " + res.error.message); return; }
+    setDraft(null);
+    load();
+  };
+
+  const copyToDraft = (t) => setDraft({ name: t.name + (isMine(t) ? " (copy)" : ""), format: t.format, config: JSON.parse(JSON.stringify(t.config || {})), shared: role === "coach" });
+  const del = async (t) => { if (!canWrite || !confirm(`Delete "${t.name}"? Its TV link will stop working.`)) return; await supabase.from("timers").delete().eq("id", t.id); load(); };
+  const toggleShare = async (t) => { if (!canWrite) return; await supabase.from("timers").update({ shared: !t.shared }).eq("id", t.id); load(); };
+
+  if (running) return <TimerRunner timer={running} onExit={() => setRunning(null)} />;
+
+  const mine = timers.filter(isMine);
+  const others = timers.filter(t => !isMine(t));
+  const grid = { display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill, minmax(340px, 1fr))", gap: 12 };
+  const h2 = { fontSize: 13, fontWeight: 800, letterSpacing: 1, textTransform: "uppercase", color: "#71717A", margin: "8px 0 0" };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16, maxWidth: 1200 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 12, flexWrap: "wrap" }}>
+        <div>
+          <h1 style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 38, letterSpacing: 1, lineHeight: 1, margin: 0 }}>Timers</h1>
+          <p style={{ color: "#71717A", fontSize: 14, marginTop: 4 }}>Stations, EMOM, Tabata, AMRAP, For Time and a running clock. Run on your phone or put it on the gym TV.</p>
+        </div>
+        {!draft && canWrite && <Btn variant="accent" onClick={() => newDraft()}>+ New timer</Btn>}
+      </div>
+
+      {error && <div style={{ background: "#FEF2F2", color: "#B91C1C", padding: "10px 14px", borderRadius: 8, fontSize: 14 }}>{error}</div>}
+
+      {draft ? (
+        <Editor draft={draft} setDraft={setDraft} role={role} exercises={exercises} saving={saving}
+          onSave={canWrite ? save : null}
+          onRun={() => setRunning({ name: draft.name || FORMAT_LABEL[draft.format], format: draft.format, config: draft.config })}
+          onCancel={() => setDraft(null)} />
+      ) : (
+        <>
+          <div>
+            <div style={h2}>Quick start</div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
+              {PRESETS.map(p => (
+                <button key={p.name} type="button" onClick={() => newDraft(p)} style={{ border: `1px solid #E4E4E7`, borderLeft: `4px solid ${FORMAT_COLOR[p.format]}`, background: "#fff", borderRadius: 8, padding: "8px 14px", fontWeight: 700, cursor: "pointer", fontFamily: "inherit", fontSize: 14 }}>{p.name}</button>
+              ))}
+            </div>
+          </div>
+
+          <div style={h2}>{role === "coach" ? "Your timers" : "My timers"}</div>
+          {loading ? <div style={{ color: "#A1A1AA", fontSize: 14 }}>Loading…</div> : mine.length === 0 ? (
+            <div style={{ color: "#71717A", fontSize: 14 }}>None yet. Pick a quick start above or build a new one.</div>
+          ) : (
+            <div style={grid}>
+              {mine.map(t => <TimerCard key={t.id} t={t} mine={canWrite} role={role} onRun={() => setRunning(t)} onEdit={() => setDraft({ id: t.id, name: t.name, format: t.format, config: JSON.parse(JSON.stringify(t.config || {})), shared: t.shared })} onCopy={() => copyToDraft(t)} onDelete={() => del(t)} onShareToggle={() => toggleShare(t)} />)}
+            </div>
+          )}
+
+          {others.length > 0 && <>
+            <div style={h2}>{role === "coach" ? "Built by athletes" : "From your coach"}</div>
+            <div style={grid}>
+              {others.map(t => <TimerCard key={t.id} t={t} mine={false} role={role} ownerName={role === "coach" ? (athleteName[t.athlete_id] || "Athlete") : null} onRun={() => setRunning(t)} onCopy={() => canWrite && copyToDraft(t)} />)}
+            </div>
+          </>}
+        </>
+      )}
+    </div>
+  );
+}

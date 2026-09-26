@@ -12,6 +12,7 @@ import Settings from "./Settings";
 import Seasons from "./Seasons";
 import Messages from "./Messages";
 import AIChat from "./AIChat";
+import Timers from "./Timers";
 import ToastNotifications from "./ToastNotifications";
 import AlertsBell from "./AlertsBell";
 import T2PLogo from "./T2PLogo";
@@ -540,6 +541,7 @@ export default function CoachApp({ onLogout }) {
           {page === "programs" && <Programs {...pp} focusAthleteId={focusAthleteId} focusTarget={focusTarget} onFocusClear={() => { setFocusAthleteId(null); setFocusTarget(null); }} />}
           {page === "library" && <Library {...pp} />}
           {page === "log" && <LogPage {...pp} />}
+          {page === "timers" && <Timers role="coach" athletes={pp.athletes} exercises={pp.exercises} isMobile={isMobile} />}
           {page === "messages" && <Messages isCoach currentUserId="coach" currentUserName="Coach" athletes={pp.athletes} isMobile={isMobile} />}
           {page === "settings" && <Settings {...pp} />}
           {page === "ai-chat" && <AIChat isMobile={isMobile} isCoach athletes={pp.athletes} programs={pp.programs} logs={pp.logs} exercises={pp.exercises} baselines={pp.baselines} videoSubs={pp.videoSubs} />}
