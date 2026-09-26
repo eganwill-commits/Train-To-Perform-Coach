@@ -135,21 +135,45 @@ export default function TimerRunner({ timer, onExit, tv = false }) {
 
   const elapsedMs = () => acc.current + (since.current != null ? performance.now() - since.current : 0);
 
-  const beep = useCallback((freq = 880, dur = 0.12) => {
+  // Audio: one shared context, kept "warm" with an inaudible tone once started.
+  // Soundbars (Sonos/HDMI ARC), Bluetooth speakers and TVs mute their output after
+  // silence and swallow the first fraction of a second of the next sound, which ate
+  // the short 3-2-1 beeps. A constant near-silent signal keeps the audio path open.
+  const keepAlive = useRef(null);
+  const ensureAudio = useCallback(() => {
     try {
+      // iPhone: play through the silent switch like a media app would.
+      if (navigator.audioSession) { try { navigator.audioSession.type = "playback"; } catch {} }
       const Ctx = window.AudioContext || window.webkitAudioContext;
-      if (!Ctx) return;
+      if (!Ctx) return null;
       audio.current = audio.current || new Ctx();
       const a = audio.current;
       if (a.state === "suspended") a.resume();
+      if (!keepAlive.current) {
+        const o = a.createOscillator(), g = a.createGain();
+        o.frequency.value = 40; g.gain.value = 0.0015;
+        o.connect(g); g.connect(a.destination); o.start();
+        keepAlive.current = o;
+      }
+      return a;
+    } catch { return null; }
+  }, []);
+  const beep = useCallback((freq = 880, dur = 0.25, vol = 0.5) => {
+    const a = ensureAudio();
+    if (!a) return;
+    try {
+      const t0 = a.currentTime + 0.01;
       const o = a.createOscillator(), g = a.createGain();
       o.type = "square"; o.frequency.value = freq;
-      g.gain.setValueAtTime(0.2, a.currentTime);
-      g.gain.exponentialRampToValueAtTime(0.001, a.currentTime + dur);
+      g.gain.setValueAtTime(0.0001, t0);
+      g.gain.linearRampToValueAtTime(vol, t0 + 0.01);
+      g.gain.setValueAtTime(vol, t0 + dur - 0.04);
+      g.gain.linearRampToValueAtTime(0.0001, t0 + dur);
       o.connect(g); g.connect(a.destination);
-      o.start(); o.stop(a.currentTime + dur);
+      o.start(t0); o.stop(t0 + dur + 0.02);
     } catch {}
-  }, []);
+  }, [ensureAudio]);
+  useEffect(() => () => { try { keepAlive.current && keepAlive.current.stop(); } catch {} try { audio.current && audio.current.close(); } catch {} }, []);
 
   // Fit the 1920x1080 stage to the window; phones in portrait get a scrolling layout.
   useEffect(() => {
@@ -197,14 +221,14 @@ export default function TimerRunner({ timer, onExit, tv = false }) {
       if (seg.dur != null) {
         const left = Math.ceil(seg.start + seg.dur - t);
         const key = si + ":" + left;
-        if (left <= 3 && left >= 1 && lastBeep.current !== key) { lastBeep.current = key; if (beepsOn) beep(660, 0.1); }
+        if (left <= 3 && left >= 1 && lastBeep.current !== key) { lastBeep.current = key; if (beepsOn) beep(880, 0.22, 0.55); }
       }
       const enterKey = "enter:" + si;
       if (si > 0 && lastBeep.current !== enterKey && !lastBeep.current.startsWith(si + ":")) {
         lastBeep.current = enterKey;
         const isGo = seg.kind === "work" || seg.kind === "cap" || seg.kind === "up";
-        if (isGo) { beep(1046, 0.25); goCall(); }
-        else beep(440, 0.4);
+        if (isGo) { beep(1318, 0.45, 0.6); goCall(); }
+        else beep(523, 0.5, 0.5);
       }
       setTick(x => x + 1);
     }, 100);
