@@ -68,7 +68,8 @@ function MoveList({ title, hint, rows, onChange, listId, placeholder = "Movement
 const shareLink = { display: "inline-flex", alignItems: "center", gap: 6, border: "1px solid #E4E4E7", background: "#fff", borderRadius: 8, padding: "7px 14px", fontWeight: 700, fontSize: 14, color: "#18181B", textDecoration: "none" };
 const iconBtn = { border: "1px solid #E4E4E7", background: "#fff", borderRadius: 6, width: 30, height: 34, cursor: "pointer", fontWeight: 700, color: "#52525B", padding: 0 };
 
-function Editor({ draft, setDraft, role, exercises, onSave, onRun, onCancel, saving, libraryCount, onEditVoice }) {
+function Editor({ draft, setDraft, role, exercises, onSave, onRun, onCancel, saving, libraryCount, onEditVoice, libraryVoice, recMsg }) {
+  const [pickVoice, setPickVoice] = useState(false);
   const c = draft.config;
   const setC = (patch) => setDraft(d => ({ ...d, config: { ...d.config, ...patch } }));
   const changeFormat = (f) => setDraft(d => ({ ...d, format: f, config: { ...DEFAULT_CONFIG[f], movements: d.config.movements?.length ? d.config.movements : DEFAULT_CONFIG[f].movements, warmup: d.config.warmup || [], countdown: d.config.countdown ?? 10 } }));
@@ -110,11 +111,30 @@ function Editor({ draft, setDraft, role, exercises, onSave, onRun, onCancel, sav
               <span><b>Custom lines</b> for this timer only</span>
             </label>
             {c.voiceSource === "custom" && (
-              <textarea rows={3} aria-label="Custom voice lines, one per line" value={(c.voiceLines || []).join("\n")}
-                onChange={e => setC({ voiceLines: e.target.value.split("\n") })} style={{ ...field, resize: "vertical", fontFamily: "inherit" }} />
+              <>
+                <textarea rows={3} aria-label="Custom voice lines, one per line" placeholder="One line per row, e.g. Let's go, Fifty And Fit!" value={(c.voiceLines || []).join("\n")}
+                  onChange={e => setC({ voiceLines: e.target.value.split("\n") })} style={{ ...field, resize: "vertical", fontFamily: "inherit" }} />
+                {role === "coach" && (
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", fontSize: 13 }}>
+                    <span style={{ color: "#52525B" }}>Voice:</span>
+                    <b>{c.voiceId ? c.voiceName : libraryVoice?.voice_name ? `${libraryVoice.voice_name} (same as library)` : "Device voice (no pro voice chosen yet)"}</b>
+                    <Btn small variant="secondary" onClick={() => setPickVoice(p => !p)}>{c.voiceId ? "Change" : "Use a different voice"}</Btn>
+                    {c.voiceId && <Btn small variant="ghost" onClick={() => setC({ voiceId: null, voiceName: null })}>Use library voice</Btn>}
+                  </div>
+                )}
+                {pickVoice && <VoicePicker current={c.voiceId || libraryVoice?.voice_id} onPick={v => { setC({ voiceId: v.id, voiceName: v.name }); setPickVoice(false); }} onClose={() => setPickVoice(false)} />}
+                {role === "coach" && (c.voiceId || libraryVoice?.voice_id) && <div style={{ fontSize: 12, color: "#71717A" }}>New or changed lines are recorded in this voice when you click Save.</div>}
+              </>
             )}
             <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", fontSize: 12, color: "#71717A" }}>
-              <Btn small variant="secondary" onClick={() => testVoice(c.voiceSource === "custom" ? c.voiceLines : null)}>▶ Test voice</Btn>
+              <Btn small variant="secondary" onClick={() => {
+                if (c.voiceSource === "custom") {
+                  const vid = c.voiceId || libraryVoice?.voice_id;
+                  const withClip = (c.voiceClips || []).filter(x => (c.voiceLines || []).map(l => (l || "").trim()).includes(x.text) && (!vid || x.key === `${vid}|${x.text}`));
+                  if (withClip.length) { playUrl(withClip[Math.floor(Math.random() * withClip.length)].url); return; }
+                  testVoice(c.voiceLines);
+                } else testVoice(null);
+              }}>▶ Test voice</Btn>
               {role === "coach" && c.voiceSource !== "custom" && onEditVoice && <Btn small variant="ghost" onClick={onEditVoice}>Edit voice lines</Btn>}
               Uses the device's built-in voice.
             </div>
@@ -187,7 +207,7 @@ function Editor({ draft, setDraft, role, exercises, onSave, onRun, onCancel, sav
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <Btn variant="ghost" onClick={onCancel}>Cancel</Btn>
           <Btn variant="secondary" onClick={onRun}>Run without saving</Btn>
-          {onSave && <Btn variant="accent" onClick={onSave} disabled={saving}>{saving ? "Saving…" : draft.id ? "Save changes" : "Save"}</Btn>}
+          {onSave && <Btn variant="accent" onClick={onSave} disabled={saving}>{saving ? (recMsg || "Saving…") : draft.id ? "Save changes" : "Save"}</Btn>}
         </div>
       </div>
     </Card>
@@ -456,6 +476,9 @@ export default function Timers({ role = "coach", athlete, athletes = [], exercis
   const [voiceOpen, setVoiceOpen] = useState(false);
   const [libraryCount, setLibraryCount] = useState(null);
   const canWrite = !readOnly;
+  const [libraryVoice, setLibraryVoice] = useState(null); // { voice_id, voice_name }
+  const [recMsg, setRecMsg] = useState("");
+  useEffect(() => { supabase.from("app_settings").select("value").eq("key", "voice").maybeSingle().then(({ data }) => setLibraryVoice(data?.value || {})); }, [voiceOpen]);
   const loadVoiceCount = useCallback(async () => {
     const { count } = await supabase.from("voice_lines").select("id", { count: "exact", head: true }).eq("enabled", true);
     setLibraryCount(count ?? null);
@@ -489,6 +512,33 @@ export default function Timers({ role = "coach", athlete, athletes = [], exercis
     const config = normalizeConfig(draft.format, draft.config);
     config.movements = config.movements.filter(m => (m.name || "").trim());
     config.warmup = config.warmup.filter(m => (m.name || "").trim());
+    // Custom voice lines: record each one in the pro voice (this timer's voice, or the library voice).
+    if (config.voice && config.voiceSource === "custom") {
+      const lines = (config.voiceLines || []).map(l => (l || "").trim()).filter(Boolean);
+      config.voiceLines = lines;
+      const vid = config.voiceId || libraryVoice?.voice_id;
+      const old = Array.isArray(config.voiceClips) ? config.voiceClips : [];
+      const clips = [];
+      if (vid && role === "coach") {
+        const todo = lines.filter(t => !old.find(c => c.text === t && c.key === `${vid}|${t}` && c.url));
+        const headers = { "Content-Type": "application/json", ...(await authHeader()) };
+        for (let i = 0; i < todo.length; i++) {
+          setRecMsg(`Recording voice line ${i + 1} of ${todo.length}…`);
+          const t = todo[i];
+          try {
+            const r = await fetch("/api/voice", { method: "POST", headers, body: JSON.stringify({ text: t, voice_id: vid }) });
+            if (!r.ok) { const j = await r.json().catch(() => ({})); setError("Saved without the pro voice: " + (j.message || r.status)); break; }
+            const path = `timer-${Date.now()}-${i}.mp3`;
+            const up = await supabase.storage.from("voice-lines").upload(path, await r.blob(), { contentType: "audio/mpeg" });
+            if (up.error) { setError("Saved without the pro voice: " + up.error.message); break; }
+            old.push({ text: t, key: `${vid}|${t}`, url: supabase.storage.from("voice-lines").getPublicUrl(path).data.publicUrl });
+          } catch { setError("Saved without the pro voice: couldn't reach the voice service."); break; }
+        }
+        setRecMsg("");
+      }
+      lines.forEach(t => { const c = old.find(x => x.text === t && (!vid || x.key === `${vid}|${t}`)); if (c) clips.push(c); });
+      config.voiceClips = clips;
+    }
     const row = {
       name: (draft.name || "").trim() || FORMAT_LABEL[draft.format],
       format: draft.format, config,
@@ -542,6 +592,7 @@ export default function Timers({ role = "coach", athlete, athletes = [], exercis
       ) : draft ? (
         <Editor draft={draft} setDraft={setDraft} role={role} exercises={exercises} saving={saving}
           libraryCount={libraryCount} onEditVoice={canWrite ? () => setVoiceOpen(true) : null}
+          libraryVoice={libraryVoice} recMsg={recMsg}
           onSave={canWrite ? save : null}
           onRun={() => setRunning({ name: draft.name || FORMAT_LABEL[draft.format], format: draft.format, config: draft.config })}
           onCancel={() => setDraft(null)} />

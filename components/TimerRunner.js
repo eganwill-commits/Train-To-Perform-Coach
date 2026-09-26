@@ -127,10 +127,11 @@ export default function TimerRunner({ timer, onExit, tv = false }) {
     return () => { off = true; };
   }, [config.voiceSource]);
   const voiceItems = useMemo(() => {
-    const src = config.voiceSource === "custom" ? (config.voiceLines || []).map(t => ({ text: t, url: null })) : (libLines && libLines.length ? libLines : [{ text: DEFAULT_VOICE_LINE, url: null }]);
+    const clipFor = (t) => ((config.voiceClips || []).find(c => c.text === (t || "").trim()) || {}).url || null;
+    const src = config.voiceSource === "custom" ? (config.voiceLines || []).map(t => ({ text: t, url: clipFor(t) })) : (libLines && libLines.length ? libLines : [{ text: DEFAULT_VOICE_LINE, url: null }]);
     const clean = src.map(x => ({ text: (x.text || "").trim(), url: x.url })).filter(x => x.text);
     return clean.length ? clean : [{ text: DEFAULT_VOICE_LINE, url: null }];
-  }, [config.voiceSource, config.voiceLines, libLines]);
+  }, [config.voiceSource, config.voiceLines, config.voiceClips, libLines]);
   const voiceLines = useMemo(() => voiceItems.map(x => x.text), [voiceItems]);
   const clipBuffers = useRef(new Map()); // url -> AudioBuffer (decoded after Start)
   const loadClips = useCallback(() => {
