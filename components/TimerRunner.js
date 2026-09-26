@@ -1,7 +1,8 @@
 "use client";
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
-import { buildSegments, normalizeConfig, summarize, fmt } from "../lib/timerEngine";
+import { buildSegments, normalizeConfig, summarize, fmt, DEFAULT_VOICE_LINE } from "../lib/timerEngine";
 import { LOGO_SRC } from "./T2PLogo";
+import { supabase } from "../lib/supabase";
 
 /* Full-screen, T2P-branded timer. Used inside the app (as an overlay) and on the
    public /tv/<code> page. Everything is laid out on a fixed 1920x1080 stage that
@@ -108,7 +109,19 @@ export default function TimerRunner({ timer, onExit, tv = false }) {
   const [beepsOn, setBeepsOn] = useState(config.beeps !== false);
   const [voiceOn, setVoiceOn] = useState(!!config.voice);
   const canSpeak = typeof window !== "undefined" && "speechSynthesis" in window && typeof window.SpeechSynthesisUtterance === "function";
-  const voiceLines = (config.voiceLines || []).map(l => (l || "").trim()).filter(Boolean);
+  // Voice lines come from the coach's shared library unless this timer has its own list.
+  const [libLines, setLibLines] = useState(null);
+  useEffect(() => {
+    if (config.voiceSource === "custom") return;
+    let off = false;
+    supabase.from("voice_lines").select("text").eq("enabled", true).order("sort").then(({ data }) => { if (!off) setLibLines((data || []).map(r => r.text)); });
+    return () => { off = true; };
+  }, [config.voiceSource]);
+  const voiceLines = useMemo(() => {
+    const src = config.voiceSource === "custom" ? (config.voiceLines || []) : (libLines && libLines.length ? libLines : [DEFAULT_VOICE_LINE]);
+    const clean = src.map(l => (l || "").trim()).filter(Boolean);
+    return clean.length ? clean : [DEFAULT_VOICE_LINE];
+  }, [config.voiceSource, config.voiceLines, libLines]);
   const lastLine = useRef(-1);
   const speak = useCallback((text) => {
     if (!canSpeak || !text) return false;
@@ -370,7 +383,7 @@ export default function TimerRunner({ timer, onExit, tv = false }) {
                 {!flow && <button className="t2pt-btn" onClick={() => changeZoom(-0.05)} aria-label="Smaller">A−</button>}
                 {!flow && <button className="t2pt-btn" onClick={() => changeZoom(0.05)} aria-label="Bigger">A+</button>}
                 <button className="t2pt-btn" onClick={() => setBeepsOn(v => !v)} aria-pressed={beepsOn}>{beepsOn ? "3-2-1 On" : "3-2-1 Off"}</button>
-                {canSpeak && <button className="t2pt-btn" onClick={() => { if (!voiceOn) speak(voiceLines[0] || ""); setVoiceOn(!voiceOn); }} aria-pressed={voiceOn}>{voiceOn ? "Voice On" : "Voice Off"}</button>}
+                {canSpeak && <button className="t2pt-btn" onClick={() => { if (!voiceOn) speak(voiceLines[Math.floor(Math.random() * voiceLines.length)] || ""); setVoiceOn(!voiceOn); }} aria-pressed={voiceOn}>{voiceOn ? "Voice On" : "Voice Off"}</button>}
                 <button className="t2pt-btn" onClick={fullscreen}>Full screen</button>
                 {onExit && <button className="t2pt-btn" onClick={onExit}>Exit</button>}
               </div>

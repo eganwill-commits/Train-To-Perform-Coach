@@ -65,9 +65,10 @@ function MoveList({ title, hint, rows, onChange, listId, placeholder = "Movement
     </div>
   );
 }
+const shareLink = { display: "inline-flex", alignItems: "center", gap: 6, border: "1px solid #E4E4E7", background: "#fff", borderRadius: 8, padding: "7px 14px", fontWeight: 700, fontSize: 14, color: "#18181B", textDecoration: "none" };
 const iconBtn = { border: "1px solid #E4E4E7", background: "#fff", borderRadius: 6, width: 30, height: 34, cursor: "pointer", fontWeight: 700, color: "#52525B", padding: 0 };
 
-function Editor({ draft, setDraft, role, exercises, onSave, onRun, onCancel, saving }) {
+function Editor({ draft, setDraft, role, exercises, onSave, onRun, onCancel, saving, libraryCount, onEditVoice }) {
   const c = draft.config;
   const setC = (patch) => setDraft(d => ({ ...d, config: { ...d.config, ...patch } }));
   const changeFormat = (f) => setDraft(d => ({ ...d, format: f, config: { ...DEFAULT_CONFIG[f], movements: d.config.movements?.length ? d.config.movements : DEFAULT_CONFIG[f].movements, warmup: d.config.warmup || [], countdown: d.config.countdown ?? 10 } }));
@@ -95,19 +96,29 @@ function Editor({ draft, setDraft, role, exercises, onSave, onRun, onCancel, sav
           3-2-1 countdown beeps
         </label>
         <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>
-          <input type="checkbox" checked={!!c.voice} onChange={e => setC({ voice: e.target.checked, voiceLines: c.voiceLines && c.voiceLines.length ? c.voiceLines : [DEFAULT_VOICE_LINE] })} style={{ width: 18, height: 18 }} />
+          <input type="checkbox" checked={!!c.voice} onChange={e => setC({ voice: e.target.checked })} style={{ width: 18, height: 18 }} />
           Voice call on "Go"
         </label>
         {c.voice && (
-          <label style={{ ...label, flex: "1 1 280px" }}>
-            What it says (one per line, picks one at random each time)
-            <textarea rows={3} value={(c.voiceLines && c.voiceLines.length ? c.voiceLines : [DEFAULT_VOICE_LINE]).join("\n")}
-              onChange={e => setC({ voiceLines: e.target.value.split("\n") })} style={{ ...field, resize: "vertical", fontFamily: "inherit" }} />
-            <span style={{ display: "flex", gap: 8, alignItems: "center", fontWeight: 500, color: "#71717A" }}>
-              <Btn small variant="secondary" onClick={() => { try { const t = (c.voiceLines || []).map(x => (x || "").trim()).filter(Boolean); const u = new window.SpeechSynthesisUtterance(t[Math.floor(Math.random() * t.length)] || DEFAULT_VOICE_LINE); window.speechSynthesis.cancel(); window.speechSynthesis.speak(u); } catch {} }}>▶ Test voice</Btn>
+          <div style={{ flex: "1 1 320px", display: "flex", flexDirection: "column", gap: 8 }}>
+            <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 14, cursor: "pointer" }}>
+              <input type="radio" name="voiceSource" checked={c.voiceSource !== "custom"} onChange={() => setC({ voiceSource: "library" })} />
+              <span><b>Voice line library</b> · a random line from {libraryCount != null ? `${libraryCount} lines` : "your list"} each time</span>
+            </label>
+            <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 14, cursor: "pointer" }}>
+              <input type="radio" name="voiceSource" checked={c.voiceSource === "custom"} onChange={() => setC({ voiceSource: "custom", voiceLines: c.voiceLines && c.voiceLines.length ? c.voiceLines : [DEFAULT_VOICE_LINE] })} />
+              <span><b>Custom lines</b> for this timer only</span>
+            </label>
+            {c.voiceSource === "custom" && (
+              <textarea rows={3} aria-label="Custom voice lines, one per line" value={(c.voiceLines || []).join("\n")}
+                onChange={e => setC({ voiceLines: e.target.value.split("\n") })} style={{ ...field, resize: "vertical", fontFamily: "inherit" }} />
+            )}
+            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", fontSize: 12, color: "#71717A" }}>
+              <Btn small variant="secondary" onClick={() => testVoice(c.voiceSource === "custom" ? c.voiceLines : null)}>▶ Test voice</Btn>
+              {role === "coach" && c.voiceSource !== "custom" && onEditVoice && <Btn small variant="ghost" onClick={onEditVoice}>Edit voice lines</Btn>}
               Uses the device's built-in voice.
-            </span>
-          </label>
+            </div>
+          </div>
         )}
       </div>
 
@@ -183,8 +194,31 @@ function Editor({ draft, setDraft, role, exercises, onSave, onRun, onCancel, sav
   );
 }
 
+// Speak one random line with the device voice. lines = null -> pull from the library.
+async function testVoice(lines) {
+  try {
+    let list = (lines || []).map(x => (x || "").trim()).filter(Boolean);
+    if (!lines) { const { data } = await supabase.from("voice_lines").select("text").eq("enabled", true); list = (data || []).map(r => r.text); }
+    const text = list[Math.floor(Math.random() * list.length)] || DEFAULT_VOICE_LINE;
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(new window.SpeechSynthesisUtterance(text));
+  } catch {}
+}
+
+function shareText(t, url) {
+  const c = normalizeConfig(t.format, t.config);
+  const lines = [`${t.name}`, summarize(t.format, c), ""];
+  const warm = (c.warmup || []).filter(m => (m.name || "").trim());
+  const mv = (c.movements || []).filter(m => (m.name || "").trim());
+  if (warm.length) { lines.push("Warm-up:"); warm.forEach((m, i) => lines.push(`${i + 1}. ${m.name}${m.detail ? " (" + m.detail + ")" : ""}`)); lines.push(""); }
+  if (mv.length) { lines.push(t.format === "stations" ? "Stations:" : "Workout:"); mv.forEach((m, i) => lines.push(`${i + 1}. ${m.name}${m.detail ? " (" + m.detail + ")" : ""}`)); lines.push(""); }
+  lines.push("Open the timer (any phone, laptop or TV browser, no login):", url);
+  return lines.join("\n");
+}
+
 function TimerCard({ t, mine, role, ownerName, onRun, onEdit, onCopy, onDelete, onShareToggle }) {
   const [tvOpen, setTvOpen] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const url = typeof window !== "undefined" ? `${window.location.origin}/tv/${t.slug}` : `/tv/${t.slug}`;
   const copy = async () => { try { await navigator.clipboard.writeText(url); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch {} };
@@ -206,10 +240,25 @@ function TimerCard({ t, mine, role, ownerName, onRun, onEdit, onCopy, onDelete, 
         <Btn small onClick={onRun}>▶ Run</Btn>
         {mine && <Btn small variant="secondary" onClick={onEdit}>Edit</Btn>}
         <Btn small variant="secondary" onClick={onCopy}>{mine ? "Duplicate" : "Customize"}</Btn>
-        <Btn small variant="secondary" onClick={() => setTvOpen(o => !o)}>📺 TV link</Btn>
-        {role === "coach" && t.created_by_role === "coach" && <Btn small variant="ghost" onClick={onShareToggle}>{t.shared ? "Unshare" : "Share"}</Btn>}
+        <Btn small variant="secondary" onClick={async () => {
+          const text = shareText(t, url);
+          if (navigator.share) { try { await navigator.share({ title: t.name, text }); return; } catch (e) { if (e && e.name === "AbortError") return; } }
+          setShareOpen(o => !o); setTvOpen(false);
+        }}>↗ Share</Btn>
+        <Btn small variant="secondary" onClick={() => { setTvOpen(o => !o); setShareOpen(false); }}>📺 TV link</Btn>
+        {role === "coach" && t.created_by_role === "coach" && <Btn small variant="ghost" onClick={onShareToggle}>{t.shared ? "Hide from athletes" : "Show to athletes"}</Btn>}
         {mine && <Btn small variant="danger" onClick={onDelete}>Delete</Btn>}
       </div>
+      {shareOpen && (
+        <div style={{ background: "#FAFAFA", border: "1px solid #E4E4E7", borderRadius: 8, padding: 12, fontSize: 13, display: "flex", flexDirection: "column", gap: 8 }}>
+          <div style={{ color: "#52525B" }}>Send this workout to anyone. The link opens the timer on any phone, laptop or TV, no login needed.</div>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            <a href={`sms:?&body=${encodeURIComponent(`${t.name}: ${url}`)}`} style={shareLink}>💬 Text</a>
+            <a href={`mailto:?subject=${encodeURIComponent(t.name + " · T2P workout")}&body=${encodeURIComponent(shareText(t, url))}`} style={shareLink}>✉ Email</a>
+            <button type="button" onClick={copy} style={{ ...shareLink, cursor: "pointer", fontFamily: "inherit" }}>{copied ? "✓ Copied" : "🔗 Copy link"}</button>
+          </div>
+        </div>
+      )}
       {tvOpen && (
         <div style={{ background: "#FAFAFA", border: "1px solid #E4E4E7", borderRadius: 8, padding: 12, fontSize: 13, display: "flex", flexDirection: "column", gap: 8 }}>
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
@@ -225,6 +274,65 @@ function TimerCard({ t, mine, role, ownerName, onRun, onEdit, onCopy, onDelete, 
   );
 }
 
+const VOICE_CATS = ["Hype", "Grit", "Team", "Other"];
+function VoiceLibrary({ onClose, onSaved }) {
+  const [rows, setRows] = useState(null);
+  const [removed, setRemoved] = useState([]);
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState("");
+  useEffect(() => { supabase.from("voice_lines").select("*").order("sort").then(({ data }) => setRows(data || [])); }, []);
+  const upd = (i, patch) => setRows(r => r.map((x, j) => (j === i ? { ...x, ...patch } : x)));
+  const move = (i, d) => setRows(r => { const j = i + d; if (j < 0 || j >= r.length) return r; const c = [...r]; [c[i], c[j]] = [c[j], c[i]]; return c; });
+  const say = (text) => { try { window.speechSynthesis.cancel(); window.speechSynthesis.speak(new window.SpeechSynthesisUtterance(text)); } catch {} };
+  const save = async () => {
+    setSaving(true); setMsg("");
+    const keep = rows.map((r, i) => ({ ...r, text: (r.text || "").trim(), sort: i + 1 })).filter(r => r.text);
+    if (removed.length) await supabase.from("voice_lines").delete().in("id", removed);
+    const existing = keep.filter(r => r.id).map(({ id, text, category, enabled, sort }) => ({ id, text, category, enabled, sort }));
+    const fresh = keep.filter(r => !r.id).map(({ text, category, enabled, sort }) => ({ text, category, enabled, sort }));
+    const e1 = existing.length ? (await supabase.from("voice_lines").upsert(existing)).error : null;
+    const e2 = fresh.length ? (await supabase.from("voice_lines").insert(fresh)).error : null;
+    setSaving(false);
+    if (e1 || e2) { setMsg("Couldn't save: " + (e1 || e2).message); return; }
+    const { data } = await supabase.from("voice_lines").select("*").order("sort");
+    setRows(data || []); setRemoved([]); setMsg("Saved. Every timer using the library picks these up next time it starts.");
+    onSaved && onSaved();
+  };
+  if (!rows) return <Card><div style={{ color: "#A1A1AA" }}>Loading…</div></Card>;
+  const on = rows.filter(r => r.enabled && (r.text || "").trim()).length;
+  return (
+    <Card style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "flex-start" }}>
+        <div>
+          <div style={{ fontSize: 18, fontWeight: 800 }}>Voice lines</div>
+          <div style={{ fontSize: 13, color: "#71717A", marginTop: 2 }}>When a work interval starts, the timer says one of these at random. {on} line{on === 1 ? "" : "s"} on. Untick a line to rest it without deleting it.</div>
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <Btn variant="ghost" onClick={onClose}>Close</Btn>
+          <Btn variant="accent" onClick={save} disabled={saving}>{saving ? "Saving…" : "Save"}</Btn>
+        </div>
+      </div>
+      {msg && <div style={{ fontSize: 13, color: msg.startsWith("Couldn't") ? "#B91C1C" : "#15803D", fontWeight: 600 }}>{msg}</div>}
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        {rows.map((r, i) => (
+          <div key={r.id || "n" + i} style={{ display: "grid", gridTemplateColumns: "auto minmax(0,1fr) 110px auto", gap: 6, alignItems: "center", opacity: r.enabled ? 1 : 0.5 }}>
+            <input type="checkbox" checked={!!r.enabled} onChange={e => upd(i, { enabled: e.target.checked })} style={{ width: 18, height: 18 }} aria-label="Use this line" />
+            <input value={r.text} onChange={e => upd(i, { text: e.target.value })} placeholder="Type a line…" style={field} />
+            <select value={r.category || "Hype"} onChange={e => upd(i, { category: e.target.value })} style={field}>{VOICE_CATS.map(c => <option key={c}>{c}</option>)}</select>
+            <div style={{ display: "flex", gap: 2 }}>
+              <button type="button" onClick={() => say(r.text)} style={iconBtn} aria-label="Play">▶</button>
+              <button type="button" onClick={() => move(i, -1)} style={iconBtn} aria-label="Move up">↑</button>
+              <button type="button" onClick={() => move(i, 1)} style={iconBtn} aria-label="Move down">↓</button>
+              <button type="button" onClick={() => { if (r.id) setRemoved(x => [...x, r.id]); setRows(rs => rs.filter((_, j) => j !== i)); }} style={{ ...iconBtn, color: "#DC2626" }} aria-label="Delete">✕</button>
+            </div>
+          </div>
+        ))}
+      </div>
+      <div><Btn small variant="secondary" onClick={() => setRows(r => [...r, { text: "", category: "Hype", enabled: true }])}>+ Add line</Btn></div>
+    </Card>
+  );
+}
+
 export default function Timers({ role = "coach", athlete, athletes = [], exercises = [], isMobile, readOnly }) {
   const [timers, setTimers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -232,7 +340,14 @@ export default function Timers({ role = "coach", athlete, athletes = [], exercis
   const [draft, setDraft] = useState(null);
   const [running, setRunning] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [voiceOpen, setVoiceOpen] = useState(false);
+  const [libraryCount, setLibraryCount] = useState(null);
   const canWrite = !readOnly;
+  const loadVoiceCount = useCallback(async () => {
+    const { count } = await supabase.from("voice_lines").select("id", { count: "exact", head: true }).eq("enabled", true);
+    setLibraryCount(count ?? null);
+  }, []);
+  useEffect(() => { loadVoiceCount(); }, [loadVoiceCount]);
   const athleteName = useMemo(() => Object.fromEntries((athletes || []).map(a => [a.id, a.name])), [athletes]);
 
   const load = useCallback(async () => {
@@ -281,7 +396,7 @@ export default function Timers({ role = "coach", athlete, athletes = [], exercis
     load();
   };
 
-  const copyToDraft = (t) => setDraft({ name: t.name + (isMine(t) ? " (copy)" : ""), format: t.format, config: JSON.parse(JSON.stringify(t.config || {})), shared: role === "coach" });
+  const copyToDraft = (t) => setDraft({ name: t.name + (isMine(t) ? " (copy)" : ""), format: t.format, config: normalizeConfig(t.format, JSON.parse(JSON.stringify(t.config || {}))), shared: role === "coach" });
   const del = async (t) => { if (!canWrite || !confirm(`Delete "${t.name}"? Its TV link will stop working.`)) return; await supabase.from("timers").delete().eq("id", t.id); load(); };
   const toggleShare = async (t) => { if (!canWrite) return; await supabase.from("timers").update({ shared: !t.shared }).eq("id", t.id); load(); };
 
@@ -299,13 +414,21 @@ export default function Timers({ role = "coach", athlete, athletes = [], exercis
           <h1 style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 38, letterSpacing: 1, lineHeight: 1, margin: 0 }}>Timers</h1>
           <p style={{ color: "#71717A", fontSize: 14, marginTop: 4 }}>Stations, EMOM, Tabata, AMRAP, For Time and a running clock. Run on your phone or put it on the gym TV.</p>
         </div>
-        {!draft && canWrite && <Btn variant="accent" onClick={() => newDraft()}>+ New timer</Btn>}
+        {!draft && !voiceOpen && canWrite && (
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {role === "coach" && <Btn variant="secondary" onClick={() => setVoiceOpen(true)}>🎙 Voice lines</Btn>}
+            <Btn variant="accent" onClick={() => newDraft()}>+ New timer</Btn>
+          </div>
+        )}
       </div>
 
       {error && <div style={{ background: "#FEF2F2", color: "#B91C1C", padding: "10px 14px", borderRadius: 8, fontSize: 14 }}>{error}</div>}
 
-      {draft ? (
+      {voiceOpen && role === "coach" ? (
+        <VoiceLibrary onClose={() => setVoiceOpen(false)} onSaved={loadVoiceCount} />
+      ) : draft ? (
         <Editor draft={draft} setDraft={setDraft} role={role} exercises={exercises} saving={saving}
+          libraryCount={libraryCount} onEditVoice={canWrite ? () => setVoiceOpen(true) : null}
           onSave={canWrite ? save : null}
           onRun={() => setRunning({ name: draft.name || FORMAT_LABEL[draft.format], format: draft.format, config: draft.config })}
           onCancel={() => setDraft(null)} />
@@ -325,7 +448,7 @@ export default function Timers({ role = "coach", athlete, athletes = [], exercis
             <div style={{ color: "#71717A", fontSize: 14 }}>None yet. Pick a quick start above or build a new one.</div>
           ) : (
             <div style={grid}>
-              {mine.map(t => <TimerCard key={t.id} t={t} mine={canWrite} role={role} onRun={() => setRunning(t)} onEdit={() => setDraft({ id: t.id, name: t.name, format: t.format, config: JSON.parse(JSON.stringify(t.config || {})), shared: t.shared })} onCopy={() => copyToDraft(t)} onDelete={() => del(t)} onShareToggle={() => toggleShare(t)} />)}
+              {mine.map(t => <TimerCard key={t.id} t={t} mine={canWrite} role={role} onRun={() => setRunning(t)} onEdit={() => setDraft({ id: t.id, name: t.name, format: t.format, config: normalizeConfig(t.format, JSON.parse(JSON.stringify(t.config || {}))), shared: t.shared })} onCopy={() => copyToDraft(t)} onDelete={() => del(t)} onShareToggle={() => toggleShare(t)} />)}
             </div>
           )}
 
