@@ -26,7 +26,7 @@ import AthleteAlertsBell from "./AthleteAlertsBell";
 import ExerciseThread from "./ExerciseThread";
 import { weekStartFromLabel, weekNumberLabel, weekdayOffset, currentWeekIndex as weekCurrentIndex } from "../lib/weeks";
 import { fetchAllComments } from "../lib/comments";
-import { NUDGE_CATS, findMissingNumberSessions, sessionLogProgress } from "../lib/logging";
+import { MUST_LOG_CATS, NUDGE_CATS, findMissingNumberSessions, mustLogProgress } from "../lib/logging";
 import { fetchDismissals } from "../lib/dismissals";
 
 function useIsMobile(bp = 768) {
@@ -614,106 +614,47 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
     if (block && day) queueSave(block, day, weekLabel);
   };
 
-  const submitDay = async (day, weekLabel) => {
-    if (!addLog || !athlete) return;
+  /*
+    Attendance for the whole session, written to the same `day.status` the coach writes.
 
-    // Refuse to write a whole session of blanks by accident. If nothing was typed and
-    // nothing was logged for this day before, ask first - the silent version of this is
-    // how a full day of fabricated rows got written.
-    const filled = (r) => !!(r && ((r.sets ?? "") !== "" || (r.reps ?? "") !== "" || (r.load ?? "") !== "" ||
-                                   (r.rpe ?? "") !== "" || (r.notes ?? "") !== "" || r.status));
-    const typedAny = (day.blocks || []).some(b => filled(blockResults[b.id]));
-    const priorAny = (logs || []).some(l =>
-      l.athlete_id === athlete.id && l.day_label === day.label && l.week_label === weekLabel &&
-      ((l.sets ?? "") !== "" || (l.reps ?? "") !== "" || (l.load ?? "") !== "" || (l.rpe ?? "") !== "")
-    );
-    if (!typedAny && !priorAny && typeof window !== "undefined") {
-      if (!window.confirm("You haven't entered any numbers for this session.\n\nMark it complete without them?")) return;
-    }
+    This replaced a "Log day" button that wrote a log row for EVERY block in the session,
+    typed into or not. Those blank rows were how a movement-screen day showed five lifts
+    with nothing against them for all six athletes: nobody had failed to log anything,
+    the button had invented the rows. Numbers now reach `logs` only by being typed, and
+    attendance lives where attendance belongs.
 
-    // Flush any pending autosave first, so the submit and a timer cannot race and
-    // write the same exercise twice.
-    (day.blocks || []).forEach(b => clearTimeout(timersRef.current[b.id]));
-
-    const date = localDateISO();
+    Toggling the state it is already in clears it, matching the coach's buttons - and an
+    athlete who taps Missed by accident needs the way back.
+  */
+  const setDayStatus = async (day, weekLabel, status) => {
+    if (!addLog || !prog || !day) return;
     setSubmitting(day.id);
     try {
+      // Flush anything still inside its autosave debounce, so a number typed a second
+      // before the tap is not lost behind the status write.
+      (day.blocks || []).forEach(b => flushSave(b, day, weekLabel));
 
-      // Rows already logged for this week+day. They are deleted AFTER the replacements
-      // are written, never before: a failure between the two left the day with nothing.
-      const existing = (logs || []).filter(l =>
-        l.athlete_id === athlete.id && l.day_label === day.label && l.week_label === weekLabel
-      );
+      const freshProg = programs.find(p => p.id === prog.id);
+      if (!freshProg) return;
+      const updatedWeeks = JSON.parse(JSON.stringify(freshProg.weeks || []));
+      const wi = updatedWeeks.findIndex(w => w.label === weekLabel);
+      if (wi < 0) return;
+      const di = (updatedWeeks[wi].days || []).findIndex(d => d.id === day.id);
+      if (di < 0) return;
 
-      // Insert fresh logs with effective values (user edits > existing logged > programmed)
-      const weekLabel2 = weekLabel;
-      const normalize = (s) => (s || "").toLowerCase().replace(/[-–—]/g, " ").replace(/\s+/g, " ").trim();
-      const remainingLogs = (logs || []).filter(l => l.athlete_id === athlete.id && l.day_label === day.label && l.week_label === weekLabel2);
-      for (const block of day.blocks) {
-        const result = blockResults[block.id] || {};
-        const dn = getDisplayName(block, day.id);
-        const existingLog = remainingLogs.find(l =>
-          (l.exercise_id && block.exerciseId && l.exercise_id === block.exerciseId) ||
-          l.exercise_name === dn || (block.exerciseName && l.exercise_name === block.exerciseName) ||
-          normalize(l.exercise_name) === normalize(dn)
-        );
-        await addLog({
-          athlete_id: athlete.id, athlete_name: athlete.name,
-          exercise_id: block.exerciseId || "", exercise_name: dn,
-          category: block.category || "",
-          equipment_tier: tierFor(block, day.id),
-          // THE LOGS TABLE HOLDS WHAT THE ATHLETE ACTUALLY DID - NOTHING ELSE.
-          // Never fall back to block.sets/reps/load here. A prescription written into a log
-          // is indistinguishable from a real result: it reads back as if the athlete hit it,
-          // and every progression decision downstream is then made from a number nobody lifted.
-          // If we don't have their value, the field stays empty.
-          sets: result.sets ?? existingLog?.sets ?? "",
-          reps: result.reps ?? existingLog?.reps ?? "",
-          load: result.load ?? existingLog?.load ?? "",
-          rpe: result.rpe ?? existingLog?.rpe ?? "",
-          notes: result.notes ?? existingLog?.notes ?? "",
-          exercise_status: result.status ?? existingLog?.exercise_status ?? "completed",
-          date, week_label: weekLabel, day_label: day.label,
-        });
-      }
-      // Only now that every replacement row is written is it safe to drop the old ones.
-      for (const old of existing) {
-        await supabase.from("logs").delete().eq("id", old.id);
-      }
-      if (existing.length > 0) {
-        setLogs(prev => prev.filter(l => !existing.some(e => e.id === l.id)));
-      }
+      const cur = updatedWeeks[wi].days[di].status || "";
+      updatedWeeks[wi].days[di].status = cur === status ? "" : status;
 
-      // Auto-mark day as completed in the program
-      try {
-        const freshProg = programs.find(p => p.id === prog.id);
-        if (freshProg) {
-          const updatedWeeks = JSON.parse(JSON.stringify(freshProg.weeks || []));
-          const wi = updatedWeeks.findIndex(w => w.label === weekLabel);
-          if (wi >= 0) {
-            const di = updatedWeeks[wi].days.findIndex(d => d.id === day.id);
-            if (di >= 0) {
-              updatedWeeks[wi].days[di].status = "completed";
-              await supabase.from("programs").update({ weeks: updatedWeeks }).eq("id", freshProg.id);
-              setPrograms(prev => prev.map(p => p.id === freshProg.id ? { ...p, weeks: updatedWeeks } : p));
-            }
-          }
-        }
-      } catch (e) { /* silent — logging succeeded even if status update fails */ }
-      setSaved(true);
-      // Clear only the blocks that were just saved - never the whole draft, which may hold
-      // numbers for a different day the athlete has part-filled.
-      setBlockResults(prev => {
-        const next = { ...prev };
-        (day.blocks || []).forEach(b => { delete next[b.id]; });
-        return next;
-      });
-      setTimeout(() => setSaved(false), 3000);
+      const { error } = await supabase.from("programs").update({ weeks: updatedWeeks }).eq("id", freshProg.id);
+      if (error) throw error;
+      setPrograms(prev => prev.map(p => p.id === freshProg.id ? { ...p, weeks: updatedWeeks } : p));
+      if (updatedWeeks[wi].days[di].status === "completed") {
+        setSaved(true);
+        setTimeout(() => setSaved(false), 2500);
+      }
     } catch (err) {
-      // A throw here used to leave the button stuck on "Saving..." and the day
-      // half-written. Surface it, and always release the button.
-      console.error("submitDay failed", err);
-      alert("Could not save this session. Please try again - nothing was lost.");
+      console.error("setDayStatus failed", err);
+      alert("Could not save that. Your numbers are safe \u2014 please try again.");
     } finally {
       setSubmitting(null);
     }
@@ -953,7 +894,6 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
         const scopedLogs = (logs || []).filter(l =>
           l.athlete_id === athlete.id && l.day_label === dayLabel && l.week_label === weekLabel
         );
-        const dayLogged = scopedLogs.length > 0;
 
         const blockLogMap = {};
         const usedIds = new Set();
@@ -1085,12 +1025,18 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
                   }}
                 >
                   {/* Collapsed row */}
+                  {/*
+                    No per-exercise tick box.
+
+                    Twenty-four of them per session asked the athlete to account for every
+                    leg swing, which is not what any of this is for - and the one thing that
+                    actually matters, a number against a lift, got no more emphasis than a
+                    checkbox on a mobility drill. Attendance is now one decision at the foot
+                    of the day; the only per-exercise cue left is the LOG IT pill, on the
+                    movements whose numbers set the next load. A green dot still marks an
+                    exercise that HAS a number, so progress through a session is visible.
+                  */}
                   <div style={{ display: "flex", alignItems: "center", padding: "8px 8px", gap: 6 }}>
-                    {/* Complete/Missed toggles */}
-                    <div style={{ display: "flex", gap: 2, flexShrink: 0 }} onClick={e => e.stopPropagation()}>
-                      <button onClick={() => { updateResult(block.id, "status", exStatus === "completed" ? null : "completed"); flushSave(block, day, week.label); }} style={{ width: 24, height: 24, borderRadius: 4, border: exStatus === "completed" ? "2px solid #16A34A" : "1px solid #D4D4D8", background: exStatus === "completed" ? "#16A34A" : "transparent", color: exStatus === "completed" ? "#fff" : "#A1A1AA", fontSize: 12, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}>✓</button>
-                      <button onClick={() => { updateResult(block.id, "status", exStatus === "missed" ? null : "missed"); flushSave(block, day, week.label); }} style={{ width: 24, height: 24, borderRadius: 4, border: exStatus === "missed" ? "2px solid #DC2626" : "1px solid #D4D4D8", background: exStatus === "missed" ? "#DC2626" : "transparent", color: exStatus === "missed" ? "#fff" : "#A1A1AA", fontSize: 12, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}>✗</button>
-                    </div>
                     <div onClick={() => setExpandedBlock(isOpen ? null : block.id)} style={{ display: "flex", alignItems: "center", flex: 1, minWidth: 0, cursor: "pointer", gap: 6 }}>
                       <Badge color={cc?.bg || "#999"}>{block.category}</Badge>
                       <div style={{ flex: 1, minWidth: 0 }}>
@@ -1113,7 +1059,14 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
                       */}
                       {NUDGE_CATS.has(block.category) && !hasInput &&
                         !(loggedResult && ((loggedResult.load || "") !== "" || (loggedResult.sets || "") !== "" || (loggedResult.rpe || "") !== "")) && (
-                        <span style={{ fontSize: 9, fontWeight: 800, color: "#fff", background: "#DC2626", padding: "1px 6px", borderRadius: 999, flexShrink: 0, whiteSpace: "nowrap" }}>
+                        <span style={{
+                          fontSize: 10, fontWeight: 800, color: "#fff",
+                          // STR and FIN are the ones the coach chases; PWR is a nice-to-have.
+                          // Same pill, quieter colour, so the athlete can tell them apart at a glance.
+                          background: MUST_LOG_CATS.has(block.category) ? "#DC2626" : "#F59E0B",
+                          padding: "2px 7px", borderRadius: 999, flexShrink: 0, whiteSpace: "nowrap",
+                          letterSpacing: 0.3,
+                        }}>
                           {block.category === "PWR" ? "MEASURE" : "LOG IT"}
                         </span>
                       )}
@@ -1310,21 +1263,26 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
               </div>
             )}
 
-            {/* Log day button */}
-            {/* Habit: how much of the session actually has numbers against it. Quiet on
-                purpose - the red banner above is for the lifts and power work; this is the
-                gentle push towards logging everything. */}
-            {dayLogged && day.blocks.length > 0 && (() => {
-              const { done, total } = sessionLogProgress(day, blockLogMap);
-              const pct = total ? Math.round((done / total) * 100) : 0;
-              const complete = total > 0 && done === total;
+            {/*
+              The key numbers, not every number.
+
+              This strip used to count all 24 blocks in a session, which was fair when the
+              athlete ticked each one. Now that they only type where numbers are wanted,
+              "3 of 24" would be what a well-logged session looks like and would read as
+              failure. It counts the lifts and finishers - the LOG IT movements - so
+              finishing it is both achievable and the thing the coach actually needs.
+            */}
+            {day.blocks.length > 0 && dayStatus !== "missed" && (() => {
+              const { done, total, complete } = mustLogProgress(day, blockLogMap);
+              if (total === 0) return null;
+              const pct = Math.round((done / total) * 100);
               return (
                 <div style={{ marginTop: 8, padding: "7px 10px", borderRadius: 8, background: complete ? "#F0FDF4" : "#FFFBEB", border: `1px solid ${complete ? "#BBF7D0" : "#FDE68A"}` }}>
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
                     <span style={{ fontSize: 12, fontWeight: 700, color: complete ? "#16A34A" : "#92400E" }}>
-                      {complete ? "✓ Every exercise logged" : `Numbers logged: ${done} of ${total}`}
+                      {complete ? "✓ Key numbers all in" : `Key numbers: ${done} of ${total}`}
                     </span>
-                    {!complete && <span style={{ fontSize: 11, color: "#92400E" }}>Log them all — it builds the picture</span>}
+                    {!complete && <span style={{ fontSize: 11, color: "#92400E" }}>These set your next loads</span>}
                   </div>
                   <div style={{ marginTop: 5, height: 5, borderRadius: 3, background: "#E4E4E7", overflow: "hidden" }}>
                     <div style={{ width: `${pct}%`, height: "100%", background: complete ? "#16A34A" : "#F59E0B", transition: "width .3s ease" }} />
@@ -1333,15 +1291,50 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
               );
             })()}
 
+            {/*
+              Attendance: one decision for the whole session.
+
+              Showing up is the thing worth recording, and it should cost one tap, not
+              twenty-four. Same field the coach writes from their own view (`day.status` in
+              the program JSON), so both sides see one answer rather than two accounts of
+              the same session. Tapping the state it is already in clears it - the coach's
+              buttons behave the same way, and an athlete who taps Missed by mistake needs
+              a way back.
+
+              Numbers are already saved by the time this is pressed: they autosave as they
+              are typed. Any block still inside its debounce window is flushed first, so
+              a number typed a second before the tap is not lost.
+            */}
             {day.blocks.length > 0 && addLog && (
-              <div style={{ marginTop: 6 }}>
-                {dayStatus === "missed" ? (
-                  <div style={{ background: "#FEF2F2", padding: "8px", borderRadius: 6, fontSize: 13, color: "#DC2626", fontWeight: 600, textAlign: "center" }}>✗ Session missed</div>
-                ) : (
-                  <button onClick={() => submitDay(day, week.label)} disabled={submitting === day.id} style={{ width: "100%", padding: "10px", background: dayLogged ? "#16A34A" : "#18181B", color: "#fff", border: "none", borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: submitting === day.id ? "default" : "pointer", fontFamily: "inherit", opacity: submitting === day.id ? 0.5 : 1 }}>
-                    {submitting === day.id ? "Saving…" : dayLogged ? `✓ Update ${day.label}` : `Log ${day.label}`}
-                  </button>
-                )}
+              <div style={{ marginTop: 6, display: "flex", gap: 8 }}>
+                <button
+                  onClick={() => setDayStatus(day, week.label, "completed")}
+                  disabled={submitting === day.id}
+                  style={{
+                    flex: 2, padding: "12px 10px", borderRadius: 8, fontSize: 14, fontWeight: 700,
+                    fontFamily: "inherit", cursor: submitting === day.id ? "default" : "pointer",
+                    border: dayStatus === "completed" ? "2px solid #16A34A" : "none",
+                    background: dayStatus === "completed" ? "#F0FDF4" : "#18181B",
+                    color: dayStatus === "completed" ? "#16A34A" : "#fff",
+                    opacity: submitting === day.id ? 0.5 : 1,
+                  }}
+                >
+                  {submitting === day.id ? "Saving…" : dayStatus === "completed" ? "✓ Completed" : "Mark completed"}
+                </button>
+                <button
+                  onClick={() => setDayStatus(day, week.label, "missed")}
+                  disabled={submitting === day.id}
+                  style={{
+                    flex: 1, padding: "12px 10px", borderRadius: 8, fontSize: 14, fontWeight: 700,
+                    fontFamily: "inherit", cursor: submitting === day.id ? "default" : "pointer",
+                    border: dayStatus === "missed" ? "2px solid #DC2626" : "1px solid #E4E4E7",
+                    background: dayStatus === "missed" ? "#FEF2F2" : "#fff",
+                    color: dayStatus === "missed" ? "#DC2626" : "#71717A",
+                    opacity: submitting === day.id ? 0.5 : 1,
+                  }}
+                >
+                  {dayStatus === "missed" ? "✗ Missed" : "Missed"}
+                </button>
               </div>
             )}
           </Card>
@@ -1430,7 +1423,7 @@ function AthleteLog({ addLog, athlete, exercises, cats, colors, isMobile, progra
         exercise_name: getDisplayName(block),
         category: block.category || "",
         equipment_tier: logTier,
-        // Athlete's numbers only - never the prescription. See MyProgram.submitDay.
+        // Athlete's numbers only - never the prescription. See MyProgram.saveBlockNow.
         sets: result.sets || "",
         reps: result.reps || "",
         load: result.load || "",
