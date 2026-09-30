@@ -1304,39 +1304,57 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
               Numbers are already saved by the time this is pressed: they autosave as they
               are typed. Any block still inside its debounce window is flushed first, so
               a number typed a second before the tap is not lost.
+
+              Shown in View As Athlete too, disabled. A preview that hides a control is not
+              a preview - the coach opens this to see what the athlete sees, and the athlete
+              sees these. They stay inert there because attendance is the athlete's answer,
+              and the coach already has their own Completed/Missed on the same day in
+              Programs.js, writing the same field.
             */}
-            {day.blocks.length > 0 && addLog && (
-              <div style={{ marginTop: 6, display: "flex", gap: 8 }}>
-                <button
-                  onClick={() => setDayStatus(day, week.label, "completed")}
-                  disabled={submitting === day.id}
-                  style={{
-                    flex: 2, padding: "12px 10px", borderRadius: 8, fontSize: 14, fontWeight: 700,
-                    fontFamily: "inherit", cursor: submitting === day.id ? "default" : "pointer",
-                    border: dayStatus === "completed" ? "2px solid #16A34A" : "none",
-                    background: dayStatus === "completed" ? "#F0FDF4" : "#18181B",
-                    color: dayStatus === "completed" ? "#16A34A" : "#fff",
-                    opacity: submitting === day.id ? 0.5 : 1,
-                  }}
-                >
-                  {submitting === day.id ? "Saving…" : dayStatus === "completed" ? "✓ Completed" : "Mark completed"}
-                </button>
-                <button
-                  onClick={() => setDayStatus(day, week.label, "missed")}
-                  disabled={submitting === day.id}
-                  style={{
-                    flex: 1, padding: "12px 10px", borderRadius: 8, fontSize: 14, fontWeight: 700,
-                    fontFamily: "inherit", cursor: submitting === day.id ? "default" : "pointer",
-                    border: dayStatus === "missed" ? "2px solid #DC2626" : "1px solid #E4E4E7",
-                    background: dayStatus === "missed" ? "#FEF2F2" : "#fff",
-                    color: dayStatus === "missed" ? "#DC2626" : "#71717A",
-                    opacity: submitting === day.id ? 0.5 : 1,
-                  }}
-                >
-                  {dayStatus === "missed" ? "✗ Missed" : "Missed"}
-                </button>
-              </div>
-            )}
+            {day.blocks.length > 0 && (() => {
+              const preview = !addLog;
+              const busy = submitting === day.id;
+              const dim = busy || preview;
+              return (
+                <div style={{ marginTop: 6 }}>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button
+                      onClick={() => { if (!preview) setDayStatus(day, week.label, "completed"); }}
+                      disabled={dim}
+                      style={{
+                        flex: 2, padding: "12px 10px", borderRadius: 8, fontSize: 14, fontWeight: 700,
+                        fontFamily: "inherit", cursor: dim ? "default" : "pointer",
+                        border: dayStatus === "completed" ? "2px solid #16A34A" : "none",
+                        background: dayStatus === "completed" ? "#F0FDF4" : "#18181B",
+                        color: dayStatus === "completed" ? "#16A34A" : "#fff",
+                        opacity: dim ? 0.5 : 1,
+                      }}
+                    >
+                      {busy ? "Saving…" : dayStatus === "completed" ? "✓ Completed" : "Mark completed"}
+                    </button>
+                    <button
+                      onClick={() => { if (!preview) setDayStatus(day, week.label, "missed"); }}
+                      disabled={dim}
+                      style={{
+                        flex: 1, padding: "12px 10px", borderRadius: 8, fontSize: 14, fontWeight: 700,
+                        fontFamily: "inherit", cursor: dim ? "default" : "pointer",
+                        border: dayStatus === "missed" ? "2px solid #DC2626" : "1px solid #E4E4E7",
+                        background: dayStatus === "missed" ? "#FEF2F2" : "#fff",
+                        color: dayStatus === "missed" ? "#DC2626" : "#71717A",
+                        opacity: dim ? 0.5 : 1,
+                      }}
+                    >
+                      {dayStatus === "missed" ? "✗ Missed" : "Missed"}
+                    </button>
+                  </div>
+                  {preview && (
+                    <div style={{ marginTop: 4, fontSize: 11, color: "#A1A1AA", textAlign: "center" }}>
+                      Preview — the athlete taps these. Mark attendance from the program view.
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
           </Card>
           </div>
         );
