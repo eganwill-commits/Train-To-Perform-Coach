@@ -7,6 +7,7 @@ import { printDay } from "./printHelper";
 import NotesBoard from "./NotesBoard";
 import FeedbackModal from "./FeedbackModal";
 import ExerciseThread from "./ExerciseThread";
+import ExerciseVideoControl from "./ExerciseVideoControl";
 import { weekStartFromLabel, weekNumberLabel, weekdayOffset, currentWeekIndex as weekCurrentIndex } from "../lib/weeks";
 import { fetchAllComments } from "../lib/comments";
 import ProgramBrief, { briefSummary } from "./ProgramBrief";
@@ -45,7 +46,7 @@ function warmupForDay(label) {
   return DAY_WARMUPS.generic;
 }
 
-export default function Programs({ programs, addProgram, updateProgram, deleteProgram, athletes, exercises, cats, colors, isMobile, submitDay, unlogDay, logs, groups, setLogs, addGroup, addAthleteToGroup, addSeasonMembership, focusAthleteId, focusTarget, onFocusClear }) {
+export default function Programs({ programs, addProgram, updateProgram, deleteProgram, athletes, exercises, updateExercise, addExercise, cats, colors, isMobile, submitDay, unlogDay, logs, groups, setLogs, addGroup, addAthleteToGroup, addSeasonMembership, focusAthleteId, focusTarget, onFocusClear }) {
   const [modal, setModal] = useState(false);
   const [form, setForm] = useState({ name: "", selectedAthletes: [], weeks: 4, description: "", group_id: "", trackAsSeason: false, start_date: "" });
   const [detail, setDetail] = useState(null);
@@ -283,7 +284,7 @@ export default function Programs({ programs, addProgram, updateProgram, deletePr
     await updateProgram(ap.id, { weeks });
   };
 
-  if (detail && ap) return <ProgramDetail focusTarget={focusTarget} onFocusClear={onFocusClear} program={ap} programs={programs} exercises={exercises} cats={cats} colors={colors} addBlock={addBlock} updateBlock={updateBlock} removeBlock={removeBlock} moveBlock={moveBlock} onBack={() => setDetail(null)} athletes={athletes} isMobile={isMobile} submitDay={submitDay} unlogDay={unlogDay} logs={logs || []} copyToAthletes={copyToAthletes} updateProgram={updateProgram} groups={groups} setLogs={setLogs} />;
+  if (detail && ap) return <ProgramDetail focusTarget={focusTarget} onFocusClear={onFocusClear} program={ap} programs={programs} exercises={exercises} updateExercise={updateExercise} addExercise={addExercise} cats={cats} colors={colors} addBlock={addBlock} updateBlock={updateBlock} removeBlock={removeBlock} moveBlock={moveBlock} onBack={() => setDetail(null)} athletes={athletes} isMobile={isMobile} submitDay={submitDay} unlogDay={unlogDay} logs={logs || []} copyToAthletes={copyToAthletes} updateProgram={updateProgram} groups={groups} setLogs={setLogs} />;
 
   // ---- Folder detail: the athletes inside one program folder ----
   const activeFolder = folderKey ? folders.find(f => f.key === folderKey) : null;
@@ -527,7 +528,7 @@ function VariantHint({ ex }) {
   );
 }
 
-function ProgramDetail({ program, programs, exercises, cats, colors, addBlock, updateBlock, removeBlock, moveBlock, onBack, athletes, isMobile, submitDay, unlogDay, logs, copyToAthletes, updateProgram, groups, setLogs, focusTarget, onFocusClear }) {
+function ProgramDetail({ program, programs, exercises, updateExercise, addExercise, cats, colors, addBlock, updateBlock, removeBlock, moveBlock, onBack, athletes, isMobile, submitDay, unlogDay, logs, copyToAthletes, updateProgram, groups, setLogs, focusTarget, onFocusClear }) {
   // Keep a ref to latest program to prevent stale closures in async handlers
   const programRef = useRef(program);
   programRef.current = program;
@@ -1022,6 +1023,7 @@ function ProgramDetail({ program, programs, exercises, cats, colors, addBlock, u
                                 <BlurInput value={block.notes || ""} onSave={v => updateBlock(aw, di, bi, "notes", v)} placeholder="Coaching cues, modifications…" multiline style={{ width: "100%", padding: "6px 5px", border: "1px solid #E4E4E7", borderRadius: 6, fontSize: 14, fontFamily: "inherit", marginTop: 1, boxSizing: "border-box", minHeight: block.notes && block.notes.length > 60 ? 60 : undefined }} />
                               </label>
                               <VariantHint ex={resolvedEx} />
+                              <ExerciseVideoControl libraryEx={resolvedEx || (block.exerciseName ? exercises.find(e => e.name === block.exerciseName) : null)} exerciseName={displayName} category={block.category} exercises={exercises} updateExercise={updateExercise} addExercise={addExercise} compact={isMobile} />
                               {/* Ask the athlete about this exercise. Anchored to the block, so the
                                   question and the answer arrive with their context attached. */}
                               <ExerciseThread
@@ -1105,6 +1107,7 @@ function ProgramDetail({ program, programs, exercises, cats, colors, addBlock, u
                           <BlurInput value={block.notes || ""} onSave={v => updateBlock(aw, di, bi, "notes", v)} placeholder="Coaching cues, modifications…" multiline style={{ width: "100%", padding: "4px 5px", border: "1px solid #E4E4E7", borderRadius: 6, fontSize: 13, fontFamily: "inherit", marginTop: 1, boxSizing: "border-box", minHeight: block.notes && block.notes.length > 60 ? 60 : undefined }} />
                         </label>
                         <VariantHint ex={resolvedEx} />
+                              <ExerciseVideoControl libraryEx={resolvedEx || (block.exerciseName ? exercises.find(e => e.name === block.exerciseName) : null)} exerciseName={displayName} category={block.category} exercises={exercises} updateExercise={updateExercise} addExercise={addExercise} compact={isMobile} />
                         {/* Ask the athlete about this exercise. Anchored to the block, so the
                             question and the answer arrive with their context attached. */}
                         <ExerciseThread

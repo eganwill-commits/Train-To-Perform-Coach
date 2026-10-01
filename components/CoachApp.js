@@ -222,6 +222,8 @@ export default function CoachApp({ onLogout }) {
   const addExercise = useCallback(async (exercise) => {
     const { data, error } = await supabase.from("exercises").insert(exercise).select().single();
     if (!error && data) setExercises(prev => [...prev, data]);
+    if (error) throw error;
+    return data;
   }, []);
 
   const deleteExercise = useCallback(async (id) => {
@@ -231,7 +233,8 @@ export default function CoachApp({ onLogout }) {
 
   const updateExercise = useCallback(async (id, updates) => {
     const { error } = await supabase.from("exercises").update(updates).eq("id", id);
-    if (!error) setExercises(prev => prev.map(e => e.id === id ? { ...e, ...updates } : e));
+    if (error) throw error;
+    setExercises(prev => prev.map(e => e.id === id ? { ...e, ...updates } : e));
   }, []);
 
   const addLog = useCallback(async (log) => {

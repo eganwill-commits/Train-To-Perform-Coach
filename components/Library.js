@@ -14,12 +14,16 @@ export default function Library({ exercises, addExercise, deleteExercise, update
 
   const save = async () => {
     if (!form.name.trim()) return;
-    if (editId) {
-      await updateExercise(editId, form);
-    } else {
-      await addExercise(form);
+    try {
+      if (editId) {
+        await updateExercise(editId, form);
+      } else {
+        await addExercise(form);
+      }
+      setModal(false);
+    } catch (err) {
+      alert("Could not save: " + (err?.message || err));
     }
-    setModal(false);
   };
 
   let filtered = filter === "All" ? exercises : exercises.filter(e => e.category === filter);
