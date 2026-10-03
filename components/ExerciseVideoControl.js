@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { supabase } from "../lib/supabase";
+import { MediaLink } from "./VideoPlayer";
 
 /*
   Add / replace / remove the demo video for an exercise, from inside a program block.

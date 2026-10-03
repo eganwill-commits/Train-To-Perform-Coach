@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { Badge, Btn, Card, Input, Select, Modal } from "./ui";
+import { MediaLink } from "./VideoPlayer";
 
 export default function Library({ exercises, addExercise, deleteExercise, updateExercise, cats, colors, isMobile }) {
   const [modal, setModal] = useState(false);

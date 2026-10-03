@@ -8,6 +8,7 @@ import NotesBoard from "./NotesBoard";
 import FeedbackModal from "./FeedbackModal";
 import ExerciseThread from "./ExerciseThread";
 import ExerciseVideoControl from "./ExerciseVideoControl";
+import { MediaLink } from "./VideoPlayer";
 import { weekStartFromLabel, weekNumberLabel, weekdayOffset, currentWeekIndex as weekCurrentIndex } from "../lib/weeks";
 import { fetchAllComments } from "../lib/comments";
 import ProgramBrief, { briefSummary } from "./ProgramBrief";
