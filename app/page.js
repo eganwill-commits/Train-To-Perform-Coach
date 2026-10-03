@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
-import { supabase } from "../lib/supabase";
+import { supabase, supabaseUrl, supabaseAnonKey } from "../lib/supabase";
 import LoginPage from "../components/LoginPage";
 import CoachApp from "../components/CoachApp";
 import AthleteView from "../components/AthleteView";
@@ -58,6 +58,36 @@ function clearStoredAthlete() {
     window.localStorage.removeItem(LEGACY_ATHLETE_KEY);
     window.sessionStorage.removeItem(LEGACY_ATHLETE_KEY);
   } catch {}
+}
+
+/*
+  Quietly move a "legacy" athlete onto a real session.
+
+  Some athletes signed in before their login was provisioned and have been running on
+  the cached row ever since (Rory and Josh were still logging that way on 1 Oct). With
+  no session they cannot be told apart from anyone else holding the public key, which is
+  what blocks locking down messages and videos. Every athlete is now provisioned, and
+  their access code is their password, so the app can do the upgrade itself on the next
+  open - no new code, no screen, nothing for the athlete to do.
+
+  Returns true when the device now holds a real session.
+*/
+async function upgradeLegacyAthlete(athlete) {
+  const code = (athlete && athlete.access_code ? String(athlete.access_code) : "").toUpperCase().trim();
+  if (code.length < 4) return false;
+  try {
+    const res = await fetch(`${supabaseUrl}/functions/v1/athlete-login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", apikey: supabaseAnonKey },
+      body: JSON.stringify({ access_code: code }),
+    });
+    const out = await res.json();
+    if (!(res.ok && out?.ok && out.access_token)) return false;
+    const { error } = await supabase.auth.setSession({ access_token: out.access_token, refresh_token: out.refresh_token });
+    return !error;
+  } catch {
+    return false; // offline or function down: keep the legacy cache, try again next open
+  }
 }
 
 export default function Page() {
@@ -125,6 +155,10 @@ export default function Page() {
           setAthleteUser(fresh);
         }
         setAuthState("athlete");
+        // Upgrade in the background; the athlete is already looking at their program.
+        if (await upgradeLegacyAthlete(fresh || stored.athlete)) {
+          if (!cancelled) writeStoredAthlete(fresh || stored.athlete, "session");
+        }
         return;
       }
 

@@ -1,4 +1,4 @@
-const CACHE_NAME = "t2p-v1";
+const CACHE_NAME = "t2p-v2";
 const PRECACHE = ["/"];
 
 self.addEventListener("install", (e) => {
@@ -43,4 +43,39 @@ self.addEventListener("fetch", (e) => {
       return resp;
     }).catch(() => caches.match(e.request))
   );
+});
+
+/*
+  Phone notifications (see lib/push.js and app/api/push/notify).
+  The payload carries the athlete-app page to open and, for an exercise comment,
+  the block id, so tapping the notification lands on the thing it is about.
+*/
+self.addEventListener("push", (e) => {
+  let data = {};
+  try { data = e.data ? e.data.json() : {}; } catch { data = { title: "Train To Perform", body: e.data ? e.data.text() : "" }; }
+  const title = data.title || "Train To Perform";
+  e.waitUntil(self.registration.showNotification(title, {
+    body: data.body || "",
+    icon: "/icon-192.png",
+    badge: "/icon-192.png",
+    tag: data.tag || "t2p",
+    renotify: true,
+    data: { page: data.page || "my-program", refId: data.refId || null },
+  }));
+});
+
+self.addEventListener("notificationclick", (e) => {
+  e.notification.close();
+  const { page, refId } = e.notification.data || {};
+  const url = "/?page=" + encodeURIComponent(page || "my-program") + (refId ? "&ref=" + encodeURIComponent(refId) : "");
+  e.waitUntil((async () => {
+    const all = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+    for (const c of all) {
+      if (new URL(c.url).origin === self.location.origin) {
+        c.postMessage({ type: "t2p-nav", page, refId });
+        return c.focus();
+      }
+    }
+    return self.clients.openWindow(url);
+  })());
 });

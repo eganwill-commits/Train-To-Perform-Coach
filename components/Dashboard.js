@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Badge, Card } from "./ui";
 import { findMissingNumberSessions } from "../lib/logging";
 import { fetchDismissals, dismissedSetFor, dismissGap, undismissGap } from "../lib/dismissals";
-import { fetchNudges, nudgeKey, draftNudge, sendNudge } from "../lib/nudges";
+import { fetchNudges, nudgeKey, draftNudge, sendNudge, draftSessionNudge, sendSessionNudge } from "../lib/nudges";
 import { weekNumberLabel } from "../lib/weeks";
 
 export default function Dashboard({ athletes, programs, logs, cats, colors, isMobile, onNavigate }) {
@@ -136,9 +136,45 @@ export default function Dashboard({ athletes, programs, logs, cats, colors, isMo
     });
   };
 
+  // One message for every movement still missing in a session - the default way to chase.
+  const openSessionComposer = (ath, m) => {
+    setJustSent(null);
+    const movements = m.missing.map(mv => mv.name);
+    setComposing({
+      athlete: ath,
+      session: true,
+      movements,
+      movement: movements.length === 1 ? movements[0] : `${movements.length} movements`,
+      weekLabel: m.weekLabel,
+      dayLabel: m.day.label,
+      nkey: `${ath.id}::${m.key}::*`,
+      text: draftSessionNudge({
+        athleteName: ath.name,
+        movements,
+        dayLabel: m.day.label,
+        weekLabel: weekNumberLabel(m.weekLabel, m.wi),
+      }),
+    });
+  };
+
   const handleSendNudge = async () => {
     if (!composing) return;
     setSending(true);
+    if (composing.session) {
+      const res = await sendSessionNudge({
+        athlete: composing.athlete,
+        movements: composing.movements,
+        weekLabel: composing.weekLabel,
+        dayLabel: composing.dayLabel,
+        text: composing.text,
+      });
+      setSending(false);
+      if (!res.ok) { setJustSent({ ok: false }); return; }
+      setJustSent({ ok: true, name: composing.athlete.name, movement: composing.movement });
+      setComposing(null);
+      await reloadNudges();
+      return;
+    }
     const res = await sendNudge({
       athlete: composing.athlete,
       movement: composing.movement,
@@ -390,6 +426,26 @@ export default function Dashboard({ athletes, programs, logs, cats, colors, isMo
                               clearer to the athlete than a list they have to parse.
                             */}
                             <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 6 }}>
+                              {(() => {
+                                // Chase the whole session in one message. Already-sent state is
+                                // "every movement here has been nudged".
+                                const skey = `${ath.id}::${m.key}::*`;
+                                const allSent = m.missing.every(mv => nudges.get(nudgeKey(ath.id, m.weekLabel, m.day.label, mv.name)));
+                                const isOpenS = composing && composing.nkey === skey;
+                                return (
+                                  <button
+                                    onClick={() => (isOpenS ? setComposing(null) : openSessionComposer(ath, m))}
+                                    style={{
+                                      fontSize: 11, fontWeight: 800, color: "#fff",
+                                      background: isOpenS ? "#991B1B" : allSent ? "#71717A" : "#DC2626",
+                                      border: "none", borderRadius: 6, padding: "4px 10px",
+                                      cursor: "pointer", fontFamily: "inherit",
+                                    }}
+                                  >
+                                    {allSent ? "Nudged · send one message again" : m.missing.length === 1 ? "Nudge (1 message)" : `Nudge all ${m.missing.length} in 1 message`}
+                                  </button>
+                                );
+                              })()}
                               {m.missing.map(mv => {
                                 const nkey = nudgeKey(ath.id, m.weekLabel, m.day.label, mv.name);
                                 const sent = nudges.get(nkey);
@@ -462,7 +518,7 @@ export default function Dashboard({ athletes, programs, logs, cats, colors, isMo
                                   >
                                     Cancel
                                   </button>
-                                  {nudges.get(composing.nkey) && (
+                                  {!composing.session && nudges.get(composing.nkey) && (
                                     <span style={{ fontSize: 11, color: "#A16207" }}>
                                       Already nudged {new Date(nudges.get(composing.nkey).sent_at).toLocaleDateString()} — this sends another.
                                     </span>

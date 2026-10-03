@@ -235,14 +235,14 @@ const SCORE_INPUT = {
 };
 const SIDE_LABEL = { fontSize: 10, fontWeight: 800, color: "#92400E", letterSpacing: 0.4 };
 
-export function ScoreField({ label = "Score", unit, value, onChange, onBlur, placeholder }) {
+export function ScoreField({ label = "Score", unit, value, onChange, onBlur, placeholder, inputMode = "decimal" }) {
   return (
     <div style={SCORE_WRAP}>
       <div style={SCORE_LABEL}>
         {label}{unit ? <span style={SCORE_UNIT}> — in {unit}</span> : null}
       </div>
       <input
-        inputMode="decimal"
+        inputMode={inputMode}
         value={value ?? ""}
         onChange={onChange}
         onBlur={onBlur}

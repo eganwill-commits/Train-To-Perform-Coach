@@ -2,6 +2,9 @@
 import { useState, useEffect } from "react";
 import { Badge, Btn, Card, Input, Modal, Select, EmptyState, AutoGrow } from "./ui";
 import { raiseAlertReplacing, fetchAlertReceipts, ALERT_KIND, ALERT_PAGE } from "../lib/alerts";
+import { notifyAthlete } from "../lib/push";
+import { baselineColumnLabels } from "../lib/weeks";
+import { MediaLink } from "./VideoPlayer";
 import FeedbackModal from "./FeedbackModal";
 import { supabase } from "../lib/supabase";
 
@@ -45,7 +48,7 @@ function makeAccessCode(name, taken = []) {
   return code;
 }
 
-export default function Athletes({ athletes, addAthlete, updateAthlete, deleteAthlete, logs, colors, cats, isMobile, groups, groupAthletes, addAthleteToGroup, removeAthleteFromGroup, baselines, updateBaseline, addBaseline, deleteBaseline, videoSubs, updateVideoSub, deleteVideoSub, viewAsAthlete, focusAthleteId, onFocusClear, provisionLogin }) {
+export default function Athletes({ athletes, programs, addAthlete, updateAthlete, deleteAthlete, logs, colors, cats, isMobile, groups, groupAthletes, addAthleteToGroup, removeAthleteFromGroup, baselines, updateBaseline, addBaseline, deleteBaseline, videoSubs, updateVideoSub, deleteVideoSub, viewAsAthlete, focusAthleteId, onFocusClear, provisionLogin }) {
   const [modal, setModal] = useState(false);
   const [edit, setEdit] = useState(null);
   const [backfilling, setBackfilling] = useState(false);
@@ -180,6 +183,7 @@ export default function Athletes({ athletes, addAthlete, updateAthlete, deleteAt
       media_type: null,
     }]).select().single();
     if (error || !data) { setNoteState("error"); return; }
+    notifyAthlete({ athleteId: activeAthlete.id, title: "Message from Coach", body: text, page: "messages" });
     setNoteText("");
     setNoteState("sent");
     setRecentNotes(prev => [data, ...prev].slice(0, 5));
@@ -425,6 +429,7 @@ export default function Athletes({ athletes, addAthlete, updateAthlete, deleteAt
 
           return sections.map(section => {
           const recorded = section.rows.filter(r => r.week1_result || r.week12_result).length;
+          const colLabels = baselineColumnLabels(programs, section.key, activeAthlete.id);
           return (
             <Card key={section.key} style={{ marginBottom: 20 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, gap: 12 }}>
@@ -474,8 +479,8 @@ export default function Athletes({ athletes, addAthlete, updateAthlete, deleteAt
                       <tr style={{ borderBottom: "2px solid #E4E4E7" }}>
                         <th style={{ textAlign: "left", padding: "8px 10px", fontWeight: 700, fontSize: 12, color: "#71717A", textTransform: "uppercase", letterSpacing: 0.5 }}>Movement</th>
                         <th style={{ textAlign: "left", padding: "8px 10px", fontWeight: 700, fontSize: 12, color: "#71717A", textTransform: "uppercase", letterSpacing: 0.5 }}>Target</th>
-                        <th style={{ textAlign: "left", padding: "8px 10px", fontWeight: 700, fontSize: 12, color: "#F97316", textTransform: "uppercase", letterSpacing: 0.5 }}>Week 1</th>
-                        <th style={{ textAlign: "left", padding: "8px 10px", fontWeight: 700, fontSize: 12, color: "#16A34A", textTransform: "uppercase", letterSpacing: 0.5 }}>Week 12</th>
+                        <th style={{ textAlign: "left", padding: "8px 10px", fontWeight: 700, fontSize: 12, color: "#F97316", textTransform: "uppercase", letterSpacing: 0.5 }}>{colLabels.start}</th>
+                        <th style={{ textAlign: "left", padding: "8px 10px", fontWeight: 700, fontSize: 12, color: "#16A34A", textTransform: "uppercase", letterSpacing: 0.5 }}>{colLabels.end}</th>
                         <th style={{ textAlign: "left", padding: "8px 10px", fontWeight: 700, fontSize: 12, color: "#71717A", textTransform: "uppercase", letterSpacing: 0.5 }}>Notes</th>
                         <th style={{ width: 60 }} />
                       </tr>
@@ -554,14 +559,19 @@ export default function Athletes({ athletes, addAthlete, updateAthlete, deleteAt
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", gap: 8, flexWrap: "wrap" }}>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontWeight: 700, fontSize: 14 }}>{v.exercise_name || "Movement Video"}</div>
+                        {(v.week_label || v.day_label) && (
+                          <div style={{ fontSize: 11, color: "#52525B", marginTop: 1 }}>
+                            Filmed from {[v.week_label ? v.week_label.split(/[·—]/)[0].trim() : "", v.day_label].filter(Boolean).join(" · ")}
+                          </div>
+                        )}
                         <div style={{ fontSize: 12, color: "#71717A", marginTop: 2 }}>
                           {new Date(v.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
                           <span style={{ marginLeft: 8, fontWeight: 700, color: statusColor[v.status] || "#71717A" }}>{statusLabel[v.status] || v.status}</span>
                         </div>
-                        {v.notes && <div style={{ fontSize: 12, color: "#52525B", marginTop: 4, fontStyle: "italic" }}>{v.notes}</div>}
+                        {v.notes && <div style={{ fontSize: 12, color: "#1E3A8A", marginTop: 4, padding: "4px 8px", background: "#EFF6FF", borderRadius: 6 }}><b>Asked:</b> {v.notes}</div>}
                       </div>
                       <div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0 }}>
-                        <a href={v.video_url} target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, color: "#fff", background: "#2563EB", textDecoration: "none", fontWeight: 700, padding: "4px 12px", borderRadius: 999 }}>▶ Watch</a>
+                        <MediaLink url={v.video_url} style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, color: "#fff", background: "#2563EB", textDecoration: "none", fontWeight: 700, padding: "4px 12px", borderRadius: 999 }}>▶ Watch</MediaLink>
                         <button onClick={() => { if (confirm("Delete this video submission?")) deleteVideoSub(v.id); }} style={{ background: "none", border: "none", cursor: "pointer", color: "#D4D4D8", fontSize: 14 }} title="Delete video">✕</button>
                       </div>
                     </div>

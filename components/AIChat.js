@@ -31,7 +31,7 @@ function buildAthleteContext(athlete, programs, logs, baselines, videoSubs) {
   if (ab.length > 0) {
     ctx += "\n## Your Baselines\n";
     ab.forEach(b => {
-      ctx += `  ${b.movement}: Week 1 = ${b.week1_result || "—"}, Week 12 = ${b.week12_result || "—"} (Target: ${b.target} ${b.units})`;
+      ctx += `  ${b.movement}: Pre-test = ${b.week1_result || "—"}, Retest = ${b.week12_result || "—"} (Target: ${b.target} ${b.units})`;
       if (b.week1_notes) ctx += ` [${b.week1_notes}]`;
       if (b.week12_notes) ctx += ` [${b.week12_notes}]`;
       ctx += "\n";
@@ -68,6 +68,7 @@ function buildAthleteContext(athlete, programs, logs, baselines, videoSubs) {
           if (b.sets || b.reps) detail += ` ${b.sets || ""}×${b.reps || ""}`;
           if (b.load) detail += ` @${b.load}`;
           if (b.tempo) detail += ` tempo:${b.tempo}`;
+          if (b.cue) detail += ` cue: ${b.cue.slice(0, 120)}`;
           if (b.notes) detail += ` (${b.notes.slice(0, 80)})`;
           return detail;
         }).join(" | ");
@@ -154,7 +155,7 @@ function buildCoachContext(athletes, programs, logs, exercises, baselines, video
     if (ab.length > 0) {
       ctx += "Baselines:\n";
       ab.forEach(b => {
-        ctx += `  - ${b.movement}: W1=${b.week1_result || "—"} W12=${b.week12_result || "—"} (${b.target} ${b.units})`;
+        ctx += `  - ${b.movement}: Pre=${b.week1_result || "—"} Retest=${b.week12_result || "—"} (${b.target} ${b.units})`;
         if (b.week1_notes) ctx += ` [${b.week1_notes}]`;
         ctx += "\n";
       });

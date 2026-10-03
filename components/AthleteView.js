@@ -12,6 +12,12 @@ import Messages from "./Messages";
 import NotesBoard from "./NotesBoard";
 import ToastNotifications from "./ToastNotifications";
 import ProgramBrief, { briefSummary } from "./ProgramBrief";
+import VideoPlayer, { MediaLink } from "./VideoPlayer";
+import MyProgress from "./MyProgress";
+import PushPrompt from "./PushPrompt";
+import { explainTempo } from "../lib/tempo";
+import { lastPerformance, describeLog, shortDate } from "../lib/history";
+import { athleteUploadPath } from "../lib/media";
 
 /*
   Local calendar date, not UTC. new Date().toISOString() is UTC, so any session logged
@@ -24,7 +30,7 @@ const localDateISO = () => {
 
 import AthleteAlertsBell from "./AthleteAlertsBell";
 import ExerciseThread from "./ExerciseThread";
-import { weekStartFromLabel, weekNumberLabel, weekdayOffset, currentWeekIndex as weekCurrentIndex } from "../lib/weeks";
+import { weekStartFromLabel, weekNumberLabel, weekdayOffset, currentWeekIndex as weekCurrentIndex, baselineColumnLabels } from "../lib/weeks";
 import { fetchAllComments } from "../lib/comments";
 import { MUST_LOG_CATS, NUDGE_CATS, findMissingNumberSessions, mustLogProgress } from "../lib/logging";
 import { fetchDismissals } from "../lib/dismissals";
@@ -34,15 +40,6 @@ function useIsMobile(bp = 768) {
   useEffect(() => { const h = () => setM(window.innerWidth < bp); h(); window.addEventListener("resize", h); return () => window.removeEventListener("resize", h); }, [bp]);
   return m;
 }
-
-// Resolve an exercise to the athlete's equipment-tier variant (falls back to canonical name)
-function variantName(ex, tier) {
-  if (!ex) return "";
-  const t = tier || "full_gym";
-  return (ex.variants && ex.variants[t]) || ex.name || "";
-}
-
-
 
 const DAY_WARMUPS = {
   lowerA: "2\u20133 min easy bike/row \u2192 lower-body mobility (leg swings, deep bodyweight squats, walking lunges, ankle rocks) \u2192 glute bridges + dead bugs \u2192 2\u20133 ramp-up sets building to your first working Back Squat.",
@@ -61,6 +58,75 @@ function warmupForDay(label) {
   if (t.includes("lower")) return (t.includes(" b") || t.includes("(b")) ? DAY_WARMUPS.lowerB : DAY_WARMUPS.lowerA;
   if (t.includes("upper")) return (t.includes(" b") || t.includes("(b")) ? DAY_WARMUPS.upperB : DAY_WARMUPS.upperA;
   return DAY_WARMUPS.generic;
+}
+
+/*
+  Which program is "now".
+
+  The landing page used to be every program the athlete has ever had, oldest first, so
+  Brooks scrolled past July Hypertrophy and the spring block to reach the one he is in.
+  A program is current when today falls between its start date and the end of its last
+  week; with several, the most recently started wins. With none running, the most
+  recently started one. Programs without a start date are self-paced; a lone one counts.
+*/
+function programEnd(p) {
+  const parts = String(p.start_date || "").split("-").map(Number);
+  if (!(parts[0] && parts[1] && parts[2])) return null;
+  const start = new Date(parts[0], parts[1] - 1, parts[2]);
+  const end = new Date(start); end.setDate(start.getDate() + Math.max(1, (p.weeks || []).length) * 7);
+  return { start, end };
+}
+function pickCurrentProgram(programs, today = new Date()) {
+  const list = (programs || []).filter(p => (p.weeks || []).length > 0);
+  if (list.length === 0) return null;
+  const t = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const dated = list.map(p => ({ p, r: programEnd(p) })).filter(x => x.r);
+  const running = dated.filter(x => x.r.start <= t && t < x.r.end).sort((a, b) => b.r.start - a.r.start);
+  if (running.length) return running[0].p;
+  const started = dated.filter(x => x.r.start <= t).sort((a, b) => b.r.start - a.r.start);
+  if (started.length) return started[0].p;
+  const undated = list.filter(p => !programEnd(p));
+  if (undated.length === 1) return undated[0];
+  const upcoming = dated.sort((a, b) => a.r.start - b.r.start);
+  return upcoming.length ? upcoming[0].p : null;
+}
+
+// The day of a week to open on: today's session, else the next one coming up, else the
+// first session nobody has marked yet, else the first.
+function defaultDayId(week, wi, isCurrentWeek, startDate) {
+  const days = ((week && week.days) || []).filter(d => (d.blocks || []).length > 0);
+  if (days.length === 0) return ((week && week.days) || [])[0]?.id || null;
+  if (isCurrentWeek) {
+    const start = weekStartFromLabel(week.label, wi, startDate);
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const dated = days.map(d => { const dt = new Date(start); dt.setDate(start.getDate() + weekdayOffset(d.label)); dt.setHours(0, 0, 0, 0); return { d, dt }; });
+    const exact = dated.find(x => x.dt.getTime() === today.getTime());
+    if (exact) return exact.d.id;
+    const next = dated.find(x => x.dt > today);
+    if (next) return next.d.id;
+  }
+  const open = days.find(d => !d.status);
+  return (open || days[0]).id;
+}
+
+/*
+  Coach notes, shown in full only on request. Some notes run to a dozen lines and include
+  set-up meant for the coach; the athlete sees the start and can open the rest.
+*/
+function ClampedNotes({ text, limit = 220 }) {
+  const [open, setOpen] = useState(false);
+  const t = text || "";
+  const long = t.length > limit;
+  return (
+    <div style={{ marginTop: 6, padding: "6px 8px", background: "#fff", borderRadius: 6, border: "1px solid #E4E4E7", fontSize: 12, color: "#52525B", whiteSpace: "pre-wrap", lineHeight: 1.45, wordBreak: "break-word" }}>
+      {long && !open ? t.slice(0, limit).replace(/\s+\S*$/, "") + "…" : t}
+      {long && (
+        <button onClick={() => setOpen(!open)} style={{ display: "block", marginTop: 4, background: "none", border: "none", padding: 0, color: "#2563EB", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
+          {open ? "Show less" : "Read the full note"}
+        </button>
+      )}
+    </div>
+  );
 }
 
 export default function AthleteView({ athlete, onLogout, readOnly }) {
@@ -161,6 +227,7 @@ export default function AthleteView({ athlete, onLogout, readOnly }) {
 
   const addVideoSub = useCallback(async (sub) => {
     const { data, error } = await supabase.from("video_submissions").insert(sub).select().single();
+    if (error) console.error("video submission insert failed", error);
     if (!error && data) setVideoSubs(prev => [data, ...prev]);
     return data;
   }, []);
@@ -190,6 +257,30 @@ export default function AthleteView({ athlete, onLogout, readOnly }) {
   }, []);
 
   const nav = (id, ref) => { setPage(id); setFocusRef(ref || null); if (isMobile) setNavOpen(false); };
+
+  /*
+    Landing from a phone notification. A cold start arrives as /?page=…&ref=…; an app
+    that was already open gets a message from the service worker instead. Either way
+    the athlete lands on the thing the notification was about.
+  */
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const known = new Set(["my-program", "my-progress", "my-baselines", "my-logs", "timers", "my-videos", "messages", "ai-chat"]);
+    try {
+      const q = new URLSearchParams(window.location.search);
+      const pg = q.get("page");
+      if (pg && known.has(pg)) {
+        setPage(pg); setFocusRef(q.get("ref") || null);
+        window.history.replaceState(null, "", window.location.pathname);
+      }
+    } catch {}
+    const onMsg = (e) => {
+      const d = e.data || {};
+      if (d.type === "t2p-nav" && known.has(d.page)) { setPage(d.page); setFocusRef(d.refId || null); }
+    };
+    navigator.serviceWorker?.addEventListener?.("message", onMsg);
+    return () => navigator.serviceWorker?.removeEventListener?.("message", onMsg);
+  }, []);
   const toastNav = (targetPage) => { setPage(targetPage === "messages" ? "messages" : "my-program"); if (isMobile) setNavOpen(false); };
   // Coach preview is read-only: neutralize every write so nothing is saved
   const ro = !!readOnly;
@@ -257,7 +348,8 @@ export default function AthleteView({ athlete, onLogout, readOnly }) {
         )}
         <main className="t2p-main" style={{ flex: 1, padding: isMobile ? "12px 10px" : 32, maxWidth: "100%", overflowX: "hidden" }}>
           {page === "my-program" && <MyProgram programs={programs} setPrograms={setPrograms} exercises={exercises} colors={colors} cats={cats} isMobile={isMobile} athlete={athlete} addLog={addLogRO} logs={logs} groups={groups} addVideoSub={addVideoSubRO} videoSubs={videoSubs} deleteVideoSub={deleteVideoSubRO} setLogs={setLogs} focusBlockId={focusRef} onFocusDone={() => setFocusRef(null)} />}
-          {page === "my-baselines" && <MyBaselines baselines={baselines} groups={groups} updateBaseline={updateBaselineRO} isMobile={isMobile} />}
+          {page === "my-progress" && <MyProgress logs={logs} programs={programs} isMobile={isMobile} />}
+          {page === "my-baselines" && <MyBaselines baselines={baselines} groups={groups} programs={programs} athleteId={athlete.id} updateBaseline={updateBaselineRO} isMobile={isMobile} />}
           {page === "my-logs" && <MyLogs logs={logs} colors={colors} cats={cats} isMobile={isMobile} deleteLog={deleteLogRO} deleteDayLogs={deleteDayLogsRO} />}
           {page === "timers" && <Timers role="athlete" athlete={athlete} exercises={exercises} isMobile={isMobile} readOnly={ro} />}
           {page === "my-videos" && <MyVideos videoSubs={videoSubs} addVideoSub={addVideoSubRO} deleteVideoSub={deleteVideoSubRO} athlete={athlete} exercises={exercises} cats={cats} colors={colors} isMobile={isMobile} focusId={focusRef} onFocusDone={() => setFocusRef(null)} />}
@@ -296,6 +388,8 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
   const focusDayRef = useRef(null);
   const [dayGlow, setDayGlow] = useState(null);
   const goToDay = (weekIdx, dayId) => {
+    pendingDay.current = dayId;
+    setActiveDay(dayId);
     setAw(weekIdx);
     setDayGlow(dayId);
     setTimeout(() => focusDayRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 220);
@@ -317,8 +411,15 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
   }, [reloadComments]);
   const [uploadingVideo, setUploadingVideo] = useState(null); // block.id being uploaded
   const [videoSuccess, setVideoSuccess] = useState(null); // block.id that succeeded
+  const [filmOpen, setFilmOpen] = useState(null);         // block.id with the film panel open
+  const [filmQuestion, setFilmQuestion] = useState({});   // block.id -> "what should I look at?"
+  const [showDemo, setShowDemo] = useState(null);         // block.id whose demo is playing inline
+  const [activeDay, setActiveDay] = useState(null);       // day.id on screen
+  const [showWholeWeek, setShowWholeWeek] = useState(false);
+  const pendingDay = useRef(null);                        // day to land on after a week change
 
-  const handleVideoUpload = async (file, block, dayId) => {
+  const handleVideoUpload = async (file, block, day, weekLabel) => {
+    const dayId = day && day.id;
     if (!file || !addVideoSub) return;
     const maxSize = 100 * 1024 * 1024;
     if (file.size > maxSize) { alert("Video must be under 100MB"); return; }
@@ -334,22 +435,32 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
         setUploadingVideo(null);
         return;
       }
-      const ext = file.name.split(".").pop() || "mp4";
-      const fileName = `${athlete.id}_${Date.now()}.${ext}`;
+      // Owner-prefixed path: readable ownership once the bucket is private (lib/media.js).
+      const fileName = athleteUploadPath(athlete.id, file.name);
       const { error: upErr } = await supabase.storage.from("videos").upload(fileName, blob, { contentType });
       if (upErr) { alert("Upload failed: " + upErr.message); setUploadingVideo(null); return; }
       const { data: urlData } = supabase.storage.from("videos").getPublicUrl(fileName);
       const exName = getDisplayName(block, dayId);
-      await addVideoSub({
+      // Filmed FROM a block: the coach sees which session and set it came from, and the
+      // athlete's question rides along instead of being typed again in Messages.
+      const savedSub = await addVideoSub({
         athlete_id: athlete.id,
         athlete_name: athlete.name,
         exercise_name: exName,
         video_url: urlData.publicUrl,
-        notes: "",
+        notes: (filmQuestion[block.id] || "").trim(),
         date: localDateISO(),
         status: "pending",
+        program_id: prog?.id || null,
+        block_id: block.id,
+        week_label: weekLabel || null,
+        day_label: day?.label || null,
       });
+      // Never show "sent" for a clip the coach cannot see.
+      if (!savedSub) throw new Error("the video uploaded but could not be sent to your coach. Please try again.");
       setUploadingVideo(null);
+      setFilmOpen(null);
+      setFilmQuestion(prev => { const n = { ...prev }; delete n[block.id]; return n; });
       setVideoSuccess(block.id);
       setTimeout(() => setVideoSuccess(null), 3000);
     } catch (err) {
@@ -360,8 +471,35 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
 
   const prog = programs.find(p => p.id === selectedProg);
 
+  // Open straight into the program the athlete is in now. Once only - "All programs"
+  // must stay on the list rather than bouncing back.
+  const autoPicked = useRef(false);
+  useEffect(() => {
+    if (autoPicked.current || selectedProg || programs.length === 0) return;
+    autoPicked.current = true;
+    const cur = pickCurrentProgram(programs);
+    if (cur) setSelectedProg(cur.id);
+  }, [programs, selectedProg]);
+
+  // A notification about an exercise in a different program switches to that program.
+  useEffect(() => {
+    if (!focusBlockId) return;
+    const owner = programs.find(p => (p.weeks || []).some(w => (w.days || []).some(d => (d.blocks || []).some(b => b.id === focusBlockId))));
+    if (owner && owner.id !== selectedProg) { autoPicked.current = true; setSelectedProg(owner.id); }
+  }, [focusBlockId, programs, selectedProg]);
+
   // Compute current week index (don't auto-navigate, just track it)
   const currentWeekIndex = prog ? weekCurrentIndex(prog.weeks || [], prog.start_date) : 0;
+
+  // Which session is on screen. Recomputed when the week or program changes, unless a
+  // jump (missing-numbers banner, a notification) already said which day to land on.
+  useEffect(() => {
+    if (!prog) return;
+    if (pendingDay.current) { setActiveDay(pendingDay.current); pendingDay.current = null; return; }
+    const wk = (prog.weeks || [])[aw];
+    setActiveDay(defaultDayId(wk, aw, aw === currentWeekIndex, prog.start_date));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedProg, aw]);
 
   useEffect(() => {
     if (prog) {
@@ -382,6 +520,8 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
       if (days.some(d => (d.blocks || []).some(b => b.id === focusBlockId))) wi = i;
     }
     if (wi < 0) return; // the block is not in this program - leave the view alone
+    const fd = (weeks[wi].days || []).find(d => (d.blocks || []).some(b => b.id === focusBlockId));
+    if (fd) { pendingDay.current = fd.id; setActiveDay(fd.id); }
     setAw(wi);
     setExpandedBlock(focusBlockId);
     setBlockGlow(focusBlockId);
@@ -663,10 +803,17 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
   if (!prog) {
     return (
       <div style={{ maxWidth: "100%", overflowX: "hidden" }}>
-        <h2 style={{ margin: "0 0 20px", fontSize: isMobile ? 22 : 28, fontFamily: "'Space Mono', monospace" }}>My Program</h2>
+        <h2 style={{ margin: "0 0 20px", fontSize: isMobile ? 22 : 28, fontFamily: "'Space Mono', monospace" }}>All Programs</h2>
         {programs.length === 0 ? <EmptyState icon="▦" title="No program assigned yet" sub="Your coach will assign your program soon." /> : (
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            {programs.map(p => {
+            {(() => {
+              const cur = pickCurrentProgram(programs);
+              return programs.slice().sort((a, b) => {
+                if (cur && a.id === cur.id) return -1;
+                if (cur && b.id === cur.id) return 1;
+                return String(b.start_date || "").localeCompare(String(a.start_date || ""));
+              });
+            })().map(p => {
               const wks = p.weeks || [];
               const completed = wks.filter(w => w.status === "completed").length;
               const missed = wks.filter(w => w.status === "missed").length;
@@ -688,6 +835,7 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
               const completionPct = totalSessions > 0 ? Math.round((compSessions / totalSessions) * 100) : 0;
               return (
                 <Card key={p.id} onClick={() => setSelectedProg(p.id)} style={{ cursor: "pointer" }}>
+                  {pickCurrentProgram(programs)?.id === p.id && <div style={{ fontSize: 10, fontWeight: 800, color: "#16A34A", letterSpacing: 0.5, marginBottom: 2 }}>CURRENT PROGRAM</div>}
                   <div style={{ fontWeight: 700, fontSize: 18 }}>{p.name}</div>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4 }}>
                     <span style={{ fontSize: 13, color: "#71717A" }}>{wks.length} weeks</span>
@@ -732,7 +880,8 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
 
   return (
     <div style={{ maxWidth: "100%", overflowX: "hidden" }}>
-      <button onClick={() => setSelectedProg(null)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 14, color: "#71717A", marginBottom: 8, fontFamily: "inherit" }}>← Back</button>
+      <button onClick={() => setSelectedProg(null)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 14, color: "#71717A", marginBottom: 8, fontFamily: "inherit" }}>← All programs{programs.length > 1 ? ` (${programs.length})` : ""}</button>
+      {canPersist && <PushPrompt athleteId={athlete.id} compact={isMobile} />}
       <h2 style={{ margin: "0 0 6px", fontSize: isMobile ? 16 : 24, fontFamily: "'Space Mono', monospace", wordBreak: "break-word", lineHeight: 1.3 }}>{prog.name}</h2>
       {(() => { const grp = (groups || []).find(g => g.id === prog.group_id); return grp ? <div style={{ marginBottom: 6 }}><Badge color="#16A34A">{grp.name}</Badge></div> : null; })()}
       {prog.description && <ProgramBrief text={prog.description} compact />}
@@ -880,11 +1029,48 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
               ← Back to Current Week ({weekNumberLabel(weeks[currentWeekIndex]?.label, currentWeekIndex)})
             </button>
           )}
+          {/*
+            One session at a time. The whole week used to render as five stacked cards of
+            12-14 exercises; the athlete scrolled past Monday to find Thursday. Each chip
+            is a session; "Today" marks the one on the calendar for today.
+          */}
+          {week && (week.days || []).length > 1 && (() => {
+            const start = weekStartFromLabel(week.label, aw, prog.start_date);
+            const today = new Date(); today.setHours(0, 0, 0, 0);
+            return (
+              <div style={{ display: "flex", gap: 6, margin: "6px 0 10px", overflowX: "auto", paddingBottom: 2, WebkitOverflowScrolling: "touch" }}>
+                {week.days.map(d => {
+                  const dt = new Date(start); dt.setDate(start.getDate() + weekdayOffset(d.label)); dt.setHours(0, 0, 0, 0);
+                  const isToday = dt.getTime() === today.getTime();
+                  const on = !showWholeWeek && activeDay === d.id;
+                  const st = d.status || week.status || "";
+                  const wd = dt.toLocaleDateString("en-US", { weekday: "short" });
+                  return (
+                    <button key={d.id} onClick={() => { setShowWholeWeek(false); setActiveDay(d.id); }} style={{
+                      flexShrink: 0, minWidth: 58, padding: "6px 10px", borderRadius: 10, cursor: "pointer", fontFamily: "inherit", textAlign: "center",
+                      border: on ? "2px solid #18181B" : isToday ? "2px solid #F59E0B" : "1px solid #E4E4E7",
+                      background: on ? "#18181B" : "#fff", color: on ? "#fff" : "#18181B",
+                    }}>
+                      <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: 0.5, color: on ? "#FCD34D" : isToday ? "#B45309" : "#A1A1AA", height: 11 }}>{isToday ? "TODAY" : ""}</div>
+                      <div style={{ fontSize: 13, fontWeight: 700 }}>
+                        {st === "completed" ? "✓ " : st === "missed" ? "✗ " : ""}{wd}
+                      </div>
+                      <div style={{ fontSize: 10, opacity: 0.7 }}>{dt.toLocaleDateString("en-US", { month: "short", day: "numeric" })}</div>
+                    </button>
+                  );
+                })}
+                <button onClick={() => setShowWholeWeek(!showWholeWeek)} style={{
+                  flexShrink: 0, padding: "6px 10px", borderRadius: 10, cursor: "pointer", fontFamily: "inherit", fontSize: 11, fontWeight: 700,
+                  border: showWholeWeek ? "2px solid #18181B" : "1px dashed #D4D4D8", background: showWholeWeek ? "#18181B" : "#fff", color: showWholeWeek ? "#fff" : "#71717A",
+                }}>Whole<br />week</button>
+              </div>
+            );
+          })()}
           </>
         );
       })()}
 
-      {week && week.days.map(day => {
+      {week && week.days.filter(day => showWholeWeek || (week.days || []).length <= 1 || day.id === activeDay || (!activeDay && day === week.days[0])).map(day => {
         const dayStatus = day.status || week.status || "";
         const weekLabel = week.label || "";
         const dayLabel = day.label || "";
@@ -931,7 +1117,9 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
               <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                 {dayStatus === "missed" && <span style={{ fontSize: 11, fontWeight: 600, color: "#DC2626" }}>Missed</span>}
                 {dayStatus === "completed" && <span style={{ fontSize: 11, fontWeight: 600, color: "#16A34A" }}>Done</span>}
-                <span style={{ fontSize: 11, color: "#A1A1AA" }}>{day.blocks.length} exercises</span>
+                <span style={{ fontSize: 11, color: "#A1A1AA" }}>
+                  {day.blocks.length} exercises{(() => { const k = day.blocks.filter(b => MUST_LOG_CATS.has(b.category)).length; return k ? ` · ${k} to log` : ""; })()}
+                </span>
               </div>
             </div>
 
@@ -1009,6 +1197,10 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
               const bgColor = exStatus === "completed" ? "#F0FDF4" : exStatus === "missed" ? "#FEF2F2" : (cc?.light || "#F9FAFB");
 
               const isFocusBlock = blockGlow === block.id;
+              // What they did last time on this movement, from a different session.
+              const last = (NUDGE_CATS.has(block.category) || block.category === "COND")
+                ? lastPerformance(logs, block, { displayName: getDisplayName(block, day.id), weekLabel: week.label, dayLabel: day.label })
+                : null;
               return (
                 <div
                   key={block.id}
@@ -1048,6 +1240,7 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
                           return <div style={{ fontSize: 11.5, color: "#B45309", lineHeight: 1.35, marginTop: 2, wordBreak: "break-word" }}>↳ {sub}</div>;
                         })()}
                         {!isOpen && <div style={{ fontSize: 11, color: "#71717A" }}>{[block.sets && block.reps ? `${block.sets}×${block.reps}` : null, block.load ? `@ ${block.load}` : null].filter(Boolean).join(" ") || ""}</div>}
+                        {!isOpen && last && <div style={{ fontSize: 11, color: "#1D4ED8", fontWeight: 600 }}>Last time: {describeLog(last)}</div>}
                       </div>
                       {hasInput && <span style={{ width: 7, height: 7, borderRadius: 4, background: "#16A34A", flexShrink: 0 }} />}
                       {!hasInput && loggedResult && <span style={{ width: 7, height: 7, borderRadius: 4, background: "#16A34A", flexShrink: 0 }} />}
@@ -1070,7 +1263,7 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
                           {block.category === "PWR" ? "MEASURE" : "LOG IT"}
                         </span>
                       )}
-                      {videoUrl && <a href={videoUrl} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} style={{ fontSize: 10, color: "#fff", background: "#2563EB", textDecoration: "none", fontWeight: 700, padding: "2px 6px", borderRadius: 999, flexShrink: 0 }}>▶</a>}
+                      {videoUrl && <button onClick={e => { e.stopPropagation(); setExpandedBlock(block.id); setShowDemo(block.id); }} aria-label="Play demo" style={{ fontSize: 10, color: "#fff", background: "#2563EB", border: "none", fontWeight: 700, padding: "2px 7px", borderRadius: 999, flexShrink: 0, cursor: "pointer", fontFamily: "inherit" }}>▶</button>}
                       <span style={{ fontSize: 10, color: "#A1A1AA", transform: isOpen ? "rotate(180deg)" : "none", transition: "transform .15s", flexShrink: 0 }}>▼</span>
                     </div>
                   </div>
@@ -1123,15 +1316,41 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
                         {block.load && <div><div style={{ fontSize: 9, color: "#71717A", fontWeight: 700 }}>LOAD</div><div style={{ fontSize: 16, fontWeight: 700 }}>{block.load}</div></div>}
                       </div>
                       {(block.tempo || block.rest) && (
-                        <div style={{ display: "flex", gap: 12, marginTop: 4, fontSize: 12 }}>
+                        <div style={{ display: "flex", gap: 12, marginTop: 4, fontSize: 12, flexWrap: "wrap" }}>
                           {block.tempo && <span style={{ color: "#71717A" }}>Tempo: <b>{block.tempo}</b></span>}
                           {block.rest && <span style={{ color: "#71717A" }}>Rest: <b>{block.rest}s</b></span>}
                         </div>
                       )}
-                      {block.notes && (
-                        <div style={{ marginTop: 6, padding: "6px 8px", background: "#fff", borderRadius: 6, border: "1px solid #E4E4E7", fontSize: 12, color: "#52525B", fontStyle: "italic", whiteSpace: "pre-wrap", lineHeight: 1.4, wordBreak: "break-word" }}>{block.notes}</div>
+                      {(() => {
+                        // Tempo in words, so "3-0-1" means something to a 14-year-old.
+                        const t = explainTempo(block.tempo);
+                        if (!t) return null;
+                        return <div style={{ fontSize: 11.5, color: "#0F766E", marginTop: 2, lineHeight: 1.4 }}>⏱ {t.sentence}</div>;
+                      })()}
+                      {/*
+                        The athlete cue comes first: one or two lines, the thing to think about
+                        mid-set. The coach's full note (which can include set-up meant for the
+                        coach) is behind a tap. block.coachNote is never rendered here.
+                      */}
+                      {block.cue && (
+                        <div style={{ marginTop: 8, padding: "8px 10px", background: "#EFF6FF", border: "1px solid #BFDBFE", borderRadius: 8, fontSize: 13.5, color: "#1E3A8A", fontWeight: 600, lineHeight: 1.45, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+                          {block.cue}
+                        </div>
                       )}
-                      {videoUrl && <a href={videoUrl} target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, color: "#fff", background: "#2563EB", textDecoration: "none", fontWeight: 700, padding: "5px 12px", borderRadius: 999, marginTop: 6 }}>▶ Watch Video</a>}
+                      {block.notes && (block.cue ? (
+                        <details style={{ marginTop: 6 }}>
+                          <summary style={{ cursor: "pointer", fontSize: 11.5, fontWeight: 700, color: "#71717A" }}>Coach's full notes</summary>
+                          <div style={{ marginTop: 4, padding: "6px 8px", background: "#fff", borderRadius: 6, border: "1px solid #E4E4E7", fontSize: 12, color: "#52525B", whiteSpace: "pre-wrap", lineHeight: 1.45, wordBreak: "break-word" }}>{block.notes}</div>
+                        </details>
+                      ) : <ClampedNotes text={block.notes} />)}
+                      {videoUrl && (showDemo === block.id ? (
+                        <div>
+                          <VideoPlayer url={videoUrl} title={getDisplayName(block, day.id)} compact={isMobile} />
+                          <button onClick={() => setShowDemo(null)} style={{ display: "block", marginTop: 4, background: "none", border: "none", padding: 0, color: "#71717A", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>Hide demo</button>
+                        </div>
+                      ) : (
+                        <button onClick={() => setShowDemo(block.id)} style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, color: "#fff", background: "#2563EB", border: "none", fontWeight: 700, padding: "6px 14px", borderRadius: 999, marginTop: 8, cursor: "pointer", fontFamily: "inherit" }}>▶ Watch demo</button>
+                      ))}
 
                       {/* Log / Edit inputs */}
                       <div style={{ marginTop: 10, paddingTop: 8, borderTop: "1px dashed #D4D4D8" }}>
@@ -1144,6 +1363,12 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
                           {saveState[block.id] === "saved" && <span style={{ fontSize: 10, color: "#16A34A", fontWeight: 700 }}>✓ Saved</span>}
                           {saveState[block.id] === "error" && <span style={{ fontSize: 10, color: "#DC2626", fontWeight: 700 }}>Not saved — check signal</span>}
                         </div>
+                        {last && (
+                          <div style={{ marginBottom: 8, padding: "6px 9px", borderRadius: 7, background: "#F1F5F9", border: "1px solid #E2E8F0", fontSize: 12, color: "#334155" }}>
+                            <b>Last time</b> <span style={{ color: "#64748B" }}>({shortDate(last.date)})</span>: <b style={{ color: "#0F172A" }}>{describeLog(last)}</b>
+                            {last.notes ? <div style={{ fontSize: 11, color: "#64748B", marginTop: 2, fontStyle: "italic" }}>"{last.notes}"</div> : null}
+                          </div>
+                        )}
                         {/* THE SCORE. On a test block this is the only place the number
                             goes, it says what unit it is in, and a two-sided test gets two
                             boxes so the sides can never collapse into one string. */}
@@ -1158,10 +1383,17 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
                             onRight={e => updateResult(block.id, "load", formatSides(sideVals.left, e.target.value), block, day, week.label)}
                             onBlur={() => flushSave(block, day, week.label)} />
                         )}
+                        {/* Conditioning: one score box that asks for the right thing (rounds + reps
+                            for an AMRAP, time for a for-time piece). Same `load` column as before. */}
+                        {spec.isCond && (
+                          <ScoreField label="Score" unit={spec.unit} value={effLoad} placeholder={spec.placeholder} inputMode="text"
+                            onChange={e => updateResult(block.id, "load", e.target.value, block, day, week.label)}
+                            onBlur={() => flushSave(block, day, week.label)} />
+                        )}
                         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
-                          <label style={{ fontSize: 10, color: "#71717A" }}>Sets<input type="number" value={effSets} onChange={e => updateResult(block.id, "sets", e.target.value, block, day, week.label)} onBlur={() => flushSave(block, day, week.label)} placeholder={block.sets || ""} style={inputStyle} /></label>
-                          <label style={{ fontSize: 10, color: "#71717A" }}>Reps<AutoGrow singleLine value={effReps} onChange={e => updateResult(block.id, "reps", e.target.value, block, day, week.label)} onBlur={() => flushSave(block, day, week.label)} placeholder={block.reps || ""} style={inputStyle} /></label>
-                          {!spec.isTest && (
+                          {!spec.isCond && <label style={{ fontSize: 10, color: "#71717A" }}>Sets<input type="number" value={effSets} onChange={e => updateResult(block.id, "sets", e.target.value, block, day, week.label)} onBlur={() => flushSave(block, day, week.label)} placeholder={block.sets || ""} style={inputStyle} /></label>}
+                          {!spec.isCond && <label style={{ fontSize: 10, color: "#71717A" }}>Reps<AutoGrow singleLine value={effReps} onChange={e => updateResult(block.id, "reps", e.target.value, block, day, week.label)} onBlur={() => flushSave(block, day, week.label)} placeholder={block.reps || ""} style={inputStyle} /></label>}
+                          {!spec.isTest && !spec.isCond && (
                             <label style={{ fontSize: 10, color: "#71717A" }}>{spec.label}{spec.unit ? ` (${spec.unit})` : ""}<AutoGrow singleLine value={effLoad} onChange={e => updateResult(block.id, "load", e.target.value, block, day, week.label)} onBlur={() => flushSave(block, day, week.label)} placeholder={block.category === "PWR" ? (block.load || "e.g. 30in box, 7ft") : (block.load || spec.unit || "lbs")} style={inputStyle} /></label>
                           )}
                           <label style={{ fontSize: 10, color: "#71717A" }}>RPE<input value={effRpe} onChange={e => updateResult(block.id, "rpe", e.target.value, block, day, week.label)} onBlur={() => flushSave(block, day, week.label)} placeholder="1-10" style={inputStyle} /></label>
@@ -1197,19 +1429,35 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
                         />
                       )}
 
-                      {/* Submit Video */}
+                      {/*
+                        Film this set. One tap opens the camera; an optional question goes with
+                        the clip, and the clip carries which session and exercise it came from
+                        so the coach's answer lands back here.
+                      */}
                       {addVideoSub && (
                         <div style={{ marginTop: 10, paddingTop: 8, borderTop: "1px dashed #D4D4D8" }}>
-                          <div style={{ fontSize: 10, fontWeight: 700, color: "#71717A", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 6 }}>Submit Form Video</div>
                           {videoSuccess === block.id ? (
-                            <div style={{ background: "#F0FDF4", padding: "8px 10px", borderRadius: 6, fontSize: 12, color: "#16A34A", fontWeight: 600, textAlign: "center" }}>✓ Video submitted for review!</div>
+                            <div style={{ background: "#F0FDF4", padding: "8px 10px", borderRadius: 6, fontSize: 12, color: "#16A34A", fontWeight: 600, textAlign: "center" }}>✓ Sent to your coach. Their feedback will show up right here.</div>
                           ) : uploadingVideo === block.id ? (
-                            <div style={{ background: "#EFF6FF", padding: "8px 10px", borderRadius: 6, fontSize: 12, color: "#2563EB", fontWeight: 600, textAlign: "center" }}>Uploading…</div>
+                            <div style={{ background: "#EFF6FF", padding: "8px 10px", borderRadius: 6, fontSize: 12, color: "#2563EB", fontWeight: 600, textAlign: "center" }}>Uploading… keep the app open</div>
+                          ) : filmOpen !== block.id ? (
+                            <button onClick={() => setFilmOpen(block.id)} style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "10px", border: "1px dashed #BFDBFE", borderRadius: 8, background: "#F8FAFF", cursor: "pointer", fontSize: 13, fontWeight: 700, color: "#2563EB", fontFamily: "inherit" }}>
+                              <span>🎥</span> Film this set for your coach
+                            </button>
                           ) : (
-                            <label style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "10px", border: "1px dashed #BFDBFE", borderRadius: 8, background: "#F8FAFF", cursor: "pointer", fontSize: 13, fontWeight: 600, color: "#2563EB" }}>
-                              <span>🎥</span> Record or Choose Video
-                              <input type="file" accept="video/*" onChange={e => { const inp = e.target; const f = inp.files?.[0]; if (f) handleVideoUpload(f, block, day.id).finally(() => { inp.value = ""; }); }} style={{ display: "none" }} />
-                            </label>
+                            <div style={{ padding: 10, border: "1px solid #BFDBFE", borderRadius: 8, background: "#F8FAFF" }}>
+                              <label style={{ fontSize: 11, fontWeight: 700, color: "#1E3A8A", display: "block" }}>What should your coach look at? <span style={{ fontWeight: 500, color: "#64748B" }}>(optional)</span>
+                                <AutoGrow value={filmQuestion[block.id] || ""} onChange={e => setFilmQuestion(prev => ({ ...prev, [block.id]: e.target.value }))} placeholder="e.g. Is my back staying flat at the bottom?" style={{ ...inputStyle, marginTop: 4, background: "#fff" }} />
+                              </label>
+                              <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+                                <label style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "10px", borderRadius: 8, background: "#2563EB", color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 700 }}>
+                                  🎥 Record or choose video
+                                  <input type="file" accept="video/*" onChange={e => { const inp = e.target; const f = inp.files?.[0]; if (f) handleVideoUpload(f, block, day, week.label).finally(() => { inp.value = ""; }); }} style={{ display: "none" }} />
+                                </label>
+                                <button onClick={() => setFilmOpen(null)} style={{ padding: "10px 12px", borderRadius: 8, border: "1px solid #E4E4E7", background: "#fff", color: "#71717A", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>Cancel</button>
+                              </div>
+                              <div style={{ fontSize: 10.5, color: "#64748B", marginTop: 6 }}>Side-on, whole body in frame. Under 100 MB (about a minute).</div>
+                            </div>
                           )}
                         </div>
                       )}
@@ -1217,7 +1465,8 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
                       {/* Previous video submissions for this exercise */}
                       {(() => {
                         const exName = getDisplayName(block, day.id);
-                        const exVideos = (videoSubs || []).filter(v => v.exercise_name === exName);
+                        // Filmed from this exact block, or (older clips with no block) same movement.
+                        const exVideos = (videoSubs || []).filter(v => v.block_id ? v.block_id === block.id : v.exercise_name === exName);
                         if (exVideos.length === 0) return null;
                         const statusColors = { pending: { bg: "#FFF7ED", color: "#F97316", label: "Pending Review" }, reviewed: { bg: "#F0FDF4", color: "#16A34A", label: "Reviewed ✓" }, "needs-work": { bg: "#FEF2F2", color: "#DC2626", label: "Needs Work" } };
                         return (
@@ -1228,7 +1477,7 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
                               return (
                                 <div key={v.id} style={{ padding: "8px", background: "#F9FAFB", borderRadius: 8, border: "1px solid #E4E4E7", marginBottom: 6 }}>
                                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-                                    <a href={v.video_url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, color: "#2563EB", fontWeight: 600, textDecoration: "none" }}>▶ Watch Video</a>
+                                    <MediaLink url={v.video_url} style={{ fontSize: 12, color: "#2563EB", fontWeight: 600, textDecoration: "none" }}>▶ Watch Video</MediaLink>
                                     <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                                       <span style={{ fontSize: 10, fontWeight: 600, color: sc.color, background: sc.bg, padding: "2px 8px", borderRadius: 4 }}>{sc.label}</span>
                                       {deleteVideoSub && <button onClick={() => deleteVideoSub(v.id)} style={{ background: "none", border: "none", cursor: "pointer", color: "#D4D4D8", fontSize: 14 }} title="Delete video">✕</button>}
@@ -1365,209 +1614,6 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
         <div style={{ marginTop: 12, padding: "12px 14px", background: "#EFF6FF", borderRadius: 10, border: "1px solid #BFDBFE" }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: "#1E40AF", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 4 }}>📋 Weekly Recap</div>
           <div style={{ fontSize: 13, color: "#1E3A5F", whiteSpace: "pre-wrap", lineHeight: 1.5 }}>{week.coachRecap}</div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function AthleteLog({ addLog, athlete, exercises, cats, colors, isMobile, programs, logs }) {
-  const [selectedWorkout, setSelectedWorkout] = useState("");
-  const [date, setDate] = useState(localDateISO());
-  // Same rule as MyProgram: typed numbers survive a reload. See the comment there.
-  const logResultsKey = `t2p_logpage_${athlete?.id || "x"}`;
-  const [blockResults, setBlockResults] = useState(() => {
-    if (typeof window === "undefined") return {};
-    try { return JSON.parse(window.localStorage.getItem(`t2p_logpage_${athlete?.id || "x"}`) || "{}"); } catch { return {}; }
-  });
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    try { window.localStorage.setItem(`t2p_logpage_${athlete?.id || "x"}`, JSON.stringify(blockResults)); } catch (e) {}
-  }, [blockResults, athlete]);
-  const [submitting, setSubmitting] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const [expandedEx, setExpandedEx] = useState(null);
-
-  // Build workout options from programs
-  const workoutOptions = [];
-  (programs || []).forEach(p => {
-    (p.weeks || []).forEach((w, wi) => {
-      (w.days || []).forEach((d, di) => {
-        if (d.blocks && d.blocks.length > 0) {
-          const label = `${w.label ? w.label.replace(/WEEK\s*/i, "W").split("—")[0].trim() : `W${wi + 1}`} ${d.label}`;
-          workoutOptions.push({ value: `${p.id}-${wi}-${di}`, label, programId: p.id, weekIndex: wi, dayIndex: di, day: d, weekLabel: w.label || `Week ${wi + 1}` });
-        }
-      });
-    });
-  });
-
-  const selected = workoutOptions.find(o => o.value === selectedWorkout);
-
-  // Mirror the day-level equipment room chosen over in My Program, so a manual log shows
-  // the same movement names the athlete actually trained.
-  const loggedDayTier = (() => {
-    if (typeof window === "undefined" || !selected) return null;
-    try { return (JSON.parse(window.localStorage.getItem(`t2p_equip_day_${athlete?.id || "x"}`) || "{}"))[selected.day.id] || null; } catch { return null; }
-  })();
-  const logTier = loggedDayTier || "full_gym";
-  // Same rule as My Program: the coach's text is the prescription and is what gets
-  // logged, so the log reads back the same name the athlete saw in the session.
-  const getDisplayName = (block) => {
-    if (block.exerciseName) return block.exerciseName;
-    if (block.exerciseId) { const f = exercises.find(e => e.id === block.exerciseId); if (f) return f.name; }
-    return "Unknown";
-  };
-
-  const updateResult = (blockId, field, value) => {
-    setBlockResults(prev => ({ ...prev, [blockId]: { ...(prev[blockId] || {}), [field]: value } }));
-  };
-
-  const submitAll = async () => {
-    if (!selected) return;
-    const filled = (r) => !!(r && ((r.sets ?? "") !== "" || (r.reps ?? "") !== "" || (r.load ?? "") !== "" ||
-                                   (r.rpe ?? "") !== "" || (r.notes ?? "") !== ""));
-    const typedAny = (selected.day.blocks || []).some(b => filled(blockResults[b.id]));
-    if (!typedAny && typeof window !== "undefined") {
-      if (!window.confirm("You haven't entered any numbers for this session.\n\nLog it as complete without them?")) return;
-    }
-    setSubmitting(true);
-    try {
-    for (const block of selected.day.blocks) {
-      const result = blockResults[block.id] || {};
-      await addLog({
-        athlete_id: athlete.id,
-        athlete_name: athlete.name,
-        exercise_id: block.exerciseId || "",
-        exercise_name: getDisplayName(block),
-        category: block.category || "",
-        equipment_tier: logTier,
-        // Athlete's numbers only - never the prescription. See MyProgram.saveBlockNow.
-        sets: result.sets || "",
-        reps: result.reps || "",
-        load: result.load || "",
-        rpe: result.rpe || "",
-        notes: result.notes || "",
-        date,
-        week_label: selected.weekLabel,
-        day_label: selected.day.label,
-      });
-    }
-    } catch (err) {
-      console.error("submitAll failed", err);
-      alert("Could not save this session. Please try again - nothing was lost.");
-      setSubmitting(false);
-      return;
-    }
-    setSubmitting(false);
-    setSaved(true);
-    setBlockResults(prev => {
-      const next = { ...prev };
-      (selected.day.blocks || []).forEach(b => { delete next[b.id]; });
-      return next;
-    });
-    setTimeout(() => setSaved(false), 3000);
-  };
-
-  const alreadyLogged = selected && (logs || []).some(l => l.athlete_id === athlete.id && l.date === date && l.day_label === selected.day.label && l.week_label === selected.weekLabel);
-
-  return (
-    <div style={{ maxWidth: "100%" }}>
-      <h2 style={{ margin: "0 0 20px", fontSize: isMobile ? 22 : 28, fontFamily: "'Space Mono', monospace" }}>Log Workout</h2>
-      {saved && <div style={{ background: "#F0FDF4", color: "#16A34A", padding: "10px 14px", borderRadius: 8, marginBottom: 16, fontWeight: 600, fontSize: 14 }}>Workout logged!</div>}
-
-      <Card style={{ marginBottom: 16 }}>
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          <Input label="Date" type="date" value={date} onChange={e => setDate(e.target.value)} />
-          <div>
-            <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>Select Workout</div>
-            <select value={selectedWorkout} onChange={e => { setSelectedWorkout(e.target.value); setExpandedEx(null); }} style={{ width: "100%", padding: "9px 12px", border: "1px solid #E4E4E7", borderRadius: 8, fontSize: 14, fontFamily: "inherit", boxSizing: "border-box" }}>
-              <option value="">— Choose a workout —</option>
-              {workoutOptions.map(o => <option key={o.value} value={o.value}>{o.label} ({o.day.blocks.length} exercises)</option>)}
-            </select>
-          </div>
-        </div>
-      </Card>
-
-      {selected && (
-        <div>
-          {alreadyLogged && (
-            <div style={{ background: "#FFF7ED", border: "1px solid #F97316", padding: "10px 14px", borderRadius: 8, marginBottom: 12, fontSize: 13, color: "#F97316", fontWeight: 600 }}>
-              Already logged for {date}.
-            </div>
-          )}
-
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {selected.day.blocks.map((block, bi) => {
-              const cc = colors[block.category];
-              const result = blockResults[block.id] || {};
-              const resolvedEx = block.exerciseId ? exercises.find(e => e.id === block.exerciseId) : null;
-              const resolvedByName = !resolvedEx && block.exerciseName ? exercises.find(e => e.name === block.exerciseName) : null;
-              const matchedEx = resolvedEx || resolvedByName;
-              const videoUrl = matchedEx?.video_url || "";
-              const isOpen = !isMobile || expandedEx === block.id;
-              const hasInput = result.sets || result.reps || result.load || result.rpe || result.notes;
-              // Same score rules as the main program card - one number, one place.
-              const spec = scoreSpecFor(block);
-              const sideVals = spec.sides ? parseSides(result.load ?? "") : null;
-
-              return (
-                <Card key={block.id} style={{ padding: 0, borderLeft: `4px solid ${cc?.bg || "#999"}`, overflow: "hidden" }}>
-                  {/* Header - always visible */}
-                  <div onClick={isMobile ? () => setExpandedEx(expandedEx === block.id ? null : block.id) : undefined} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 12px", cursor: isMobile ? "pointer" : "default" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, flex: 1, minWidth: 0 }}>
-                      <Badge color={cc?.bg || "#999"}>{block.category}</Badge>
-                      <div style={{ minWidth: 0, flex: 1 }}>
-                        <div style={{ fontWeight: 700, fontSize: 14, lineHeight: 1.3, wordBreak: "break-word" }}>{getDisplayName(block)}</div>
-                        <div style={{ fontSize: 11, color: "#71717A" }}>
-                          {[block.sets && block.reps ? `${block.sets}×${block.reps}` : null, block.load ? `@ ${block.load}` : null].filter(Boolean).join(" ") || ""}
-                        </div>
-                      </div>
-                    </div>
-                    <div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0 }}>
-                      {hasInput && <span style={{ width: 8, height: 8, borderRadius: 4, background: "#16A34A" }} />}
-                      {videoUrl && <a href={videoUrl} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} style={{ display: "inline-flex", alignItems: "center", fontSize: 11, color: "#fff", background: "#2563EB", textDecoration: "none", fontWeight: 700, padding: "2px 8px", borderRadius: 999 }}>▶</a>}
-                      {isMobile && <span style={{ fontSize: 12, color: "#A1A1AA", transform: isOpen ? "rotate(180deg)" : "none", transition: "transform .2s" }}>▼</span>}
-                    </div>
-                  </div>
-
-                  {/* Expanded content */}
-                  {isOpen && (
-                    <div style={{ padding: "0 12px 12px", borderTop: "1px solid #E4E4E7" }}>
-                      {block.notes && <div style={{ fontSize: 12, color: "#52525B", padding: "8px 0 4px", fontStyle: "italic" }}>{block.notes}</div>}
-                      {videoUrl && (
-                        <a href={videoUrl} target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, color: "#fff", background: "#2563EB", textDecoration: "none", fontWeight: 700, padding: "4px 12px", borderRadius: 999, marginTop: 6, marginBottom: 8 }}>▶ Watch Movement Video</a>
-                      )}
-                      <div style={{ fontSize: 11, fontWeight: 700, color: "#71717A", textTransform: "uppercase", letterSpacing: 0.5, marginTop: 8, marginBottom: 6 }}>Your Results</div>
-                      {/* THE SCORE — same rule as the program card: one number, one
-                          place, unit stated, and two boxes when the test has two sides. */}
-                      {spec.isTest && !spec.sides && (
-                        <ScoreField unit={spec.unit} value={result.load ?? ""}
-                          onChange={e => updateResult(block.id, "load", e.target.value)} />
-                      )}
-                      {spec.isTest && spec.sides && (
-                        <SideScoreField unit={spec.unit} left={sideVals.left} right={sideVals.right} raw={sideVals.raw}
-                          onLeft={e => updateResult(block.id, "load", formatSides(e.target.value, sideVals.right))}
-                          onRight={e => updateResult(block.id, "load", formatSides(sideVals.left, e.target.value))} />
-                      )}
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
-                        <label style={{ fontSize: 10, color: "#71717A" }}>Sets<input type="number" value={result.sets ?? ""} onChange={e => updateResult(block.id, "sets", e.target.value)} placeholder={block.sets || ""} style={{ width: "100%", padding: "8px 8px", border: "1px solid #E4E4E7", borderRadius: 6, fontSize: 16, fontFamily: "inherit", marginTop: 2, boxSizing: "border-box" }} /></label>
-                        <label style={{ fontSize: 10, color: "#71717A" }}>Reps<AutoGrow singleLine value={result.reps ?? ""} onChange={e => updateResult(block.id, "reps", e.target.value)} placeholder={block.reps || ""} style={{ width: "100%", padding: "8px 8px", border: "1px solid #E4E4E7", borderRadius: 6, fontSize: 16, fontFamily: "inherit", marginTop: 2, boxSizing: "border-box" }} /></label>
-                        {!spec.isTest && (
-                          <label style={{ fontSize: 10, color: "#71717A" }}>Load<AutoGrow singleLine value={result.load ?? ""} onChange={e => updateResult(block.id, "load", e.target.value)} placeholder={block.load || "lbs"} style={{ width: "100%", padding: "8px 8px", border: "1px solid #E4E4E7", borderRadius: 6, fontSize: 16, fontFamily: "inherit", marginTop: 2, boxSizing: "border-box" }} /></label>
-                        )}
-                        <label style={{ fontSize: 10, color: "#71717A" }}>RPE<input value={result.rpe ?? ""} onChange={e => updateResult(block.id, "rpe", e.target.value)} placeholder="1-10" style={{ width: "100%", padding: "8px 8px", border: "1px solid #E4E4E7", borderRadius: 6, fontSize: 16, fontFamily: "inherit", marginTop: 2, boxSizing: "border-box" }} /></label>
-                      </div>
-                      <label style={{ fontSize: 10, color: "#71717A", display: "block", marginTop: 6 }}>Notes<AutoGrow value={result.notes ?? ""} onChange={e => updateResult(block.id, "notes", e.target.value)} placeholder="How did it feel?" style={{ width: "100%", padding: "8px 8px", border: "1px solid #E4E4E7", borderRadius: 6, fontSize: 16, fontFamily: "inherit", marginTop: 2, boxSizing: "border-box" }} /></label>
-                    </div>
-                  )}
-                </Card>
-              );
-            })}
-          </div>
-
-          <Btn onClick={submitAll} disabled={submitting} style={{ marginTop: 16, width: "100%", opacity: submitting ? 0.5 : 1 }}>
-            {submitting ? "Logging…" : `Log ${selected.label} (${selected.day.blocks.length} exercises)`}
-          </Btn>
         </div>
       )}
     </div>
@@ -1775,8 +1821,7 @@ function MyVideos({ videoSubs, addVideoSub, deleteVideoSub, athlete, exercises, 
       setUploading(true);
       setUploadProgress("Uploading video…");
       try {
-        const ext = selectedFile.name.split(".").pop()?.toLowerCase() || "mp4";
-        const fileName = `${athlete.id}/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`;
+        const fileName = athleteUploadPath(athlete.id, selectedFile.name);
         const body = selectedBlob || selectedFile;
         const { data, error } = await supabase.storage.from("videos").upload(fileName, body, { cacheControl: "3600", upsert: false, contentType: body.type || "video/mp4" });
         if (error) { alert("Upload failed: " + error.message); setUploading(false); setUploadProgress(""); return; }
@@ -1845,7 +1890,8 @@ function MyVideos({ videoSubs, addVideoSub, deleteVideoSub, athlete, exercises, 
                   {deleteVideoSub && <button onClick={() => deleteVideoSub(v.id)} style={{ background: "none", border: "none", cursor: "pointer", color: "#D4D4D8", fontSize: 16 }} title="Delete video">✕</button>}
                 </div>
               </div>
-              <a href={v.video_url} target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 13, color: "#fff", background: "#2563EB", textDecoration: "none", fontWeight: 700, padding: "5px 14px", borderRadius: 999, marginTop: 10 }}>▶ Watch Video</a>
+              {(v.week_label || v.day_label) && <div style={{ fontSize: 11, color: "#71717A", marginTop: 4 }}>From {[v.week_label ? v.week_label.split(/[·—]/)[0].trim() : "", v.day_label].filter(Boolean).join(" · ")}</div>}
+              <MediaLink url={v.video_url} style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 13, color: "#fff", background: "#2563EB", textDecoration: "none", fontWeight: 700, padding: "5px 14px", borderRadius: 999, marginTop: 10 }}>▶ Watch Video</MediaLink>
               {v.notes && <div style={{ fontSize: 13, color: "#52525B", marginTop: 8, fontStyle: "italic" }}>{v.notes}</div>}
               {v.coach_feedback && (
                 <div style={{ marginTop: 10, padding: "10px 14px", background: "#F0FDF4", borderRadius: 8, border: "1px solid #4ADE80" }}>
@@ -1928,7 +1974,7 @@ function MyVideos({ videoSubs, addVideoSub, deleteVideoSub, athlete, exercises, 
   );
 }
 
-function MyBaselines({ baselines, groups, updateBaseline, isMobile }) {
+function MyBaselines({ baselines, groups, programs, athleteId, updateBaseline, isMobile }) {
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState({});
 
@@ -1949,6 +1995,7 @@ function MyBaselines({ baselines, groups, updateBaseline, isMobile }) {
       title: (g && g.name) || (key === "__unassigned__" ? "Benchmarks" : key),
       started: (g && g.created_at) || null,
       rows: byBlock[key].slice().sort((x, y) => (x.sort_order ?? 0) - (y.sort_order ?? 0)),
+      labels: baselineColumnLabels(programs, key, athleteId),
     };
   }).sort((a, b) => {
     if (!a.started && !b.started) return a.title.localeCompare(b.title);
@@ -1972,7 +2019,7 @@ function MyBaselines({ baselines, groups, updateBaseline, isMobile }) {
   return (
     <div>
       <h2 style={{ margin: "0 0 6px", fontSize: isMobile ? 22 : 28, fontFamily: "'Space Mono', monospace" }}>My Baselines</h2>
-      <p style={{ fontSize: 13, color: "#71717A", margin: "0 0 20px" }}>Enter your results for Week 1 and Week 12 testing.</p>
+      <p style={{ fontSize: 13, color: "#71717A", margin: "0 0 20px" }}>Enter your results for your start-of-block test and your retest.</p>
 
       {baselines.length === 0 ? (
         <EmptyState icon="◎" title="No baselines set up yet" sub="Your coach will set up your baseline movements." />
@@ -2009,7 +2056,7 @@ function MyBaselines({ baselines, groups, updateBaseline, isMobile }) {
                   <div>
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
                       <div style={{ padding: "10px", background: "#FFF7ED", borderRadius: 8, border: "1px solid #FED7AA" }}>
-                        <div style={{ fontSize: 11, fontWeight: 700, color: "#F97316", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 6 }}>Week 1</div>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: "#F97316", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 6 }}>{section.labels.start}</div>
                         <label style={{ fontSize: 11, color: "#71717A", display: "block", marginBottom: 6 }}>Result
                           <AutoGrow singleLine value={form.week1_result} onChange={e => setForm({ ...form, week1_result: e.target.value })} placeholder={`e.g. ${b.target}`} style={{ width: "100%", padding: "8px", border: "1px solid #FED7AA", borderRadius: 6, fontSize: 16, fontFamily: "inherit", marginTop: 2, boxSizing: "border-box" }} />
                         </label>
@@ -2018,7 +2065,7 @@ function MyBaselines({ baselines, groups, updateBaseline, isMobile }) {
                         </label>
                       </div>
                       <div style={{ padding: "10px", background: "#F0FDF4", borderRadius: 8, border: "1px solid #BBF7D0" }}>
-                        <div style={{ fontSize: 11, fontWeight: 700, color: "#16A34A", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 6 }}>Week 12</div>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: "#16A34A", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 6 }}>{section.labels.end}</div>
                         <label style={{ fontSize: 11, color: "#71717A", display: "block", marginBottom: 6 }}>Result
                           <AutoGrow singleLine value={form.week12_result} onChange={e => setForm({ ...form, week12_result: e.target.value })} placeholder={`e.g. ${b.target}`} style={{ width: "100%", padding: "8px", border: "1px solid #BBF7D0", borderRadius: 6, fontSize: 16, fontFamily: "inherit", marginTop: 2, boxSizing: "border-box" }} />
                         </label>
@@ -2035,12 +2082,12 @@ function MyBaselines({ baselines, groups, updateBaseline, isMobile }) {
                 ) : (
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                     <div style={{ padding: "10px", background: "#FFF7ED", borderRadius: 8, border: "1px solid #FED7AA" }}>
-                      <div style={{ fontSize: 11, fontWeight: 700, color: "#F97316", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 4 }}>Week 1</div>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: "#F97316", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 4 }}>{section.labels.start}</div>
                       <div style={{ fontSize: 20, fontWeight: 700, color: hasW1 ? "#18181B" : "#D4D4D8" }}>{hasW1 || "—"}</div>
                       {b.week1_notes && <div style={{ fontSize: 12, color: "#71717A", fontStyle: "italic", marginTop: 4 }}>{b.week1_notes}</div>}
                     </div>
                     <div style={{ padding: "10px", background: "#F0FDF4", borderRadius: 8, border: "1px solid #BBF7D0" }}>
-                      <div style={{ fontSize: 11, fontWeight: 700, color: "#16A34A", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 4 }}>Week 12</div>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: "#16A34A", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 4 }}>{section.labels.end}</div>
                       <div style={{ fontSize: 20, fontWeight: 700, color: hasW12 ? "#18181B" : "#D4D4D8" }}>{hasW12 || "—"}</div>
                       {b.week12_notes && <div style={{ fontSize: 12, color: "#71717A", fontStyle: "italic", marginTop: 4 }}>{b.week12_notes}</div>}
                     </div>

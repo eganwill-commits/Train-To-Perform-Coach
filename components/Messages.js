@@ -1,6 +1,8 @@
 "use client";
 import { useState, useEffect, useRef, useMemo } from "react";
 import { supabase, supabaseUrl, supabaseAnonKey } from "../lib/supabase";
+import { notifyAthlete } from "../lib/push";
+import { resolveMediaUrl, storageRef } from "../lib/media";
 
 const timeAgo = (d) => {
   const s = Math.floor((Date.now() - new Date(d).getTime()) / 1000);
@@ -28,15 +30,33 @@ const getEmbedUrl = (u) => {
 };
 const MAX_FILE_MB = 50;
 
+/*
+  Uploaded media is read through a signed URL, so the message-media bucket can be private.
+  Rows keep the URL they were written with; it is only resolved for display.
+*/
+function useResolved(url) {
+  const [u, setU] = useState(url && storageRef(url) ? null : url);
+  useEffect(() => {
+    let live = true;
+    if (!url || !storageRef(url)) { setU(url); return; }
+    resolveMediaUrl(url).then(r => { if (live) setU(r); });
+    return () => { live = false; };
+  }, [url]);
+  return u;
+}
+
 function MediaDisplay({ msg }) {
+  const media = useResolved(msg.media_url);
+  const linked = useResolved(msg.video_url);
   if (msg.media_url) {
-    if (msg.media_type === "image") return <img src={msg.media_url} alt="" style={{ maxWidth: "100%", borderRadius: 8, marginTop: 6, cursor: "pointer" }} onClick={() => window.open(msg.media_url, "_blank")} />;
-    if (msg.media_type === "video") return <video src={msg.media_url} controls playsInline style={{ maxWidth: "100%", borderRadius: 8, marginTop: 6 }} />;
+    if (!media) return <div style={{ fontSize: 11, color: "#A1A1AA", marginTop: 6 }}>Loading attachment…</div>;
+    if (msg.media_type === "image") return <img src={media} alt="" style={{ maxWidth: "100%", borderRadius: 8, marginTop: 6, cursor: "pointer" }} onClick={() => window.open(media, "_blank")} />;
+    if (msg.media_type === "video") return <video src={media} controls playsInline style={{ maxWidth: "100%", borderRadius: 8, marginTop: 6 }} />;
   }
   if (msg.video_url) {
     const embed = getEmbedUrl(msg.video_url);
     if (embed) return <iframe src={embed} style={{ width: "100%", aspectRatio: "16/9", border: "none", borderRadius: 8, marginTop: 6 }} allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen />;
-    if (isVideoUrl(msg.video_url)) return <video src={msg.video_url} controls playsInline style={{ maxWidth: "100%", borderRadius: 8, marginTop: 6 }} />;
+    if (isVideoUrl(msg.video_url)) return <video src={linked || msg.video_url} controls playsInline style={{ maxWidth: "100%", borderRadius: 8, marginTop: 6 }} />;
     if (isImageUrl(msg.video_url)) return <img src={msg.video_url} alt="" style={{ maxWidth: "100%", borderRadius: 8, marginTop: 6 }} />;
     return <a href={msg.video_url} target="_blank" rel="noopener noreferrer" style={{ display: "inline-block", marginTop: 6, fontSize: 12, color: "#2563EB", wordBreak: "break-all" }}>🔗 {msg.video_url}</a>;
   }
@@ -172,9 +192,14 @@ export default function Messages({ isCoach, currentUserId, currentUserName, athl
     e.target.value = "";
   };
 
-  const uploadFile = async (file) => {
+  const uploadFile = async (file, ownerId) => {
     const ext = file.name.split(".").pop() || "bin";
-    const path = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`;
+    // Prefixed with the athlete the conversation belongs to, so ownership is readable
+    // from the path once the bucket is private.
+    const path = `${ownerId ? ownerId + "/" : ""}${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`;
+    // Upload as the signed-in user when there is one; the anon key only as a fallback.
+    const { data: { session } } = await supabase.auth.getSession();
+    const bearer = session?.access_token || supabaseAnonKey;
 
     // Use XMLHttpRequest for real progress
     return new Promise((resolve, reject) => {
@@ -197,7 +222,7 @@ export default function Messages({ isCoach, currentUserId, currentUserName, athl
       };
       xhr.onerror = () => reject(new Error("Upload failed"));
       xhr.open("POST", uploadUrl);
-      xhr.setRequestHeader("Authorization", `Bearer ${supabaseAnonKey}`);
+      xhr.setRequestHeader("Authorization", `Bearer ${bearer}`);
       xhr.setRequestHeader("apikey", supabaseAnonKey);
       xhr.setRequestHeader("x-upsert", "false");
       xhr.setRequestHeader("Cache-Control", "max-age=3600");
@@ -214,13 +239,16 @@ export default function Messages({ isCoach, currentUserId, currentUserName, athl
     const targetName = isCoach ? (athletes || []).find(a => a.id === selectedAthlete)?.name || "Athlete" : currentUserName;
     let mediaUrl = null, mediaType = null;
     if (pendingFile) {
-      try { setUploading(true); mediaUrl = await uploadFile(pendingFile.file); mediaType = pendingFile.type; }
+      try { setUploading(true); mediaUrl = await uploadFile(pendingFile.file, targetId); mediaType = pendingFile.type; }
       catch (err) { alert("Upload failed: " + (err.message || "Unknown error")); setUploading(false); return; }
       setUploading(false);
     }
     const msg = { athlete_id: targetId, athlete_name: targetName, sender_id: currentUserId, sender_name: currentUserName, sender_role: isCoach ? "coach" : "athlete", content: text || null, video_url: link || null, media_url: mediaUrl, media_type: mediaType };
     const { data, error } = await supabase.from("messages").insert([msg]).select().single();
-    if (!error && data) setMessages(prev => [...prev, data]);
+    if (!error && data) {
+      setMessages(prev => [...prev, data]);
+      if (isCoach) notifyAthlete({ athleteId: targetId, title: `Message from ${currentUserName || "Coach"}`, body: text || (mediaUrl ? "Sent a photo/video" : "Shared a link"), page: "messages" });
+    }
     setInput(""); setVideoUrl(""); setShowLinkInput(false); setPendingFile(null); setUploadProgress(0);
     inputRef.current?.focus();
   };

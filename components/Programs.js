@@ -1022,6 +1022,12 @@ function ProgramDetail({ program, programs, exercises, updateExercise, addExerci
                               <label style={{ fontSize: 10, color: "#71717A", display: "block", marginTop: 4 }}>Notes
                                 <BlurInput value={block.notes || ""} onSave={v => updateBlock(aw, di, bi, "notes", v)} placeholder="Coaching cues, modifications…" multiline style={{ width: "100%", padding: "6px 5px", border: "1px solid #E4E4E7", borderRadius: 6, fontSize: 14, fontFamily: "inherit", marginTop: 1, boxSizing: "border-box", minHeight: block.notes && block.notes.length > 60 ? 60 : undefined }} />
                               </label>
+                              <label style={{ fontSize: 10, color: "#1E40AF", display: "block", marginTop: 4, fontWeight: 600 }}>Athlete cue — the 1–2 lines they see first
+                                <BlurInput value={block.cue || ""} onSave={v => updateBlock(aw, di, bi, "cue", v)} placeholder="e.g. Brace, sit between the heels, drive the floor away." multiline style={{ width: "100%", padding: "6px 5px", border: "1px solid #BFDBFE", borderRadius: 6, fontSize: 14, fontFamily: "inherit", marginTop: 1, boxSizing: "border-box", background: "#F8FAFF" }} />
+                              </label>
+                              <label style={{ fontSize: 10, color: "#92400E", display: "block", marginTop: 4, fontWeight: 600 }}>Coach-only note — hidden in the athlete app
+                                <BlurInput value={block.coachNote || ""} onSave={v => updateBlock(aw, di, bi, "coachNote", v)} placeholder="Rack plan, groupings, reminders to yourself…" multiline style={{ width: "100%", padding: "6px 5px", border: "1px solid #FDE68A", borderRadius: 6, fontSize: 14, fontFamily: "inherit", marginTop: 1, boxSizing: "border-box", background: "#FFFBEB" }} />
+                              </label>
                               <VariantHint ex={resolvedEx} />
                               <ExerciseVideoControl libraryEx={resolvedEx || (block.exerciseName ? exercises.find(e => e.name === block.exerciseName) : null)} exerciseName={displayName} category={block.category} exercises={exercises} updateExercise={updateExercise} addExercise={addExercise} compact={isMobile} />
                               {/* Ask the athlete about this exercise. Anchored to the block, so the
@@ -1106,7 +1112,13 @@ function ProgramDetail({ program, programs, exercises, updateExercise, addExerci
                         <label style={{ fontSize: 10, color: "#71717A", display: "block", marginTop: 4 }}>Notes
                           <BlurInput value={block.notes || ""} onSave={v => updateBlock(aw, di, bi, "notes", v)} placeholder="Coaching cues, modifications…" multiline style={{ width: "100%", padding: "4px 5px", border: "1px solid #E4E4E7", borderRadius: 6, fontSize: 13, fontFamily: "inherit", marginTop: 1, boxSizing: "border-box", minHeight: block.notes && block.notes.length > 60 ? 60 : undefined }} />
                         </label>
-                        <VariantHint ex={resolvedEx} />
+                        <label style={{ fontSize: 10, color: "#1E40AF", display: "block", marginTop: 4, fontWeight: 600 }}>Athlete cue — the 1–2 lines they see first
+                                <BlurInput value={block.cue || ""} onSave={v => updateBlock(aw, di, bi, "cue", v)} placeholder="e.g. Brace, sit between the heels, drive the floor away." multiline style={{ width: "100%", padding: "6px 5px", border: "1px solid #BFDBFE", borderRadius: 6, fontSize: 14, fontFamily: "inherit", marginTop: 1, boxSizing: "border-box", background: "#F8FAFF" }} />
+                              </label>
+                              <label style={{ fontSize: 10, color: "#92400E", display: "block", marginTop: 4, fontWeight: 600 }}>Coach-only note — hidden in the athlete app
+                                <BlurInput value={block.coachNote || ""} onSave={v => updateBlock(aw, di, bi, "coachNote", v)} placeholder="Rack plan, groupings, reminders to yourself…" multiline style={{ width: "100%", padding: "6px 5px", border: "1px solid #FDE68A", borderRadius: 6, fontSize: 14, fontFamily: "inherit", marginTop: 1, boxSizing: "border-box", background: "#FFFBEB" }} />
+                              </label>
+                              <VariantHint ex={resolvedEx} />
                               <ExerciseVideoControl libraryEx={resolvedEx || (block.exerciseName ? exercises.find(e => e.name === block.exerciseName) : null)} exerciseName={displayName} category={block.category} exercises={exercises} updateExercise={updateExercise} addExercise={addExercise} compact={isMobile} />
                         {/* Ask the athlete about this exercise. Anchored to the block, so the
                             question and the answer arrive with their context attached. */}
