@@ -12,7 +12,8 @@
 --
 -- What it does NOT touch
 --   * No row in any table is changed or deleted. Policies and bucket flags only.
---   * athletes, programs, logs, baselines, exercises keep their current open access
+--   * athletes: coach full access, athlete reads own row, anonymous none (codes hidden).
+--   * programs, logs, baselines, exercises keep their current open access
 --     (next phase - see the audit notes).
 --   * voice-lines stays public (TV timer screens play it without a login).
 --
@@ -47,6 +48,18 @@ begin
     execute format($p$create policy "athlete: own rows" on public.%I for all to authenticated using (athlete_id = public.current_athlete_id()) with check (athlete_id = public.current_athlete_id())$p$, t);
   end loop;
 end $$;
+
+-- ---------------------------------------------------------------- athletes
+-- Access codes are athletes' passwords. With "Allow all", anyone holding the public key
+-- could read every code and sign in as any athlete, and could rewrite auth_user_id to
+-- point current_athlete_id() at someone else. The coach keeps full access; a signed-in
+-- athlete can read only their own row; no anonymous access. Login itself is unaffected:
+-- the athlete-login function reads this table with the service key.
+drop policy if exists "Allow all" on public.athletes;
+drop policy if exists "coach: all" on public.athletes;
+drop policy if exists "athlete: read own row" on public.athletes;
+create policy "coach: all" on public.athletes for all using (public.is_t2p_coach()) with check (public.is_t2p_coach());
+create policy "athlete: read own row" on public.athletes for select to authenticated using (auth_user_id = auth.uid());
 
 -- ---------------------------------------------------------------- storage
 update storage.buckets set public = false where id in ('videos', 'messages-media');

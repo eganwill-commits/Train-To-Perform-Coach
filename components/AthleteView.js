@@ -257,6 +257,7 @@ export default function AthleteView({ athlete, onLogout, readOnly }) {
   }, []);
 
   const nav = (id, ref) => { setPage(id); setFocusRef(ref || null); if (isMobile) setNavOpen(false); };
+  const clearFocus = useCallback(() => setFocusRef(null), []);
 
   /*
     Landing from a phone notification. A cold start arrives as /?page=…&ref=…; an app
@@ -347,12 +348,12 @@ export default function AthleteView({ athlete, onLogout, readOnly }) {
           </header>
         )}
         <main className="t2p-main" style={{ flex: 1, padding: isMobile ? "12px 10px" : 32, maxWidth: "100%", overflowX: "hidden" }}>
-          {page === "my-program" && <MyProgram programs={programs} setPrograms={setPrograms} exercises={exercises} colors={colors} cats={cats} isMobile={isMobile} athlete={athlete} addLog={addLogRO} logs={logs} groups={groups} addVideoSub={addVideoSubRO} videoSubs={videoSubs} deleteVideoSub={deleteVideoSubRO} setLogs={setLogs} focusBlockId={focusRef} onFocusDone={() => setFocusRef(null)} />}
+          {page === "my-program" && <MyProgram programs={programs} setPrograms={setPrograms} exercises={exercises} colors={colors} cats={cats} isMobile={isMobile} athlete={athlete} addLog={addLogRO} logs={logs} groups={groups} addVideoSub={addVideoSubRO} videoSubs={videoSubs} deleteVideoSub={deleteVideoSubRO} setLogs={setLogs} focusBlockId={focusRef} onFocusDone={clearFocus} />}
           {page === "my-progress" && <MyProgress logs={logs} programs={programs} isMobile={isMobile} />}
           {page === "my-baselines" && <MyBaselines baselines={baselines} groups={groups} programs={programs} athleteId={athlete.id} updateBaseline={updateBaselineRO} isMobile={isMobile} />}
           {page === "my-logs" && <MyLogs logs={logs} colors={colors} cats={cats} isMobile={isMobile} deleteLog={deleteLogRO} deleteDayLogs={deleteDayLogsRO} />}
           {page === "timers" && <Timers role="athlete" athlete={athlete} exercises={exercises} isMobile={isMobile} readOnly={ro} />}
-          {page === "my-videos" && <MyVideos videoSubs={videoSubs} addVideoSub={addVideoSubRO} deleteVideoSub={deleteVideoSubRO} athlete={athlete} exercises={exercises} cats={cats} colors={colors} isMobile={isMobile} focusId={focusRef} onFocusDone={() => setFocusRef(null)} />}
+          {page === "my-videos" && <MyVideos videoSubs={videoSubs} addVideoSub={addVideoSubRO} deleteVideoSub={deleteVideoSubRO} athlete={athlete} exercises={exercises} cats={cats} colors={colors} isMobile={isMobile} focusId={focusRef} onFocusDone={clearFocus} />}
           {page === "messages" && (ro ? <div style={{ padding: 24, color: "#71717A", fontSize: 14 }}>Messaging is disabled in coach preview.</div> : <Messages currentUserId={athlete.id} currentUserName={athlete.name} isMobile={isMobile} />)}
           {page === "ai-chat" && <AIChat isMobile={isMobile} athleteName={athlete.name} athlete={athlete} programs={programs} logs={logs} baselines={baselines} videoSubs={videoSubs} />}
         </main>
@@ -388,7 +389,9 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
   const focusDayRef = useRef(null);
   const [dayGlow, setDayGlow] = useState(null);
   const goToDay = (weekIdx, dayId) => {
-    pendingDay.current = dayId;
+    // Only park the day for after a week change; within the same week, set it directly.
+    if (weekIdx !== aw) pendingDay.current = dayId;
+    setShowWholeWeek(false);
     setActiveDay(dayId);
     setAw(weekIdx);
     setDayGlow(dayId);
@@ -495,8 +498,11 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
   // jump (missing-numbers banner, a notification) already said which day to land on.
   useEffect(() => {
     if (!prog) return;
-    if (pendingDay.current) { setActiveDay(pendingDay.current); pendingDay.current = null; return; }
     const wk = (prog.weeks || [])[aw];
+    const pend = pendingDay.current;
+    pendingDay.current = null;
+    // Use the parked day only if it belongs to the week now on screen.
+    if (pend && ((wk && wk.days) || []).some(d => d.id === pend)) { setActiveDay(pend); return; }
     setActiveDay(defaultDayId(wk, aw, aw === currentWeekIndex, prog.start_date));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedProg, aw]);
@@ -521,7 +527,7 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
     }
     if (wi < 0) return; // the block is not in this program - leave the view alone
     const fd = (weeks[wi].days || []).find(d => (d.blocks || []).some(b => b.id === focusBlockId));
-    if (fd) { pendingDay.current = fd.id; setActiveDay(fd.id); }
+    if (fd) { if (wi !== aw) pendingDay.current = fd.id; setShowWholeWeek(false); setActiveDay(fd.id); }
     setAw(wi);
     setExpandedBlock(focusBlockId);
     setBlockGlow(focusBlockId);
@@ -710,6 +716,14 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
     setSaveState(prev => ({ ...prev, [block.id]: "saving" }));
     try {
       if (prior) {
+        /*
+          Updating a row already saved: a field this device has no draft for keeps what the
+          row already holds. Before, an untouched field was written back as "" - so a score
+          typed on a conditioning block (whose Sets/Reps boxes are now hidden) would have
+          blanked numbers the athlete logged earlier.
+        */
+        ["sets", "reps", "load", "rpe", "notes"].forEach(k => { if (r[k] === undefined) row[k] = prior[k] ?? ""; });
+        if (r.status === undefined && prior.exercise_status) row.exercise_status = prior.exercise_status;
         const { data, error } = await supabase.from("logs").update(row).eq("id", prior.id).select().single();
         if (error) throw error;
         if (data && setLogs) setLogs(prev => prev.map(l => (l.id === data.id ? data : l)));
@@ -1042,7 +1056,9 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
                 {week.days.map(d => {
                   const dt = new Date(start); dt.setDate(start.getDate() + weekdayOffset(d.label)); dt.setHours(0, 0, 0, 0);
                   const isToday = dt.getTime() === today.getTime();
-                  const on = !showWholeWeek && activeDay === d.id;
+                  const ids = week.days.map(x => x.id);
+                  const shownId = ids.includes(activeDay) ? activeDay : defaultDayId(week, aw, aw === currentWeekIndex, prog.start_date);
+                  const on = !showWholeWeek && shownId === d.id;
                   const st = d.status || week.status || "";
                   const wd = dt.toLocaleDateString("en-US", { weekday: "short" });
                   return (
@@ -1070,7 +1086,12 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
         );
       })()}
 
-      {week && week.days.filter(day => showWholeWeek || (week.days || []).length <= 1 || day.id === activeDay || (!activeDay && day === week.days[0])).map(day => {
+      {week && (() => {
+        // Never render an empty week: if the chosen day is not in this week, show its default.
+        const ids = (week.days || []).map(d => d.id);
+        const shownId = ids.includes(activeDay) ? activeDay : defaultDayId(week, aw, aw === currentWeekIndex, prog.start_date);
+        return week.days.filter(day => showWholeWeek || ids.length <= 1 || day.id === shownId);
+      })().map(day => {
         const dayStatus = day.status || week.status || "";
         const weekLabel = week.label || "";
         const dayLabel = day.label || "";
@@ -1099,6 +1120,13 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
         });
 
         const isFocusDay = dayGlow === day.id;
+        // This session's calendar date: "Last time" never reaches forward past it.
+        const sessionDateISO = (() => {
+          const d = weekStartFromLabel(week.label, aw, prog.start_date); d.setDate(d.getDate() + weekdayOffset(day.label));
+          const today = localDateISO();
+          const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+          return iso < today ? iso : today;
+        })();
         return (
           // Wrapper carries the ref - Card is a plain function component and does not
           // forward refs.
@@ -1199,7 +1227,7 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
               const isFocusBlock = blockGlow === block.id;
               // What they did last time on this movement, from a different session.
               const last = (NUDGE_CATS.has(block.category) || block.category === "COND")
-                ? lastPerformance(logs, block, { displayName: getDisplayName(block, day.id), weekLabel: week.label, dayLabel: day.label })
+                ? lastPerformance(logs, block, { displayName: getDisplayName(block, day.id), weekLabel: week.label, dayLabel: day.label, onOrBefore: sessionDateISO })
                 : null;
               return (
                 <div

@@ -18,6 +18,10 @@ create policy "Allow all" on public.exercise_comments for all using (true) with 
 create policy "Allow all" on public.athlete_alerts for all using (true) with check (true);
 create policy "Allow all" on public.video_submissions for all using (true) with check (true);
 
+drop policy if exists "coach: all" on public.athletes;
+drop policy if exists "athlete: read own row" on public.athletes;
+create policy "Allow all" on public.athletes for all using (true) with check (true);
+
 update storage.buckets set public = true where id in ('videos', 'messages-media');
 
 drop policy if exists "t2p storage: coach all" on storage.objects;

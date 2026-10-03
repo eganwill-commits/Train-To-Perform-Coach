@@ -64,7 +64,7 @@ export default function VideoPlayer({ url, title, compact }) {
   A link that resolves a storage URL before opening it - for places that keep a
   "Watch" button rather than an inline player (the coach's review list).
 */
-export function MediaLink({ url, children, style }) {
+export function MediaLink({ url, children, style, onClick }) {
   const [href, setHref] = useState(storageRef(url) ? null : url);
   useEffect(() => {
     let live = true;
@@ -73,7 +73,7 @@ export function MediaLink({ url, children, style }) {
     return () => { live = false; };
   }, [url]);
   return (
-    <a href={href || "#"} target="_blank" rel="noopener noreferrer" onClick={e => { if (!href) e.preventDefault(); }} style={style}>
+    <a href={href || "#"} target="_blank" rel="noopener noreferrer" onClick={e => { if (onClick) onClick(e); if (!href) e.preventDefault(); }} style={style}>
       {children}
     </a>
   );

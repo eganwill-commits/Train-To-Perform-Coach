@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import { supabase, supabaseUrl, supabaseAnonKey } from "../lib/supabase";
+import { disablePushHere } from "../lib/push";
 import LoginPage from "../components/LoginPage";
 import CoachApp from "../components/CoachApp";
 import AthleteView from "../components/AthleteView";
@@ -94,6 +95,9 @@ export default function Page() {
   const [authState, setAuthState] = useState(null); // null = loading, 'login', 'coach', 'athlete'
   const [coachUser, setCoachUser] = useState(null);
   const [athleteUser, setAthleteUser] = useState(null);
+  // Bumped when a legacy login is upgraded, so the athlete view reloads its data under
+  // the new session instead of keeping what it fetched with the public key.
+  const [sessionTick, setSessionTick] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -157,7 +161,7 @@ export default function Page() {
         setAuthState("athlete");
         // Upgrade in the background; the athlete is already looking at their program.
         if (await upgradeLegacyAthlete(fresh || stored.athlete)) {
-          if (!cancelled) writeStoredAthlete(fresh || stored.athlete, "session");
+          if (!cancelled) { writeStoredAthlete(fresh || stored.athlete, "session"); setSessionTick(t => t + 1); }
         }
         return;
       }
@@ -203,6 +207,8 @@ export default function Page() {
   };
 
   const handleLogout = async () => {
+    // A shared phone must stop buzzing for the person who just signed out.
+    await disablePushHere();
     await supabase.auth.signOut();
     clearStoredAthlete();
     setCoachUser(null);
@@ -230,7 +236,7 @@ export default function Page() {
   }
 
   if (authState === "athlete" && athleteUser) {
-    return <AthleteView athlete={athleteUser} onLogout={handleLogout} />;
+    return <AthleteView key={`${athleteUser.id}-${sessionTick}`} athlete={athleteUser} onLogout={handleLogout} />;
   }
 
   return <LoginPage onCoachLogin={handleCoachLogin} onAthleteLogin={handleAthleteLogin} />;

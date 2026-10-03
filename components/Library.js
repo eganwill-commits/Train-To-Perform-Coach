@@ -69,9 +69,9 @@ export default function Library({ exercises, addExercise, deleteExercise, update
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4 }}>
                 <Badge color={colors[e.category]?.bg || "#999"}>{e.category}</Badge>
                 {e.video_url && (
-                  <a href={e.video_url} target="_blank" rel="noopener noreferrer" onClick={ev => ev.stopPropagation()} style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, color: "#fff", background: "#2563EB", textDecoration: "none", fontWeight: 700, padding: "2px 10px", borderRadius: 999 }}>
+                  <MediaLink url={e.video_url} onClick={ev => ev.stopPropagation()} style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, color: "#fff", background: "#2563EB", textDecoration: "none", fontWeight: 700, padding: "2px 10px", borderRadius: 999 }}>
                     ▶ Video
-                  </a>
+                  </MediaLink>
                 )}
               </div>
               {e.notes && <div style={{ fontSize: 12, color: "#71717A", marginTop: 6 }}>{e.notes}</div>}
