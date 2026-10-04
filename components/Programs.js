@@ -4,6 +4,7 @@ import { Badge, Btn, Card, Input, Select, Modal, EmptyState, SearchableSelect, B
 import { supabase } from "../lib/supabase";
 import { raiseAlertReplacing, ALERT_KIND, ALERT_PAGE } from "../lib/alerts";
 import { printDay } from "./printHelper";
+import { libraryCatsFor, firstExerciseFor } from "../lib/constants";
 import NotesBoard from "./NotesBoard";
 import FeedbackModal from "./FeedbackModal";
 import ExerciseThread from "./ExerciseThread";
@@ -255,8 +256,10 @@ export default function Programs({ programs, addProgram, updateProgram, deletePr
 
   const addBlock = async (wi, di, cat) => {
     const weeks = JSON.parse(JSON.stringify(ap.weeks));
-    const firstEx = exercises.find(e => e.category === cat);
-    weeks[wi].days[di].blocks.push({ id: uid(), exerciseId: firstEx?.id || "", exerciseName: firstEx?.name || "", category: cat, sets: 3, reps: "8", load: "", tempo: "", rest: "60", notes: "" });
+    const firstEx = firstExerciseFor(exercises, cat);
+    // A cool-down is not sets of 8 on a minute's rest: start a REC block as one easy pass.
+    const rec = cat === "REC";
+    weeks[wi].days[di].blocks.push({ id: uid(), exerciseId: firstEx?.id || "", exerciseName: firstEx?.name || "", category: cat, sets: rec ? 1 : 3, reps: rec ? "1:00" : "8", load: "", tempo: "", rest: rec ? "" : "60", notes: "" });
     await updateProgram(ap.id, { weeks });
   };
 
@@ -265,7 +268,14 @@ export default function Programs({ programs, addProgram, updateProgram, deletePr
     const block = weeks[wi].days[di].blocks[bi];
     block[f] = v;
     if (f === "exerciseId") { const ex = exercises.find(e => e.id === v); if (ex) block.exerciseName = ex.name; }
-    if (f === "category") { const firstEx = exercises.find(e => e.category === v); if (firstEx) { block.exerciseId = firstEx.id; block.exerciseName = firstEx.name; } }
+    if (f === "category") {
+      // Re-labelling a block as REC keeps its exercise when that exercise already fits
+      // (a Couch Stretch moved from FIN to REC stays a Couch Stretch).
+      const cur = exercises.find(e => e.id === block.exerciseId);
+      const fits = cur && libraryCatsFor(v).includes(cur.category);
+      const firstEx = fits ? null : firstExerciseFor(exercises, v);
+      if (firstEx) { block.exerciseId = firstEx.id; block.exerciseName = firstEx.name; }
+    }
     await updateProgram(ap.id, { weeks });
   };
 
@@ -955,10 +965,11 @@ function ProgramDetail({ program, programs, exercises, updateExercise, addExerci
                 const cc = colors[block.category];
                 const resolvedId = resolveExerciseId(block);
                 const displayName = getDisplayName(block);
-                const catExercises = exercises.filter(ex => ex.category === block.category);
-                const otherExercises = exercises.filter(ex => ex.category !== block.category);
+                const libCats = libraryCatsFor(block.category);
+                const catExercises = libCats.flatMap(c => exercises.filter(ex => ex.category === c));
+                const otherExercises = exercises.filter(ex => !libCats.includes(ex.category));
                 const allOptions = [
-                  ...catExercises.map(ex => ({ value: ex.id, label: ex.name, group: block.category })),
+                  ...catExercises.map(ex => ({ value: ex.id, label: ex.name, group: ex.category })),
                   ...otherExercises.map(ex => ({ value: ex.id, label: ex.name, group: ex.category })),
                 ];
                 const isFirst = bi === 0;

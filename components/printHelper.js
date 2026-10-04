@@ -1,14 +1,18 @@
+import { PILLAR_COLORS, PILLAR_LABELS } from "../lib/constants";
+
 export function printDay(program, weekLabel, day, exercises, colors) {
   const resolveExName = (block) => {
     if (block.exerciseName) return block.exerciseName;
     if (block.exerciseId) { const f = exercises.find(e => e.id === block.exerciseId); if (f) return f.name; }
     return "—";
   };
-  const catOrder = ["MVT", "PWR", "STR", "SKL", "FIN"];
-  const catLabels = { MVT: "MVT — Movement & Mobility", PWR: "PWR — Power & Speed", STR: "STR — Primary Strength", SKL: "SKL — Conditioning & Skill", FIN: "FIN — Finisher" };
-  const catColors = { MVT: "#F97316", PWR: "#2563EB", STR: "#18181B", SKL: "#16A34A", FIN: "#7C3AED" };
+  // Same order and colours as the app: MVT → PWR → SKL → STR → COND → FIN, then REC
+  // (the cool-down). This list used to stop at FIN and file COND under "SKL".
+  const catOrder = [...Object.keys(PILLAR_COLORS), "OTHER"];
+  const catLabels = { ...PILLAR_LABELS, OTHER: "Other" };
+  const catColors = { ...Object.fromEntries(Object.entries(PILLAR_COLORS).map(([k, v]) => [k, v.bg])), OTHER: "#71717A" };
   const grouped = {}; catOrder.forEach(c => { grouped[c] = []; });
-  day.blocks.forEach(b => { const cat = catOrder.includes(b.category) ? b.category : "SKL"; grouped[cat].push(b); });
+  day.blocks.forEach(b => { const cat = PILLAR_COLORS[b.category] ? b.category : "OTHER"; grouped[cat].push(b); });
   let tableRows = "";
   catOrder.forEach(cat => {
     if (grouped[cat].length === 0) return;

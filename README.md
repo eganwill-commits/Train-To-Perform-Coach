@@ -7,7 +7,7 @@ Train to Perform — Programming, Tracking & Training for teen athletes.
 - **Athlete login** (access codes) — view assigned programs, log workouts, see history
 - Dashboard with programming distribution
 - Multi-week program builder with movable exercise blocks
-- Exercise library with T2P pillar categories (MVT/PWR/STR/SKL)
+- Exercise library with the six T2P pillars (MVT/PWR/SKL/STR/COND/FIN) plus REC for cool-down work
 - Printable daily workout sheets
 - Workout logging with sets, reps, load, RPE
 - Mobile-responsive with collapsible sidebar
