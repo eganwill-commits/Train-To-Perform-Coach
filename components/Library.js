@@ -70,7 +70,7 @@ export default function Library({ exercises, addExercise, deleteExercise, update
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4 }}>
                 <Badge color={colors[e.category]?.bg || "#999"}>{e.category}</Badge>
                 {e.video_url && (
-                  <MediaLink url={e.video_url} onClick={ev => ev.stopPropagation()} style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, color: "#fff", background: "#2563EB", textDecoration: "none", fontWeight: 700, padding: "2px 10px", borderRadius: 999 }}>
+                  <MediaLink url={e.video_url} title={e.name} onClick={ev => ev.stopPropagation()} style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, color: "#fff", background: "#2563EB", textDecoration: "none", fontWeight: 700, padding: "2px 10px", borderRadius: 999 }}>
                     ▶ Video
                   </MediaLink>
                 )}

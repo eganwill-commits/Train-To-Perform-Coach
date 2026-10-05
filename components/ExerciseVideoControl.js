@@ -92,7 +92,7 @@ export default function ExerciseVideoControl({ libraryEx, exerciseName, category
     <div style={{ marginTop: 6 }} onClick={e => e.stopPropagation()}>
       <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
         <span style={{ fontSize: 10, color: "#71717A" }}>Video</span>
-        {currentUrl && <MediaLink url={currentUrl} style={{ fontSize: fs, color: "#2563EB", fontWeight: 600, textDecoration: "none" }}>▶ Watch</MediaLink>}
+        {currentUrl && <MediaLink url={currentUrl} title={exerciseName} style={{ fontSize: fs, color: "#2563EB", fontWeight: 600, textDecoration: "none" }}>▶ Watch</MediaLink>}
         {!busy && <button onClick={() => setOpen(o => !o)} style={chip}>{currentUrl ? "Replace" : "+ Add video"}</button>}
         {busy && <span style={{ fontSize: fs, color: "#71717A" }}>{busy}</span>}
         {done && <span style={{ fontSize: fs, color: "#16A34A", fontWeight: 600 }}>✓ Saved to library</span>}

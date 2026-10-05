@@ -1004,7 +1004,7 @@ function ProgramDetail({ program, programs, exercises, updateExercise, addExerci
                               </div>
                               <div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0 }}>
                                 {blockLogged && <span style={{ width: 8, height: 8, borderRadius: 4, background: "#16A34A", flexShrink: 0 }} title="Athlete logged" />}
-                                {videoUrl && <MediaLink url={videoUrl} onClick={e => e.stopPropagation()} style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 11, color: "#fff", background: "#2563EB", textDecoration: "none", fontWeight: 700, padding: "2px 8px", borderRadius: 999 }}>▶</MediaLink>}
+                                {videoUrl && <MediaLink url={videoUrl} title={displayName} onClick={e => e.stopPropagation()} style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 11, color: "#fff", background: "#2563EB", textDecoration: "none", fontWeight: 700, padding: "2px 8px", borderRadius: 999 }}>▶</MediaLink>}
                                 <span style={{ fontSize: 12, color: "#A1A1AA", transform: isOpen ? "rotate(180deg)" : "none", transition: "transform .2s" }}>▼</span>
                               </div>
                             </div>
@@ -1103,7 +1103,7 @@ function ProgramDetail({ program, programs, exercises, updateExercise, addExerci
                               <button onClick={() => !isLast && moveBlock(aw, di, bi, 1)} style={arrowStyle(isLast)} disabled={isLast}>▼</button>
                             </div>
                             {videoUrl && (
-                              <MediaLink url={videoUrl} onClick={e => e.stopPropagation()} style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, color: "#fff", background: "#2563EB", textDecoration: "none", fontWeight: 700, padding: "3px 10px", borderRadius: 999, letterSpacing: 0.3 }}>▶ Video</MediaLink>
+                              <MediaLink url={videoUrl} title={displayName} onClick={e => e.stopPropagation()} style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, color: "#fff", background: "#2563EB", textDecoration: "none", fontWeight: 700, padding: "3px 10px", borderRadius: 999, letterSpacing: 0.3 }}>▶ Video</MediaLink>
                             )}
                           </div>
                           <button onClick={() => removeBlock(aw, di, bi)} style={{ background: "none", border: "none", cursor: "pointer", color: "#A1A1AA", fontSize: 14, marginLeft: "auto", flexShrink: 0 }}>✕</button>

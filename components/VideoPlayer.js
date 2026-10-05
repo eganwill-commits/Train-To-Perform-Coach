@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { embedUrl, isDirectVideo, storageRef, resolveMediaUrl } from "../lib/media";
 
 /*
@@ -9,7 +10,7 @@ import { embedUrl, isDirectVideo, storageRef, resolveMediaUrl } from "../lib/med
   a web page) falls back to a link, because those cannot be embedded reliably.
   Storage URLs are signed first - see lib/media.js.
 */
-export default function VideoPlayer({ url, title, compact }) {
+export default function VideoPlayer({ url, title, compact, wide }) {
   const embed = embedUrl(url);
   const needsResolve = !embed && (storageRef(url) || isDirectVideo(url));
   const [src, setSrc] = useState(needsResolve ? null : url);
@@ -25,7 +26,7 @@ export default function VideoPlayer({ url, title, compact }) {
   if (!url) return null;
 
   const frame = {
-    position: "relative", width: "100%", maxWidth: compact ? 420 : 560,
+    position: "relative", width: "100%", maxWidth: wide ? "100%" : compact ? 420 : 560,
     aspectRatio: "16 / 9", background: "#000", borderRadius: 10, overflow: "hidden", marginTop: 8,
   };
 
@@ -48,7 +49,7 @@ export default function VideoPlayer({ url, title, compact }) {
     if (!src) return <div style={{ ...frame, display: "flex", alignItems: "center", justifyContent: "center", color: "#A1A1AA", fontSize: 12 }}>Loading video…</div>;
     return (
       <video src={src} controls playsInline preload="metadata"
-        style={{ width: "100%", maxWidth: compact ? 420 : 560, borderRadius: 10, marginTop: 8, background: "#000" }} />
+        style={{ width: "100%", maxWidth: wide ? "100%" : compact ? 420 : 560, borderRadius: 10, marginTop: 8, background: "#000" }} />
     );
   }
 
@@ -61,20 +62,48 @@ export default function VideoPlayer({ url, title, compact }) {
 }
 
 /*
-  A link that resolves a storage URL before opening it - for places that keep a
-  "Watch" button rather than an inline player (the coach's review list).
+  A "Watch" button that plays the video INSIDE the app, in an overlay, instead of
+  opening a new tab. Used everywhere a video used to be a plain link: the coach's
+  Programs and Library screens, the block video control, video review, and the
+  athlete's own submissions. Videos that cannot be embedded (Instagram, a web page)
+  show an "Open video" link inside the overlay instead.
+
+  Rendered through a portal so it sits above everything; clicks inside it are stopped
+  so they never reach the card it was opened from (Library cards open an editor).
 */
-export function MediaLink({ url, children, style, onClick }) {
-  const [href, setHref] = useState(storageRef(url) ? null : url);
+export function MediaLink({ url, children, style, onClick, title }) {
+  const [open, setOpen] = useState(false);
   useEffect(() => {
-    let live = true;
-    if (!storageRef(url)) { setHref(url); return; }
-    resolveMediaUrl(url).then(u => { if (live) setHref(u); });
-    return () => { live = false; };
-  }, [url]);
+    if (!open) return;
+    const onKey = (e) => { if (e.key === "Escape") setOpen(false); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open]);
+  const overlay = open && typeof document !== "undefined" ? createPortal(
+    <div
+      onClick={e => { e.stopPropagation(); setOpen(false); }}
+      style={{ position: "fixed", inset: 0, zIndex: 3000, background: "rgba(0,0,0,.82)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}
+    >
+      <div onClick={e => e.stopPropagation()} style={{ width: "100%", maxWidth: 720 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6, gap: 10 }}>
+          <span style={{ color: "#fff", fontSize: 14, fontWeight: 700, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title || ""}</span>
+          <button onClick={() => setOpen(false)} aria-label="Close video" style={{ flexShrink: 0, background: "#fff", color: "#18181B", border: "none", borderRadius: 999, padding: "6px 14px", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>✕ Close</button>
+        </div>
+        <VideoPlayer url={url} title={title} wide />
+      </div>
+    </div>,
+    document.body
+  ) : null;
   return (
-    <a href={href || "#"} target="_blank" rel="noopener noreferrer" onClick={e => { if (onClick) onClick(e); if (!href) e.preventDefault(); }} style={style}>
-      {children}
-    </a>
+    <>
+      <button
+        type="button"
+        onClick={e => { if (onClick) onClick(e); e.stopPropagation(); e.preventDefault(); setOpen(true); }}
+        style={{ border: "none", cursor: "pointer", fontFamily: "inherit", background: "none", padding: 0, ...style }}
+      >
+        {children}
+      </button>
+      {overlay}
+    </>
   );
 }

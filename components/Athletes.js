@@ -571,7 +571,7 @@ export default function Athletes({ athletes, programs, addAthlete, updateAthlete
                         {v.notes && <div style={{ fontSize: 12, color: "#1E3A8A", marginTop: 4, padding: "4px 8px", background: "#EFF6FF", borderRadius: 6 }}><b>Asked:</b> {v.notes}</div>}
                       </div>
                       <div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0 }}>
-                        <MediaLink url={v.video_url} style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, color: "#fff", background: "#2563EB", textDecoration: "none", fontWeight: 700, padding: "4px 12px", borderRadius: 999 }}>▶ Watch</MediaLink>
+                        <MediaLink url={v.video_url} title={v.exercise_name} style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, color: "#fff", background: "#2563EB", textDecoration: "none", fontWeight: 700, padding: "4px 12px", borderRadius: 999 }}>▶ Watch</MediaLink>
                         <button onClick={() => { if (confirm("Delete this video submission?")) deleteVideoSub(v.id); }} style={{ background: "none", border: "none", cursor: "pointer", color: "#D4D4D8", fontSize: 14 }} title="Delete video">✕</button>
                       </div>
                     </div>

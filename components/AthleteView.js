@@ -1505,7 +1505,7 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
                               return (
                                 <div key={v.id} style={{ padding: "8px", background: "#F9FAFB", borderRadius: 8, border: "1px solid #E4E4E7", marginBottom: 6 }}>
                                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-                                    <MediaLink url={v.video_url} style={{ fontSize: 12, color: "#2563EB", fontWeight: 600, textDecoration: "none" }}>▶ Watch Video</MediaLink>
+                                    <MediaLink url={v.video_url} title={v.exercise_name} style={{ fontSize: 12, color: "#2563EB", fontWeight: 600, textDecoration: "none" }}>▶ Watch Video</MediaLink>
                                     <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                                       <span style={{ fontSize: 10, fontWeight: 600, color: sc.color, background: sc.bg, padding: "2px 8px", borderRadius: 4 }}>{sc.label}</span>
                                       {deleteVideoSub && <button onClick={() => deleteVideoSub(v.id)} style={{ background: "none", border: "none", cursor: "pointer", color: "#D4D4D8", fontSize: 14 }} title="Delete video">✕</button>}
@@ -1919,7 +1919,7 @@ function MyVideos({ videoSubs, addVideoSub, deleteVideoSub, athlete, exercises, 
                 </div>
               </div>
               {(v.week_label || v.day_label) && <div style={{ fontSize: 11, color: "#71717A", marginTop: 4 }}>From {[v.week_label ? v.week_label.split(/[·—]/)[0].trim() : "", v.day_label].filter(Boolean).join(" · ")}</div>}
-              <MediaLink url={v.video_url} style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 13, color: "#fff", background: "#2563EB", textDecoration: "none", fontWeight: 700, padding: "5px 14px", borderRadius: 999, marginTop: 10 }}>▶ Watch Video</MediaLink>
+              <MediaLink url={v.video_url} title={v.exercise_name} style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 13, color: "#fff", background: "#2563EB", textDecoration: "none", fontWeight: 700, padding: "5px 14px", borderRadius: 999, marginTop: 10 }}>▶ Watch Video</MediaLink>
               {v.notes && <div style={{ fontSize: 13, color: "#52525B", marginTop: 8, fontStyle: "italic" }}>{v.notes}</div>}
               {v.coach_feedback && (
                 <div style={{ marginTop: 10, padding: "10px 14px", background: "#F0FDF4", borderRadius: 8, border: "1px solid #4ADE80" }}>
