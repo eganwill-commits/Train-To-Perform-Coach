@@ -1,0 +1,11 @@
+{
+  "root": true,
+  "parserOptions": { "ecmaVersion": 2022, "sourceType": "module", "ecmaFeatures": { "jsx": true } },
+  "env": { "browser": true, "node": true, "es2022": true, "serviceworker": true },
+  "plugins": ["react"],
+  "rules": {
+    "no-undef": "error",
+    "react/jsx-no-undef": "error",
+    "react/jsx-uses-vars": "error"
+  }
+}

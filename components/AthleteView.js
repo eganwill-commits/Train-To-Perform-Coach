@@ -504,7 +504,6 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
     // Use the parked day only if it belongs to the week now on screen.
     if (pend && ((wk && wk.days) || []).some(d => d.id === pend)) { setActiveDay(pend); return; }
     setActiveDay(defaultDayId(wk, aw, aw === currentWeekIndex, prog.start_date));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedProg, aw]);
 
   useEffect(() => {
