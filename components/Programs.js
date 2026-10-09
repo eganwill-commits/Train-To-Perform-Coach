@@ -5,6 +5,7 @@ import { supabase } from "../lib/supabase";
 import { raiseAlertReplacing, ALERT_KIND, ALERT_PAGE } from "../lib/alerts";
 import { printDay } from "./printHelper";
 import { libraryCatsFor, firstExerciseFor } from "../lib/constants";
+import { groupHeader, groupTag, GROUP_TYPES } from "../lib/groups";
 import NotesBoard from "./NotesBoard";
 import FeedbackModal from "./FeedbackModal";
 import ExerciseThread from "./ExerciseThread";
@@ -982,8 +983,17 @@ function ProgramDetail({ program, programs, exercises, updateExercise, addExerci
                 const borderLeftColor = exStatus === "missed" ? "#DC2626" : exStatus === "completed" ? "#16A34A" : (cc?.bg || "#999");
                 const cardBg = exStatus === "missed" ? "#FEF2F2" : exStatus === "completed" ? "#F0FDF4" : (cc?.light || "#F9FAFB");
 
+                const gh = groupHeader(day.blocks, bi);
+                const gTag = groupTag(day.blocks, bi);
                 return (
-                  <div key={block.id} style={{ background: cardBg, border: `1px solid ${cc?.border || "#E5E7EB"}`, borderRadius: 10, marginBottom: 8, borderLeft: `4px solid ${borderLeftColor}`, overflow: "hidden", opacity: exStatus === "missed" ? 0.6 : 1 }}>
+                  <div key={block.id}>
+                  {gh && (
+                    <div style={{ margin: "10px 0 6px", padding: "6px 10px", background: gh.type === "superset" ? "#F5F3FF" : "#FFF7ED", border: `1px solid ${gh.type === "superset" ? "#C4B5FD" : "#FDBA74"}`, borderRadius: 8 }}>
+                      <div style={{ fontSize: 12, fontWeight: 800, color: gh.type === "superset" ? "#5B21B6" : "#9A3412" }}>{gh.title}</div>
+                      <div style={{ fontSize: 11, color: "#52525B" }}>{gh.how} The athlete sees this header too.</div>
+                    </div>
+                  )}
+                  <div style={{ background: cardBg, border: `1px solid ${cc?.border || "#E5E7EB"}`, borderRadius: 10, marginBottom: 8, borderLeft: `4px solid ${borderLeftColor}`, overflow: "hidden", opacity: exStatus === "missed" ? 0.6 : 1 }}>
                     {isMobile ? (() => {
                       const isOpen = expandedBlock === block.id;
                       return (
@@ -996,7 +1006,7 @@ function ProgramDetail({ program, programs, exercises, updateExercise, addExerci
                             </div>
                             <div onClick={() => setExpandedBlock(isOpen ? null : block.id)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flex: 1, cursor: "pointer" }}>
                               <div style={{ display: "flex", alignItems: "center", gap: 8, flex: 1, minWidth: 0 }}>
-                                <Badge color={cc?.bg || "#999"}>{block.category}</Badge>
+                                <Badge color={cc?.bg || "#999"}>{block.category}</Badge>{gTag && <span style={{ fontSize: 9.5, fontWeight: 800, color: (block.groupType || "circuit") === "superset" ? "#6D28D9" : "#C2410C", textTransform: "uppercase", letterSpacing: 0.3, whiteSpace: "nowrap" }}>{gTag}</span>}
                                 <div style={{ minWidth: 0, flex: 1 }}>
                                   <div style={{ fontWeight: 600, fontSize: 13, lineHeight: 1.3, textDecoration: exStatus === "missed" ? "line-through" : "none", wordBreak: "break-word" }}>{displayName}</div>
                                   <div style={{ fontSize: 11, color: "#71717A" }}>{[block.sets && block.reps ? `${block.sets}×${block.reps}` : null, block.load ? `@ ${block.load}` : null].filter(Boolean).join(" ") || "—"}</div>
@@ -1037,6 +1047,18 @@ function ProgramDetail({ program, programs, exercises, updateExercise, addExerci
                               <label style={{ fontSize: 10, color: "#1E40AF", display: "block", marginTop: 4, fontWeight: 600 }}>Athlete cue — the 1–2 lines they see first
                                 <BlurInput value={block.cue || ""} onSave={v => updateBlock(aw, di, bi, "cue", v)} placeholder="e.g. Brace, sit between the heels, drive the floor away." multiline style={{ width: "100%", padding: "6px 5px", border: "1px solid #BFDBFE", borderRadius: 6, fontSize: 14, fontFamily: "inherit", marginTop: 1, boxSizing: "border-box", background: "#F8FAFF" }} />
                               </label>
+                              <div style={{ display: "flex", gap: 6, marginTop: 4, alignItems: "flex-end", flexWrap: "wrap" }}>
+                                <label style={{ fontSize: 10, color: "#9A3412", fontWeight: 600 }}>Grouping
+                                  <select value={block.groupType || ""} onChange={e => updateBlock(aw, di, bi, "groupType", e.target.value)} style={{ display: "block", padding: "5px 6px", border: "1px solid #FDBA74", borderRadius: 6, fontSize: 13, fontFamily: "inherit", marginTop: 1, background: "#fff" }}>
+                                    {GROUP_TYPES.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                                  </select>
+                                </label>
+                                {block.groupType && (
+                                  <label style={{ fontSize: 10, color: "#9A3412", fontWeight: 600 }}>Group name (same name on neighbouring blocks = one group)
+                                    <BlurInput value={block.group || ""} onSave={v => updateBlock(aw, di, bi, "group", v)} placeholder="e.g. warm-up, A1" style={{ display: "block", width: 160, padding: "5px 6px", border: "1px solid #FDBA74", borderRadius: 6, fontSize: 13, fontFamily: "inherit", marginTop: 1, boxSizing: "border-box" }} />
+                                  </label>
+                                )}
+                              </div>
                               <label style={{ fontSize: 10, color: "#92400E", display: "block", marginTop: 4, fontWeight: 600 }}>Coach-only note — hidden in the athlete app
                                 <BlurInput value={block.coachNote || ""} onSave={v => updateBlock(aw, di, bi, "coachNote", v)} placeholder="Rack plan, groupings, reminders to yourself…" multiline style={{ width: "100%", padding: "6px 5px", border: "1px solid #FDE68A", borderRadius: 6, fontSize: 14, fontFamily: "inherit", marginTop: 1, boxSizing: "border-box", background: "#FFFBEB" }} />
                               </label>
@@ -1091,7 +1113,7 @@ function ProgramDetail({ program, programs, exercises, updateExercise, addExerci
                               <button onClick={() => toggleExerciseStatus(logEntry, "missed", block, day.label)} style={{ width: 22, height: 22, borderRadius: 4, border: exStatus === "missed" ? "2px solid #DC2626" : "1px solid #D4D4D8", background: exStatus === "missed" ? "#DC2626" : "transparent", color: exStatus === "missed" ? "#fff" : "#A1A1AA", fontSize: 11, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }} title="Mark missed">✗</button>
                               <button onClick={() => { if (confirm(`Delete "${getDisplayName(block)}" from ${day.label}? This removes it from the day's program.`)) deleteBlockAndLog(aw, di, bi, block, logEntry); }} style={{ width: 22, height: 22, borderRadius: 4, border: "1px solid #FCA5A5", background: "transparent", color: "#DC2626", fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }} title="Delete from day">🗑</button>
                             </div>
-                            <Badge color={cc?.bg || "#999"}>{block.category}</Badge>
+                            <Badge color={cc?.bg || "#999"}>{block.category}</Badge>{gTag && <span style={{ fontSize: 9.5, fontWeight: 800, color: (block.groupType || "circuit") === "superset" ? "#6D28D9" : "#C2410C", textTransform: "uppercase", letterSpacing: 0.3, whiteSpace: "nowrap" }}>{gTag}</span>}
                             {blockLogged && <span style={{ width: 8, height: 8, borderRadius: 4, background: "#16A34A", flexShrink: 0 }} title="Athlete logged" />}
                             <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
                               <button onClick={() => !isFirst && moveBlock(aw, di, bi, -1)} style={arrowStyle(isFirst)} disabled={isFirst}>▲</button>
@@ -1122,6 +1144,18 @@ function ProgramDetail({ program, programs, exercises, updateExercise, addExerci
                         <label style={{ fontSize: 10, color: "#1E40AF", display: "block", marginTop: 4, fontWeight: 600 }}>Athlete cue — the 1–2 lines they see first
                                 <BlurInput value={block.cue || ""} onSave={v => updateBlock(aw, di, bi, "cue", v)} placeholder="e.g. Brace, sit between the heels, drive the floor away." multiline style={{ width: "100%", padding: "6px 5px", border: "1px solid #BFDBFE", borderRadius: 6, fontSize: 14, fontFamily: "inherit", marginTop: 1, boxSizing: "border-box", background: "#F8FAFF" }} />
                               </label>
+                              <div style={{ display: "flex", gap: 6, marginTop: 4, alignItems: "flex-end", flexWrap: "wrap" }}>
+                                <label style={{ fontSize: 10, color: "#9A3412", fontWeight: 600 }}>Grouping
+                                  <select value={block.groupType || ""} onChange={e => updateBlock(aw, di, bi, "groupType", e.target.value)} style={{ display: "block", padding: "5px 6px", border: "1px solid #FDBA74", borderRadius: 6, fontSize: 13, fontFamily: "inherit", marginTop: 1, background: "#fff" }}>
+                                    {GROUP_TYPES.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                                  </select>
+                                </label>
+                                {block.groupType && (
+                                  <label style={{ fontSize: 10, color: "#9A3412", fontWeight: 600 }}>Group name (same name on neighbouring blocks = one group)
+                                    <BlurInput value={block.group || ""} onSave={v => updateBlock(aw, di, bi, "group", v)} placeholder="e.g. warm-up, A1" style={{ display: "block", width: 160, padding: "5px 6px", border: "1px solid #FDBA74", borderRadius: 6, fontSize: 13, fontFamily: "inherit", marginTop: 1, boxSizing: "border-box" }} />
+                                  </label>
+                                )}
+                              </div>
                               <label style={{ fontSize: 10, color: "#92400E", display: "block", marginTop: 4, fontWeight: 600 }}>Coach-only note — hidden in the athlete app
                                 <BlurInput value={block.coachNote || ""} onSave={v => updateBlock(aw, di, bi, "coachNote", v)} placeholder="Rack plan, groupings, reminders to yourself…" multiline style={{ width: "100%", padding: "6px 5px", border: "1px solid #FDE68A", borderRadius: 6, fontSize: 14, fontFamily: "inherit", marginTop: 1, boxSizing: "border-box", background: "#FFFBEB" }} />
                               </label>
@@ -1164,6 +1198,7 @@ function ProgramDetail({ program, programs, exercises, updateExercise, addExerci
                         })()}
                       </div>
                     )}
+                  </div>
                   </div>
                 );
               });

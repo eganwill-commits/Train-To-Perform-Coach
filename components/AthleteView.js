@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { Fragment, useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { supabase } from "../lib/supabase";
 import { PILLAR_COLORS, ATHLETE_NAV, EQUIP_OPTIONS, EQUIP_LABEL, roomLabel } from "../lib/constants";
 import Timers from "./Timers";
@@ -16,6 +16,7 @@ import VideoPlayer, { MediaLink } from "./VideoPlayer";
 import MyProgress from "./MyProgress";
 import PushPrompt from "./PushPrompt";
 import { explainTempo } from "../lib/tempo";
+import { groupHeader, groupTag, isInGroup } from "../lib/groups";
 import { lastPerformance, describeLog, shortDate } from "../lib/history";
 import { athleteUploadPath } from "../lib/media";
 
@@ -1201,7 +1202,7 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
                 </div>
               </details>
             ); })()}
-            {day.blocks.map(block => {
+            {day.blocks.map((block, bi) => {
               const cc = colors[block.category];
               const videoUrl = getVideoUrl(block);
               const isOpen = expandedBlock === block.id;
@@ -1228,7 +1229,17 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
               const last = (NUDGE_CATS.has(block.category) || block.category === "COND")
                 ? lastPerformance(logs, block, { displayName: getDisplayName(block, day.id), weekLabel: week.label, dayLabel: day.label, onOrBefore: sessionDateISO })
                 : null;
+              const gh = groupHeader(day.blocks, bi);
+              const gTag = groupTag(day.blocks, bi);
+              const inGroup = isInGroup(day.blocks, bi);
               return (
+                <Fragment key={block.id}>
+                {gh && (
+                  <div style={{ margin: "10px 0 6px", padding: "8px 10px", background: gh.type === "superset" ? "#F5F3FF" : "#FFF7ED", border: `1px solid ${gh.type === "superset" ? "#C4B5FD" : "#FDBA74"}`, borderRadius: 8 }}>
+                    <div style={{ fontSize: 12, fontWeight: 800, color: gh.type === "superset" ? "#5B21B6" : "#9A3412" }}>{gh.type === "superset" ? "\u21C4 " : "\u21BB "}{gh.title}</div>
+                    <div style={{ fontSize: 11.5, color: "#3F3F46", marginTop: 2, lineHeight: 1.4 }}>{gh.how}</div>
+                  </div>
+                )}
                 <div
                   key={block.id}
                   ref={isFocusBlock ? focusBlockRef : undefined}
@@ -1237,7 +1248,7 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
                     border: isFocusBlock ? "2px solid #2563EB" : `1px solid ${cc?.border || "#E5E7EB"}`,
                     boxShadow: isFocusBlock ? "0 0 0 4px rgba(37,99,235,.15)" : undefined,
                     transition: "box-shadow .4s ease, border-color .4s ease",
-                    borderRadius: 8, marginBottom: 6,
+                    borderRadius: 8, marginBottom: 6, marginLeft: inGroup ? 10 : 0,
                     borderLeft: `3px solid ${borderLeftColor}`,
                     overflow: "hidden", opacity: exStatus === "missed" ? 0.6 : 1,
                     scrollMarginTop: 70,
@@ -1259,6 +1270,7 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
                     <div onClick={() => setExpandedBlock(isOpen ? null : block.id)} style={{ display: "flex", alignItems: "center", flex: 1, minWidth: 0, cursor: "pointer", gap: 6 }}>
                       <Badge color={cc?.bg || "#999"}>{block.category}</Badge>
                       <div style={{ flex: 1, minWidth: 0 }}>
+                        {gTag && <div style={{ fontSize: 10, fontWeight: 800, color: (block.groupType || "circuit") === "superset" ? "#6D28D9" : "#C2410C", letterSpacing: 0.3, textTransform: "uppercase" }}>{gTag}</div>}
                         <div style={{ fontWeight: 600, fontSize: 13, lineHeight: 1.3, textDecoration: exStatus === "missed" ? "line-through" : "none", wordBreak: "break-word" }}>{getDisplayName(block, day.id)}</div>
                         {(() => {
                           // Equipment swap shown UNDER the prescription, never instead of it.
@@ -1528,6 +1540,7 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
                     </div>
                   )}
                 </div>
+                </Fragment>
               );
             })}
 
