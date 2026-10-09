@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
-import { pushSupported, pushPermission, needsHomeScreenInstall, enablePush, isPushEnabledHere } from "../lib/push";
+import { pushSupported, pushPermission, needsHomeScreenInstall, enablePush, isPushEnabledHere, isRegisteredHereFor } from "../lib/push";
 
 /*
   "Get a buzz when your coach writes."
@@ -25,7 +25,13 @@ export default function PushPrompt({ athleteId, compact }) {
       } catch {}
       const { data: { session } } = await supabase.auth.getSession();
       if (!live || !session) return; // needs a real login to store the subscription
-      if (await isPushEnabledHere()) return;
+      if (await isPushEnabledHere()) {
+        // This device already allows notifications, but possibly for someone else who
+        // signed in here before. Make sure it is registered for THIS athlete too.
+        // Permission is already granted, so this shows no system prompt.
+        if (!(await isRegisteredHereFor(athleteId))) await enablePush({ athleteId, role: "athlete" });
+        return;
+      }
       if (needsHomeScreenInstall()) { setState("ios-install"); return; }
       if (!pushSupported()) return;
       const perm = pushPermission();

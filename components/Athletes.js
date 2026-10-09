@@ -2,7 +2,7 @@
 import { useState, useEffect } from "react";
 import { Badge, Btn, Card, Input, Modal, Select, EmptyState, AutoGrow } from "./ui";
 import { raiseAlertReplacing, fetchAlertReceipts, ALERT_KIND, ALERT_PAGE } from "../lib/alerts";
-import { notifyAthlete } from "../lib/push";
+import { notifyAthlete, fetchPushStatus } from "../lib/push";
 import { baselineColumnLabels } from "../lib/weeks";
 import { MediaLink } from "./VideoPlayer";
 import FeedbackModal from "./FeedbackModal";
@@ -49,6 +49,11 @@ function makeAccessCode(name, taken = []) {
 }
 
 export default function Athletes({ athletes, programs, addAthlete, updateAthlete, deleteAthlete, logs, colors, cats, isMobile, groups, groupAthletes, addAthleteToGroup, removeAthleteFromGroup, baselines, updateBaseline, addBaseline, deleteBaseline, videoSubs, updateVideoSub, deleteVideoSub, viewAsAthlete, focusAthleteId, onFocusClear, provisionLogin }) {
+  // Who will actually get a phone buzz when the coach writes. Notifications are per
+  // device and only the athlete can turn them on, from their own phone.
+  const [pushStatus, setPushStatus] = useState({});
+  useEffect(() => { let live = true; fetchPushStatus().then(m => { if (live) setPushStatus(m); }); return () => { live = false; }; }, []);
+
   const [modal, setModal] = useState(false);
   const [edit, setEdit] = useState(null);
   const [backfilling, setBackfilling] = useState(false);
@@ -238,6 +243,19 @@ export default function Athletes({ athletes, programs, addAthlete, updateAthlete
               <h2 style={{ margin: 0, fontSize: isMobile ? 22 : 28, fontFamily: "'Space Mono', monospace" }}>{activeAthlete.name}</h2>
               <div style={{ fontSize: 14, color: "#71717A", marginTop: 4 }}>{activeAthlete.sport}{activeAthlete.age ? ` · Age ${activeAthlete.age}` : ""}{activeAthlete.equipment_tier ? ` · ${TIER_LABEL[activeAthlete.equipment_tier] || activeAthlete.equipment_tier}` : ""}</div>
               {activeAthlete.notes && <p style={{ fontSize: 13, color: "#52525B", marginTop: 8, lineHeight: 1.5 }}>{activeAthlete.notes}</p>}
+              {(() => {
+                const subs = pushStatus[activeAthlete.id] || [];
+                const first = (activeAthlete.name || "They").split(" ")[0];
+                return subs.length ? (
+                  <div style={{ fontSize: 12, color: "#16A34A", fontWeight: 600, marginTop: 6 }}>
+                    🔔 Notifications on: {[...new Set(subs.map(x => x.device))].join(", ")}. Your messages buzz {first}'s phone.
+                  </div>
+                ) : (
+                  <div style={{ fontSize: 12, color: "#B45309", fontWeight: 600, marginTop: 6, lineHeight: 1.45 }}>
+                    🔕 Notifications off. Your messages wait in the app until {first} opens it. {first} turns them on from their own phone: add T2P to the Home Screen, open it from the icon, tap &quot;Turn on notifications&quot;. It can&apos;t be done from your device or from View as athlete.
+                  </div>
+                );
+              })()}
             </div>
             <div style={{ display: "flex", gap: 8 }}>
               {viewAsAthlete && <Btn small onClick={() => viewAsAthlete(activeAthlete)}>👁 View as athlete</Btn>}
@@ -732,6 +750,9 @@ export default function Athletes({ athletes, programs, addAthlete, updateAthlete
                 </div>
                 <div style={{ display: "flex", gap: 12, marginTop: 10, fontSize: 12, color: "#71717A" }}>
                   <span>{athleteLogCount} workout{athleteLogCount !== 1 ? "s" : ""} logged</span>
+                  {(pushStatus[a.id] || []).length
+                    ? <span style={{ color: "#16A34A", fontWeight: 600 }} title="Your messages buzz their phone">🔔 {[...new Set(pushStatus[a.id].map(x => x.device))].join(", ")}</span>
+                    : <span style={{ color: "#B45309", fontWeight: 600 }} title="Messages wait in the app until they open it">🔕 Notifications off</span>}
                   {a.access_code && <span style={{ color: "#A1A1AA" }}>Code: ••••••</span>}
                   {a.equipment_tier && a.equipment_tier !== "full_gym" && <span style={{ color: "#A1A1AA" }}>{TIER_LABEL[a.equipment_tier] || a.equipment_tier}</span>}
                 </div>
