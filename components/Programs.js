@@ -1073,12 +1073,7 @@ function ProgramDetail({ program, programs, exercises, updateExercise, addExerci
                                       <div><div style={{ fontSize: 9, color: "#71717A" }}>Load</div><div style={{ fontSize: 14, fontWeight: 700 }}>{ml.load || "—"}</div></div>
                                       <div><div style={{ fontSize: 9, color: "#71717A" }}>RPE</div><div style={{ fontSize: 14, fontWeight: 700 }}>{ml.rpe || "—"}</div></div>
                                     </div>
-                                    {ml.notes && (
-                                      <div style={{ marginTop: 6, padding: "4px 6px", background: "#fff", borderRadius: 4, border: "1px solid #BBF7D0" }}>
-                                        <div style={{ fontSize: 9, color: "#71717A" }}>Athlete Notes</div>
-                                        <div style={{ fontSize: 12, color: "#18181B", whiteSpace: "pre-wrap" }}>{ml.notes}</div>
-                                      </div>
-                                    )}
+                                    <AthleteNoteWithReply ml={ml} athleteFirst={(ath?.name || "Athlete").split(" ")[0]} busy={replyingTo === ml.id} onReply={() => setReplyFor(ml)} />
                                   </div>
                                 );
                               })()}
@@ -1162,12 +1157,7 @@ function ProgramDetail({ program, programs, exercises, updateExercise, addExerci
                                 <div><div style={{ fontSize: 9, color: "#71717A" }}>Load</div><div style={{ fontSize: 14, fontWeight: 700 }}>{ml.load || "—"}</div></div>
                                 <div><div style={{ fontSize: 9, color: "#71717A" }}>RPE</div><div style={{ fontSize: 14, fontWeight: 700 }}>{ml.rpe || "—"}</div></div>
                               </div>
-                              {ml.notes && (
-                                <div style={{ marginTop: 6, padding: "4px 6px", background: "#fff", borderRadius: 4, border: "1px solid #BBF7D0" }}>
-                                  <div style={{ fontSize: 9, color: "#71717A" }}>Athlete Notes</div>
-                                  <div style={{ fontSize: 12, color: "#18181B", whiteSpace: "pre-wrap" }}>{ml.notes}</div>
-                                </div>
-                              )}
+                              <AthleteNoteWithReply ml={ml} athleteFirst={(ath?.name || "Athlete").split(" ")[0]} busy={replyingTo === ml.id} onReply={() => setReplyFor(ml)} />
 
                             </div>
                           );
@@ -1282,7 +1272,14 @@ function ProgramDetail({ program, programs, exercises, updateExercise, addExerci
               {/* Coach Notes for the day */}
               <div style={{ marginTop: 10, padding: "8px 10px", background: "#FFFBEB", borderRadius: 8, border: "1px solid #FDE68A" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-                  <label style={{ fontSize: 11, fontWeight: 700, color: "#92400E", textTransform: "uppercase", letterSpacing: 0.5 }}>Coach Notes</label>
+                  <label style={{ fontSize: 11, fontWeight: 700, color: "#92400E", textTransform: "uppercase", letterSpacing: 0.5 }}>
+                    Coach Notes{" "}
+                    <span style={{ textTransform: "none", letterSpacing: 0, fontWeight: 600, color: day.coachNotesShared ? "#1E40AF" : "#71717A" }}>
+                      {day.coachNotesShared
+                        ? `· ${(ath?.name || "The athlete").split(" ")[0]} sees this under the session (no notification)`
+                        : "· Private: only you see this"}
+                    </span>
+                  </label>
                   <label style={{ display: "flex", alignItems: "center", gap: 4, cursor: "pointer", fontSize: 11, color: day.coachNotesShared ? "#1E40AF" : "#A1A1AA", fontWeight: 600 }}>
                     <input
                       type="checkbox"
@@ -1411,6 +1408,44 @@ function ProgramDetail({ program, programs, exercises, updateExercise, addExerci
           </div>
         </div>
       </Modal>
+    </div>
+  );
+}
+
+/*
+  An athlete's note on a logged exercise, with the coach's answer under it.
+
+  The reply editor (replyFor / replyToNote) has existed for a while, but nothing in the
+  coach view opened it: athletes' questions on their logs ("Video is forward?") could be
+  read and never answered. The reply is stored on the log row, shown to the athlete as
+  "Coach Reply" under that exercise, and raises an alert so they are told.
+*/
+function AthleteNoteWithReply({ ml, athleteFirst, busy, onReply }) {
+  if (!ml || (!ml.notes && !ml.coach_reply)) return null;
+  return (
+    <div style={{ marginTop: 6, padding: "4px 6px", background: "#fff", borderRadius: 4, border: "1px solid #BBF7D0" }}>
+      {ml.notes && (
+        <>
+          <div style={{ fontSize: 9, color: "#71717A" }}>{athleteFirst}'s note</div>
+          <div style={{ fontSize: 12, color: "#18181B", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{ml.notes}</div>
+        </>
+      )}
+      {ml.coach_reply && (
+        <div style={{ marginTop: 6, padding: "4px 6px", background: "#EFF6FF", borderRadius: 4, border: "1px solid #BFDBFE" }}>
+          <div style={{ fontSize: 9, color: "#1E40AF", fontWeight: 700 }}>
+            Your reply{ml.coach_reply_at ? ` · ${new Date(ml.coach_reply_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}` : ""}
+          </div>
+          <div style={{ fontSize: 12, color: "#18181B", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{ml.coach_reply}</div>
+        </div>
+      )}
+      <button
+        onClick={onReply}
+        disabled={busy}
+        style={{ marginTop: 6, padding: "3px 10px", borderRadius: 999, border: "1px solid #2563EB", background: ml.coach_reply ? "#fff" : "#2563EB", color: ml.coach_reply ? "#2563EB" : "#fff", fontSize: 11, fontWeight: 700, cursor: busy ? "default" : "pointer", fontFamily: "inherit" }}
+      >
+        {busy ? "Sending…" : ml.coach_reply ? "Edit reply" : `Reply to ${athleteFirst}`}
+      </button>
+      {!ml.coach_reply && <span style={{ marginLeft: 6, fontSize: 10, color: "#71717A" }}>Shows under this exercise for {athleteFirst}, and notifies them</span>}
     </div>
   );
 }
