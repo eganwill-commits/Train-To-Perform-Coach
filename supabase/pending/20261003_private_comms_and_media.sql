@@ -3,7 +3,7 @@
 -- STAGED: apply only when this branch goes live. Not applied yet.
 --
 -- What it does
---   * messages, athlete_notes, exercise_comments, athlete_alerts, video_submissions:
+--   * messages, athlete_notes, exercise_comments, exercise_cues, athlete_alerts, video_submissions:
 --     the coach sees everything; a signed-in athlete sees and writes only their own
 --     rows; anyone else (the public anon key) sees nothing.
 --   * videos + messages-media storage buckets become private. The app now reads them
@@ -39,7 +39,7 @@ grant execute on function public.current_athlete_id() to anon, authenticated;
 do $$
 declare t text;
 begin
-  foreach t in array array['messages','athlete_notes','exercise_comments','athlete_alerts','video_submissions'] loop
+  foreach t in array array['messages','athlete_notes','exercise_comments','exercise_cues','athlete_alerts','video_submissions'] loop
     execute format('alter table public.%I enable row level security', t);
     execute format('drop policy if exists "Allow all" on public.%I', t);
     execute format('drop policy if exists "coach: all" on public.%I', t);

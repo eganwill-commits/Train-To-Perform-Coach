@@ -33,6 +33,7 @@ import AthleteAlertsBell from "./AthleteAlertsBell";
 import ExerciseThread from "./ExerciseThread";
 import { weekStartFromLabel, weekNumberLabel, weekdayOffset, currentWeekIndex as weekCurrentIndex, baselineColumnLabels } from "../lib/weeks";
 import { fetchAllComments } from "../lib/comments";
+import { fetchCues, cuesForBlock } from "../lib/cues";
 import { MUST_LOG_CATS, NUDGE_CATS, findMissingNumberSessions, mustLogProgress } from "../lib/logging";
 import { fetchDismissals } from "../lib/dismissals";
 
@@ -413,6 +414,17 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
     const iv = setInterval(reloadComments, 30000);
     return () => clearInterval(iv);
   }, [reloadComments]);
+  // Cues the coach carried forward from video feedback. They follow the movement, not
+  // the session, so the fix is on the card the next time he does the lift.
+  const [cues, setCues] = useState([]);
+  useEffect(() => {
+    if (!athlete?.id) return;
+    let live = true;
+    const load = () => fetchCues(athlete.id).then(rows => { if (live) setCues(rows); });
+    load();
+    const iv = setInterval(load, 60000);
+    return () => { live = false; clearInterval(iv); };
+  }, [athlete?.id]);
   const [uploadingVideo, setUploadingVideo] = useState(null); // block.id being uploaded
   const [videoSuccess, setVideoSuccess] = useState(null); // block.id that succeeded
   const [filmOpen, setFilmOpen] = useState(null);         // block.id with the film panel open
@@ -1272,6 +1284,9 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
                       <div style={{ flex: 1, minWidth: 0 }}>
                         {gTag && <div style={{ fontSize: 10, fontWeight: 800, color: (block.groupType || "circuit") === "superset" ? "#6D28D9" : "#C2410C", letterSpacing: 0.3, textTransform: "uppercase" }}>{gTag}</div>}
                         <div style={{ fontWeight: 600, fontSize: 13, lineHeight: 1.3, textDecoration: exStatus === "missed" ? "line-through" : "none", wordBreak: "break-word" }}>{getDisplayName(block, day.id)}</div>
+                        {!isOpen && cuesForBlock(cues, block, getDisplayName(block, day.id)).length > 0 && (
+                          <div style={{ fontSize: 11, color: "#B45309", fontWeight: 700, marginTop: 1 }}>★ Coach cue: tap to read before you start</div>
+                        )}
                         {(() => {
                           // Equipment swap shown UNDER the prescription, never instead of it.
                           const sub = getSubstitution(block, day.id);
@@ -1371,6 +1386,21 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
                         mid-set. The coach's full note (which can include set-up meant for the
                         coach) is behind a tap. block.coachNote is never rendered here.
                       */}
+                      {cuesForBlock(cues, block, getDisplayName(block, day.id)).map(c => {
+                        const src = (videoSubs || []).find(v => v.id === c.source_video_id);
+                        return (
+                          <div key={c.id} style={{ marginTop: 8, padding: "8px 10px", background: "#FFFBEB", border: "1px solid #FCD34D", borderLeft: "4px solid #F59E0B", borderRadius: 8 }}>
+                            <div style={{ fontSize: 10, fontWeight: 800, color: "#B45309", textTransform: "uppercase", letterSpacing: 0.5 }}>★ Coach cue{c.source_label ? ` · from your ${c.source_label} video` : ""}</div>
+                            <div style={{ fontSize: 14, color: "#78350F", fontWeight: 700, lineHeight: 1.45, marginTop: 2, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{c.cue}</div>
+                            {src?.coach_feedback && (
+                              <details style={{ marginTop: 4 }}>
+                                <summary style={{ cursor: "pointer", fontSize: 11.5, fontWeight: 700, color: "#92400E" }}>Full video feedback</summary>
+                                <div style={{ marginTop: 4, fontSize: 12, color: "#52525B", whiteSpace: "pre-wrap", lineHeight: 1.45, wordBreak: "break-word" }}>{src.coach_feedback}</div>
+                              </details>
+                            )}
+                          </div>
+                        );
+                      })}
                       {block.cue && (
                         <div style={{ marginTop: 8, padding: "8px 10px", background: "#EFF6FF", border: "1px solid #BFDBFE", borderRadius: 8, fontSize: 13.5, color: "#1E3A8A", fontWeight: 600, lineHeight: 1.45, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
                           {block.cue}

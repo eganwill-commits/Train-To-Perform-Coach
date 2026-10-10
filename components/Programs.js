@@ -13,6 +13,7 @@ import ExerciseVideoControl from "./ExerciseVideoControl";
 import { MediaLink } from "./VideoPlayer";
 import { weekStartFromLabel, weekNumberLabel, weekdayOffset, currentWeekIndex as weekCurrentIndex } from "../lib/weeks";
 import { fetchAllComments } from "../lib/comments";
+import { fetchCues, cuesForBlock } from "../lib/cues";
 import ProgramBrief, { briefSummary } from "./ProgramBrief";
 
 /* Local calendar date, not UTC — see the note in AthleteView.js. */
@@ -572,6 +573,18 @@ function ProgramDetail({ program, programs, exercises, updateExercise, addExerci
     const iv = setInterval(reloadComments, 30000);
     return () => clearInterval(iv);
   }, [reloadComments, program.id]);
+  // Cues carried forward from video feedback, shown read-only on the blocks they apply
+  // to so the coach sees what the athlete sees. Edited from the athlete's video review.
+  const [videoCues, setVideoCues] = useState([]);
+  useEffect(() => {
+    const id = program.athlete_id;
+    if (!id) { setVideoCues([]); return; }
+    let live = true;
+    const load = () => fetchCues(id).then(rows => { if (live) setVideoCues(rows); });
+    load();
+    const iv = setInterval(load, 60000);
+    return () => { live = false; clearInterval(iv); };
+  }, [program.athlete_id]);
 
   /*
     Deep link from the alert bell. Jump to the week the alert names, scroll that day into
@@ -1044,7 +1057,8 @@ function ProgramDetail({ program, programs, exercises, updateExercise, addExerci
                               <label style={{ fontSize: 10, color: "#71717A", display: "block", marginTop: 4 }}>Notes
                                 <BlurInput value={block.notes || ""} onSave={v => updateBlock(aw, di, bi, "notes", v)} placeholder="Coaching cues, modifications…" multiline style={{ width: "100%", padding: "6px 5px", border: "1px solid #E4E4E7", borderRadius: 6, fontSize: 14, fontFamily: "inherit", marginTop: 1, boxSizing: "border-box", minHeight: block.notes && block.notes.length > 60 ? 60 : undefined }} />
                               </label>
-                              <label style={{ fontSize: 10, color: "#1E40AF", display: "block", marginTop: 4, fontWeight: 600 }}>Athlete cue — the 1–2 lines they see first
+                              <VideoCueNote cues={cuesForBlock(videoCues, block, block.exerciseName)} />
+<label style={{ fontSize: 10, color: "#1E40AF", display: "block", marginTop: 4, fontWeight: 600 }}>Athlete cue — the 1–2 lines they see first
                                 <BlurInput value={block.cue || ""} onSave={v => updateBlock(aw, di, bi, "cue", v)} placeholder="e.g. Brace, sit between the heels, drive the floor away." multiline style={{ width: "100%", padding: "6px 5px", border: "1px solid #BFDBFE", borderRadius: 6, fontSize: 14, fontFamily: "inherit", marginTop: 1, boxSizing: "border-box", background: "#F8FAFF" }} />
                               </label>
                               <div style={{ display: "flex", gap: 6, marginTop: 4, alignItems: "flex-end", flexWrap: "wrap" }}>
@@ -1141,7 +1155,8 @@ function ProgramDetail({ program, programs, exercises, updateExercise, addExerci
                         <label style={{ fontSize: 10, color: "#71717A", display: "block", marginTop: 4 }}>Notes
                           <BlurInput value={block.notes || ""} onSave={v => updateBlock(aw, di, bi, "notes", v)} placeholder="Coaching cues, modifications…" multiline style={{ width: "100%", padding: "4px 5px", border: "1px solid #E4E4E7", borderRadius: 6, fontSize: 13, fontFamily: "inherit", marginTop: 1, boxSizing: "border-box", minHeight: block.notes && block.notes.length > 60 ? 60 : undefined }} />
                         </label>
-                        <label style={{ fontSize: 10, color: "#1E40AF", display: "block", marginTop: 4, fontWeight: 600 }}>Athlete cue — the 1–2 lines they see first
+                        <VideoCueNote cues={cuesForBlock(videoCues, block, block.exerciseName)} />
+<label style={{ fontSize: 10, color: "#1E40AF", display: "block", marginTop: 4, fontWeight: 600 }}>Athlete cue — the 1–2 lines they see first
                                 <BlurInput value={block.cue || ""} onSave={v => updateBlock(aw, di, bi, "cue", v)} placeholder="e.g. Brace, sit between the heels, drive the floor away." multiline style={{ width: "100%", padding: "6px 5px", border: "1px solid #BFDBFE", borderRadius: 6, fontSize: 14, fontFamily: "inherit", marginTop: 1, boxSizing: "border-box", background: "#F8FAFF" }} />
                               </label>
                               <div style={{ display: "flex", gap: 6, marginTop: 4, alignItems: "flex-end", flexWrap: "wrap" }}>
@@ -1483,4 +1498,15 @@ function AthleteNoteWithReply({ ml, athleteFirst, busy, onReply }) {
       {!ml.coach_reply && <span style={{ marginLeft: 6, fontSize: 10, color: "#71717A" }}>Shows under this exercise for {athleteFirst}, and notifies them</span>}
     </div>
   );
+}
+
+// Read-only: the cue the athlete sees on this exercise from a video review.
+function VideoCueNote({ cues }) {
+  if (!cues || !cues.length) return null;
+  return cues.map(c => (
+    <div key={c.id} style={{ marginTop: 6, padding: "6px 8px", background: "#FFFBEB", border: "1px solid #FCD34D", borderLeft: "4px solid #F59E0B", borderRadius: 6 }}>
+      <div style={{ fontSize: 10, fontWeight: 700, color: "#B45309", textTransform: "uppercase", letterSpacing: 0.4 }}>Video cue{c.source_label ? ` · from ${c.source_label}` : ""} · edit in the athlete&rsquo;s video review</div>
+      <div style={{ fontSize: 13, fontWeight: 600, color: "#78350F", marginTop: 1, whiteSpace: "pre-wrap" }}>{c.cue}</div>
+    </div>
+  ));
 }

@@ -5,7 +5,7 @@ begin;
 do $$
 declare t text;
 begin
-  foreach t in array array['messages','athlete_notes','exercise_comments','athlete_alerts','video_submissions'] loop
+  foreach t in array array['messages','athlete_notes','exercise_comments','exercise_cues','athlete_alerts','video_submissions'] loop
     execute format('drop policy if exists "coach: all" on public.%I', t);
     execute format('drop policy if exists "athlete: own rows" on public.%I', t);
   end loop;
@@ -15,6 +15,7 @@ end $$;
 alter table public.messages disable row level security;
 alter table public.athlete_notes disable row level security;
 create policy "Allow all" on public.exercise_comments for all using (true) with check (true);
+create policy "Allow all" on public.exercise_cues for all using (true) with check (true);
 create policy "Allow all" on public.athlete_alerts for all using (true) with check (true);
 create policy "Allow all" on public.video_submissions for all using (true) with check (true);
 

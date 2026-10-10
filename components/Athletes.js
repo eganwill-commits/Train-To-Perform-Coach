@@ -6,7 +6,8 @@ import { notifyAthlete, fetchPushStatus } from "../lib/push";
 import { baselineColumnLabels } from "../lib/weeks";
 import { MediaLink } from "./VideoPlayer";
 import { canExport, exportForReview, reviewBrief } from "../lib/media";
-import FeedbackModal from "./FeedbackModal";
+import VideoFeedbackModal from "./VideoFeedbackModal";
+import { fetchCues } from "../lib/cues";
 import { supabase } from "../lib/supabase";
 
 function formatDate(d) {
@@ -95,6 +96,19 @@ export default function Athletes({ athletes, programs, addAthlete, updateAthlete
     If the alert fails we say so rather than let the coach believe it was delivered.
   */
   const [feedbackFor, setFeedbackFor] = useState(null); // video row being written about
+
+  // Cues carried forward from video feedback, keyed by the video they came from.
+  const [cuesByVideo, setCuesByVideo] = useState({});
+  const reloadCues = async (athleteId) => {
+    const rows = await fetchCues(athleteId);
+    const m = {};
+    rows.forEach(c => { if (c.source_video_id) m[c.source_video_id] = c; });
+    setCuesByVideo(m);
+  };
+  useEffect(() => {
+    if (!detail) { setCuesByVideo({}); return; }
+    reloadCues(detail);
+  }, [detail]);
 
   const saveFeedback = async (v, fb) => {
     await updateVideoSub(v.id, { coach_feedback: fb, status: "reviewed" });
@@ -639,7 +653,15 @@ export default function Athletes({ athletes, programs, addAthlete, updateAthlete
                               ? <div style={{ fontSize: 11, color: "#16A34A", marginTop: 3, fontWeight: 600 }}>Seen {new Date(rc.read_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })} at {new Date(rc.read_at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}</div>
                               : <div style={{ fontSize: 11, color: "#A1A1AA", marginTop: 3, fontWeight: 600 }}>Sent — not opened yet</div>;
                           })()}
-                          <button onClick={() => setFeedbackFor(v)} style={{ fontSize: 11, color: "#16A34A", background: "none", border: "none", cursor: "pointer", fontFamily: "inherit", marginTop: 4, fontWeight: 600 }}>Edit</button>
+                          {cuesByVideo[v.id] ? (
+                            <div style={{ marginTop: 8, padding: "6px 10px", background: "#FFFBEB", border: "1px solid #FCD34D", borderRadius: 6 }}>
+                              <div style={{ fontSize: 10, fontWeight: 700, color: "#B45309", textTransform: "uppercase", letterSpacing: 0.5 }}>Cue on future sessions · {(cuesByVideo[v.id].exercise_names || []).join(", ")}</div>
+                              <div style={{ fontSize: 13, fontWeight: 600, color: "#78350F", marginTop: 2, whiteSpace: "pre-wrap" }}>{cuesByVideo[v.id].cue}</div>
+                            </div>
+                          ) : (
+                            <div style={{ marginTop: 6, fontSize: 11, color: "#B45309", fontWeight: 600 }}>No cue carried forward yet</div>
+                          )}
+                          <button onClick={() => setFeedbackFor(v)} style={{ fontSize: 11, color: "#16A34A", background: "none", border: "none", cursor: "pointer", fontFamily: "inherit", marginTop: 4, fontWeight: 600 }}>{cuesByVideo[v.id] ? "Edit feedback or cue" : "Edit feedback · add cue"}</button>
                         </div>
                       ) : (
                         <div style={{ display: "flex", gap: 6 }}>
@@ -716,14 +738,13 @@ export default function Athletes({ athletes, programs, addAthlete, updateAthlete
           </div>
         )}
 
-        <FeedbackModal
+        <VideoFeedbackModal
           open={!!feedbackFor}
-          title={feedbackFor?.coach_feedback ? "Update feedback" : "Add feedback"}
-          label={feedbackFor ? `${feedbackFor.exercise_name || "Movement video"} — this is sent to the athlete and rings their bell.` : ""}
-          initialValue={feedbackFor?.coach_feedback || ""}
-          placeholder="What did you see? What should they change next time?"
-          saveLabel={feedbackFor?.coach_feedback ? "Update feedback" : "Send feedback"}
-          onSave={async (text) => { if (feedbackFor) await saveFeedback(feedbackFor, text); }}
+          video={feedbackFor}
+          programs={feedbackFor ? (programs || []).filter(p => p.athlete_id === feedbackFor.athlete_id) : []}
+          athleteName={(athletes || []).find(a => a.id === feedbackFor?.athlete_id)?.name}
+          onSaveFeedback={async (text) => { if (feedbackFor) await saveFeedback(feedbackFor, text); }}
+          onCueChanged={() => { if (feedbackFor) reloadCues(feedbackFor.athlete_id); }}
           onClose={() => setFeedbackFor(null)}
         />
 
