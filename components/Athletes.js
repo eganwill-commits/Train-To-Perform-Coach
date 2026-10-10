@@ -5,6 +5,7 @@ import { raiseAlertReplacing, fetchAlertReceipts, ALERT_KIND, ALERT_PAGE } from 
 import { notifyAthlete, fetchPushStatus } from "../lib/push";
 import { baselineColumnLabels } from "../lib/weeks";
 import { MediaLink } from "./VideoPlayer";
+import { canExport, exportForReview, reviewBrief } from "../lib/media";
 import FeedbackModal from "./FeedbackModal";
 import { supabase } from "../lib/supabase";
 
@@ -195,6 +196,23 @@ export default function Athletes({ athletes, programs, addAthlete, updateAthlete
   };
 
   const activeAthlete = athletes.find(a => a.id === detail);
+  // Export for review: per-submission button state, keyed by submission id.
+  const [exportState, setExportState] = useState({});
+  const runExport = async (v) => {
+    const name = activeAthlete?.name || "";
+    // Clipboard first, while we are still inside the tap - Safari drops it after an await.
+    try { navigator.clipboard?.writeText(reviewBrief(v, name)).catch(() => {}); } catch { /* clipboard is a convenience */ }
+    setExportState(s => ({ ...s, [v.id]: "busy" }));
+    try {
+      await exportForReview(v, name);
+      setExportState(s => ({ ...s, [v.id]: "done" }));
+      setTimeout(() => setExportState(s => ({ ...s, [v.id]: undefined })), 4000);
+    } catch (e) {
+      console.error("Export for review failed", e);
+      setExportState(s => ({ ...s, [v.id]: "error" }));
+    }
+  };
+
 
   // Athlete profile detail view
   if (detail && activeAthlete) {
@@ -590,6 +608,19 @@ export default function Athletes({ athletes, programs, addAthlete, updateAthlete
                       </div>
                       <div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0 }}>
                         <MediaLink url={v.video_url} title={v.exercise_name} style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, color: "#fff", background: "#2563EB", textDecoration: "none", fontWeight: 700, padding: "4px 12px", borderRadius: 999 }}>▶ Watch</MediaLink>
+                        {canExport(v.video_url) && (
+                          <button
+                            onClick={() => runExport(v)}
+                            disabled={exportState[v.id] === "busy"}
+                            title="Download the clip with athlete, movement and session in the file name, and copy a review brief to the clipboard"
+                            style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, fontWeight: 700, padding: "4px 12px", borderRadius: 999, cursor: "pointer", fontFamily: "inherit",
+                              color: exportState[v.id] === "error" ? "#DC2626" : "#18181B",
+                              background: exportState[v.id] === "done" ? "#F0FDF4" : "#fff",
+                              border: `1px solid ${exportState[v.id] === "done" ? "#4ADE80" : exportState[v.id] === "error" ? "#FCA5A5" : "#D4D4D8"}` }}
+                          >
+                            {exportState[v.id] === "busy" ? "Exporting…" : exportState[v.id] === "done" ? "✓ Saved + brief copied" : exportState[v.id] === "error" ? "Export failed - retry" : "⬇ Export"}
+                          </button>
+                        )}
                         <button onClick={() => { if (confirm("Delete this video submission?")) deleteVideoSub(v.id); }} style={{ background: "none", border: "none", cursor: "pointer", color: "#D4D4D8", fontSize: 14 }} title="Delete video">✕</button>
                       </div>
                     </div>
