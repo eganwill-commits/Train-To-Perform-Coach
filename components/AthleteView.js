@@ -736,6 +736,9 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
         */
         ["sets", "reps", "load", "rpe", "notes"].forEach(k => { if (r[k] === undefined) row[k] = prior[k] ?? ""; });
         if (r.status === undefined && prior.exercise_status) row.exercise_status = prior.exercise_status;
+        // An edit is not a new session. Keep the day it was first logged; re-stamping it
+        // with today moved Bode's Sep 18 Week 3 rows to Oct 12 when he touched them.
+        if (prior.date) row.date = prior.date;
         const { data, error } = await supabase.from("logs").update(row).eq("id", prior.id).select().single();
         if (error) throw error;
         if (data && setLogs) setLogs(prev => prev.map(l => (l.id === data.id ? data : l)));
@@ -1050,7 +1053,26 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
               </button>;
             })}
           </div>
-          {aw !== currentWeekIndex && (
+          {/*
+            Logging into the wrong week. A log is filed under the week on screen, not the
+            date it was typed, so numbers entered while an old week is open land in that old
+            week and the coach never sees them where he looks. Josh logged his Oct 9 bench
+            into Week 4 this way. On a calendar program a past week gets a loud warning
+            with a one-tap way back; backfilling a missed week on purpose still works.
+          */}
+          {aw !== currentWeekIndex && prog?.start_date && aw < currentWeekIndex ? (
+            <div style={{ margin: "6px 0 10px", padding: "10px 12px", background: "#FEF2F2", border: "2px solid #DC2626", borderRadius: 10 }}>
+              <div style={{ fontSize: 13, fontWeight: 800, color: "#991B1B", marginBottom: 2 }}>
+                You're looking at {weekNumberLabel(weeks[aw]?.label, aw)}, not this week
+              </div>
+              <div style={{ fontSize: 12, color: "#7F1D1D", lineHeight: 1.4, marginBottom: 8 }}>
+                Anything you log here saves to {weekNumberLabel(weeks[aw]?.label, aw)}. This week is {weekNumberLabel(weeks[currentWeekIndex]?.label, currentWeekIndex)}.
+              </div>
+              <button onClick={() => setAw(currentWeekIndex)} style={{ width: "100%", padding: "10px 12px", background: "#DC2626", color: "#fff", border: "none", borderRadius: 8, fontSize: 14, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
+                Go to this week ({weekNumberLabel(weeks[currentWeekIndex]?.label, currentWeekIndex)})
+              </button>
+            </div>
+          ) : aw !== currentWeekIndex && (
             <button onClick={() => setAw(currentWeekIndex)} style={{ marginBottom: 8, padding: "4px 12px", background: "#FEF3C7", color: "#92400E", border: "1px solid #FDE68A", borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>
               ← Back to Current Week ({weekNumberLabel(weeks[currentWeekIndex]?.label, currentWeekIndex)})
             </button>
