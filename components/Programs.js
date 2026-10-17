@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Badge, Btn, Card, Input, Select, Modal, EmptyState, SearchableSelect, BlurInput } from "./ui";
+import { Badge, Btn, Card, Input, Select, Modal, EmptyState, SearchableSelect, BlurInput, ProgressTag, PROGRESS_TYPES } from "./ui";
 import { supabase } from "../lib/supabase";
 import { raiseAlertReplacing, ALERT_KIND, ALERT_PAGE } from "../lib/alerts";
 import { printDay } from "./printHelper";
@@ -1019,7 +1019,7 @@ function ProgramDetail({ program, programs, exercises, updateExercise, addExerci
                             </div>
                             <div onClick={() => setExpandedBlock(isOpen ? null : block.id)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flex: 1, cursor: "pointer" }}>
                               <div style={{ display: "flex", alignItems: "center", gap: 8, flex: 1, minWidth: 0 }}>
-                                <Badge color={cc?.bg || "#999"}>{block.category}</Badge>{gTag && <span style={{ fontSize: 9.5, fontWeight: 800, color: (block.groupType || "circuit") === "superset" ? "#6D28D9" : "#C2410C", textTransform: "uppercase", letterSpacing: 0.3, whiteSpace: "nowrap" }}>{gTag}</span>}
+                                <Badge color={cc?.bg || "#999"}>{block.category}</Badge><ProgressTag value={block.progress} />{gTag && <span style={{ fontSize: 9.5, fontWeight: 800, color: (block.groupType || "circuit") === "superset" ? "#6D28D9" : "#C2410C", textTransform: "uppercase", letterSpacing: 0.3, whiteSpace: "nowrap" }}>{gTag}</span>}
                                 <div style={{ minWidth: 0, flex: 1 }}>
                                   <div style={{ fontWeight: 600, fontSize: 13, lineHeight: 1.3, textDecoration: exStatus === "missed" ? "line-through" : "none", wordBreak: "break-word" }}>{displayName}</div>
                                   <div style={{ fontSize: 11, color: "#71717A" }}>{[block.sets && block.reps ? `${block.sets}×${block.reps}` : null, block.load ? `@ ${block.load}` : null].filter(Boolean).join(" ") || "—"}</div>
@@ -1062,6 +1062,11 @@ function ProgramDetail({ program, programs, exercises, updateExercise, addExerci
                                 <BlurInput value={block.cue || ""} onSave={v => updateBlock(aw, di, bi, "cue", v)} placeholder="e.g. Brace, sit between the heels, drive the floor away." multiline style={{ width: "100%", padding: "6px 5px", border: "1px solid #BFDBFE", borderRadius: 6, fontSize: 14, fontFamily: "inherit", marginTop: 1, boxSizing: "border-box", background: "#F8FAFF" }} />
                               </label>
                               <div style={{ display: "flex", gap: 6, marginTop: 4, alignItems: "flex-end", flexWrap: "wrap" }}>
+                                <label style={{ fontSize: 10, color: "#1E40AF", fontWeight: 600 }}>New / Prog
+                                  <select value={block.progress || ""} onChange={e => updateBlock(aw, di, bi, "progress", e.target.value)} style={{ display: "block", padding: "5px 6px", border: "1px solid #93C5FD", borderRadius: 6, fontSize: 13, fontFamily: "inherit", marginTop: 1, background: "#fff" }}>
+                                    {PROGRESS_TYPES.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                                  </select>
+                                </label>
                                 <label style={{ fontSize: 10, color: "#9A3412", fontWeight: 600 }}>Grouping
                                   <select value={block.groupType || ""} onChange={e => updateBlock(aw, di, bi, "groupType", e.target.value)} style={{ display: "block", padding: "5px 6px", border: "1px solid #FDBA74", borderRadius: 6, fontSize: 13, fontFamily: "inherit", marginTop: 1, background: "#fff" }}>
                                     {GROUP_TYPES.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
@@ -1127,7 +1132,7 @@ function ProgramDetail({ program, programs, exercises, updateExercise, addExerci
                               <button onClick={() => toggleExerciseStatus(logEntry, "missed", block, day.label)} style={{ width: 22, height: 22, borderRadius: 4, border: exStatus === "missed" ? "2px solid #DC2626" : "1px solid #D4D4D8", background: exStatus === "missed" ? "#DC2626" : "transparent", color: exStatus === "missed" ? "#fff" : "#A1A1AA", fontSize: 11, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }} title="Mark missed">✗</button>
                               <button onClick={() => { if (confirm(`Delete "${getDisplayName(block)}" from ${day.label}? This removes it from the day's program.`)) deleteBlockAndLog(aw, di, bi, block, logEntry); }} style={{ width: 22, height: 22, borderRadius: 4, border: "1px solid #FCA5A5", background: "transparent", color: "#DC2626", fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }} title="Delete from day">🗑</button>
                             </div>
-                            <Badge color={cc?.bg || "#999"}>{block.category}</Badge>{gTag && <span style={{ fontSize: 9.5, fontWeight: 800, color: (block.groupType || "circuit") === "superset" ? "#6D28D9" : "#C2410C", textTransform: "uppercase", letterSpacing: 0.3, whiteSpace: "nowrap" }}>{gTag}</span>}
+                            <Badge color={cc?.bg || "#999"}>{block.category}</Badge><ProgressTag value={block.progress} />{gTag && <span style={{ fontSize: 9.5, fontWeight: 800, color: (block.groupType || "circuit") === "superset" ? "#6D28D9" : "#C2410C", textTransform: "uppercase", letterSpacing: 0.3, whiteSpace: "nowrap" }}>{gTag}</span>}
                             {blockLogged && <span style={{ width: 8, height: 8, borderRadius: 4, background: "#16A34A", flexShrink: 0 }} title="Athlete logged" />}
                             <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
                               <button onClick={() => !isFirst && moveBlock(aw, di, bi, -1)} style={arrowStyle(isFirst)} disabled={isFirst}>▲</button>
@@ -1160,6 +1165,11 @@ function ProgramDetail({ program, programs, exercises, updateExercise, addExerci
                                 <BlurInput value={block.cue || ""} onSave={v => updateBlock(aw, di, bi, "cue", v)} placeholder="e.g. Brace, sit between the heels, drive the floor away." multiline style={{ width: "100%", padding: "6px 5px", border: "1px solid #BFDBFE", borderRadius: 6, fontSize: 14, fontFamily: "inherit", marginTop: 1, boxSizing: "border-box", background: "#F8FAFF" }} />
                               </label>
                               <div style={{ display: "flex", gap: 6, marginTop: 4, alignItems: "flex-end", flexWrap: "wrap" }}>
+                                <label style={{ fontSize: 10, color: "#1E40AF", fontWeight: 600 }}>New / Prog
+                                  <select value={block.progress || ""} onChange={e => updateBlock(aw, di, bi, "progress", e.target.value)} style={{ display: "block", padding: "5px 6px", border: "1px solid #93C5FD", borderRadius: 6, fontSize: 13, fontFamily: "inherit", marginTop: 1, background: "#fff" }}>
+                                    {PROGRESS_TYPES.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                                  </select>
+                                </label>
                                 <label style={{ fontSize: 10, color: "#9A3412", fontWeight: 600 }}>Grouping
                                   <select value={block.groupType || ""} onChange={e => updateBlock(aw, di, bi, "groupType", e.target.value)} style={{ display: "block", padding: "5px 6px", border: "1px solid #FDBA74", borderRadius: 6, fontSize: 13, fontFamily: "inherit", marginTop: 1, background: "#fff" }}>
                                     {GROUP_TYPES.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}

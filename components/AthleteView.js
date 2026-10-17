@@ -3,7 +3,7 @@ import { Fragment, useState, useEffect, useCallback, useRef, useMemo } from "rea
 import { supabase } from "../lib/supabase";
 import { PILLAR_COLORS, ATHLETE_NAV, EQUIP_OPTIONS, EQUIP_LABEL, roomLabel } from "../lib/constants";
 import Timers from "./Timers";
-import { Badge, Btn, Card, Input, Select, Modal, EmptyState, SearchableSelect, AutoGrow, ScoreField, SideScoreField } from "./ui";
+import { Badge, Btn, Card, Input, Select, Modal, EmptyState, SearchableSelect, AutoGrow, ScoreField, SideScoreField, ProgressTag } from "./ui";
 import { scoreSpecFor, parseSides, formatSides } from "../lib/logging";
 import { printDay } from "./printHelper";
 import T2PLogo from "./T2PLogo";
@@ -1305,7 +1305,7 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
                       <Badge color={cc?.bg || "#999"}>{block.category}</Badge>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         {gTag && <div style={{ fontSize: 10, fontWeight: 800, color: (block.groupType || "circuit") === "superset" ? "#6D28D9" : "#C2410C", letterSpacing: 0.3, textTransform: "uppercase" }}>{gTag}</div>}
-                        <div style={{ fontWeight: 600, fontSize: 13, lineHeight: 1.3, textDecoration: exStatus === "missed" ? "line-through" : "none", wordBreak: "break-word" }}>{getDisplayName(block, day.id)}</div>
+                        <div style={{ fontWeight: 600, fontSize: 13, lineHeight: 1.3, textDecoration: exStatus === "missed" ? "line-through" : "none", wordBreak: "break-word" }}>{getDisplayName(block, day.id)}{(block.progress === "new" || block.progress === "prog") && <> <ProgressTag value={block.progress} /></>}</div>
                         {!isOpen && cuesForBlock(cues, block, getDisplayName(block, day.id)).length > 0 && (
                           <div style={{ fontSize: 11, color: "#B45309", fontWeight: 700, marginTop: 1 }}>★ Coach cue: tap to read before you start</div>
                         )}
