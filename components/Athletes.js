@@ -788,7 +788,7 @@ export default function Athletes({ athletes, programs, addAthlete, updateAthlete
       </div>
       {athletes.length === 0 ? <EmptyState icon="◎" title="No athletes yet" sub="Add your first athlete." action="+ Add Athlete" onAction={openNew} /> : (
         <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill, minmax(280px, 1fr))", gap: 12 }}>
-          {athletes.map(a => {
+          {[...athletes].sort((x, y) => (x.name || "").trim().localeCompare((y.name || "").trim(), undefined, { sensitivity: "base" })).map(a => {
             const athleteLogCount = (logs || []).filter(l => l.athlete_id === a.id).length;
             const athleteSeasons = (groups || []).filter(g => (groupAthletes || []).some(ga => ga.group_id === g.id && ga.athlete_id === a.id));
             return (
