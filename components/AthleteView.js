@@ -1398,7 +1398,7 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
                         </div>
                       )}
                       {(() => {
-                        // Tempo in words, so "3-0-1" means something to a 14-year-old.
+                        // Tempo in words, so "3-1-X-0" means something to a 14-year-old.
                         const t = explainTempo(block.tempo);
                         if (!t) return null;
                         return <div style={{ fontSize: 11.5, color: "#0F766E", marginTop: 2, lineHeight: 1.4 }}>⏱ {t.sentence}</div>;
