@@ -16,6 +16,7 @@ import { fetchAllComments } from "../lib/comments";
 import { fetchCues, cuesForBlock } from "../lib/cues";
 import ProgramBrief, { briefSummary } from "./ProgramBrief";
 import { effortOf, effortText } from "../lib/logging";
+import { normalizeTempo } from "../lib/tempo";
 
 /* Local calendar date, not UTC — see the note in AthleteView.js. */
 const localDateISO = () => {
@@ -269,7 +270,7 @@ export default function Programs({ programs, addProgram, updateProgram, deletePr
   const updateBlock = async (wi, di, bi, f, v) => {
     const weeks = JSON.parse(JSON.stringify(ap.weeks));
     const block = weeks[wi].days[di].blocks[bi];
-    block[f] = v;
+    block[f] = f === "tempo" ? normalizeTempo(v) : v;
     if (f === "exerciseId") { const ex = exercises.find(e => e.id === v); if (ex) block.exerciseName = ex.name; }
     if (f === "category") {
       // Re-labelling a block as REC keeps its exercise when that exercise already fits
@@ -1051,7 +1052,7 @@ function ProgramDetail({ program, programs, exercises, updateExercise, addExerci
                                 ))}
                               </div>
                               <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 4, marginTop: 4 }}>
-                                {[["Tempo", "tempo", "3-1-2-0"], ["Rest(s)", "rest", ""]].map(([lb, f, ph]) => (
+                                {[["Tempo", "tempo", "3-1-X-0"], ["Rest(s)", "rest", ""]].map(([lb, f, ph]) => (
                                   <label key={f} style={{ fontSize: 10, color: "#71717A" }}>{lb}<BlurInput value={block[f]} onSave={v => updateBlock(aw, di, bi, f, v)} placeholder={ph} style={{ width: "100%", padding: "6px 5px", border: "1px solid #E4E4E7", borderRadius: 6, fontSize: 14, fontFamily: "inherit", marginTop: 1, boxSizing: "border-box" }} /></label>
                                 ))}
                               </div>
@@ -1154,7 +1155,7 @@ function ProgramDetail({ program, programs, exercises, updateExercise, addExerci
                           ))}
                         </div>
                         <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 4, marginTop: 4 }}>
-                          {[["Tempo", "tempo", "3-1-2-0"], ["Rest(s)", "rest", ""]].map(([lb, f, ph]) => (
+                          {[["Tempo", "tempo", "3-1-X-0"], ["Rest(s)", "rest", ""]].map(([lb, f, ph]) => (
                             <label key={f} style={{ fontSize: 10, color: "#71717A" }}>{lb}<BlurInput value={block[f]} onSave={v => updateBlock(aw, di, bi, f, v)} placeholder={ph} style={{ width: "100%", padding: "4px 5px", border: "1px solid #E4E4E7", borderRadius: 6, fontSize: 13, fontFamily: "inherit", marginTop: 1, boxSizing: "border-box" }} /></label>
                           ))}
                         </div>
