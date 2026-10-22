@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { Badge, Btn, Card, Input, Select, Modal, EmptyState, SearchableSelect } from "./ui";
 import { roomLabel } from "../lib/constants";
+import { effortOf, effortText, RIR_PLACEHOLDER } from "../lib/logging";
 
 /* Local calendar date, not UTC — see the note in AthleteView.js. */
 const localDateISO = () => {
@@ -25,12 +26,12 @@ export default function LogPage({ logs, addLog, deleteLog, unlogDay, athletes, e
   const [modal, setModal] = useState(false);
   const [expandedDay, setExpandedDay] = useState(null);
   const [expandedExercise, setExpandedExercise] = useState(null);
-  const [form, setForm] = useState({ athlete_id: "", exercise_id: "", category: "", sets: "", reps: "", load: "", rpe: "", notes: "", date: localDateISO() });
+  const [form, setForm] = useState({ athlete_id: "", exercise_id: "", category: "", sets: "", reps: "", load: "", rir: "", notes: "", date: localDateISO() });
 
   const openNew = () => {
     const c = cats[0];
     const fx = exercises.find(e => e.category === c);
-    setForm({ athlete_id: selectedAthlete !== "all" ? selectedAthlete : (athletes[0]?.id || ""), exercise_id: fx?.id || "", category: c, sets: "", reps: "", load: "", rpe: "", notes: "", date: localDateISO() });
+    setForm({ athlete_id: selectedAthlete !== "all" ? selectedAthlete : (athletes[0]?.id || ""), exercise_id: fx?.id || "", category: c, sets: "", reps: "", load: "", rir: "", notes: "", date: localDateISO() });
     setModal(true);
   };
 
@@ -226,7 +227,7 @@ export default function LogPage({ logs, addLog, deleteLog, unlogDay, athletes, e
                                     <div style={{ flex: 1, minWidth: 0 }}>
                                       <div style={{ fontWeight: 600, fontSize: 13 }}>{l.exercise_name}</div>
                                       <div style={{ fontSize: 12, color: "#71717A" }}>
-                                        {[l.sets && l.reps ? `${l.sets}×${l.reps}` : l.reps || l.sets || null, l.load ? `@ ${l.load}` : null, l.rpe ? `RPE ${l.rpe}` : null].filter(Boolean).join(" · ") || "—"}
+                                        {[l.sets && l.reps ? `${l.sets}×${l.reps}` : l.reps || l.sets || null, l.load ? `@ ${l.load}` : null, effortText(l) || null].filter(Boolean).join(" · ") || "—"}
                                       </div>
                                     </div>
                                     <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
@@ -240,7 +241,7 @@ export default function LogPage({ logs, addLog, deleteLog, unlogDay, athletes, e
                                         <div><div style={{ fontSize: 10, color: "#A1A1AA", textTransform: "uppercase" }}>Sets</div><div style={{ fontSize: 14, fontWeight: 600 }}>{l.sets || "—"}</div></div>
                                         <div><div style={{ fontSize: 10, color: "#A1A1AA", textTransform: "uppercase" }}>Reps</div><div style={{ fontSize: 14, fontWeight: 600 }}>{l.reps || "—"}</div></div>
                                         <div><div style={{ fontSize: 10, color: "#A1A1AA", textTransform: "uppercase" }}>Load</div><div style={{ fontSize: 14, fontWeight: 600 }}>{l.load || "—"}</div></div>
-                                        <div><div style={{ fontSize: 10, color: "#A1A1AA", textTransform: "uppercase" }}>RPE</div><div style={{ fontSize: 14, fontWeight: 600 }}>{l.rpe || "—"}</div></div>
+                                        <div><div style={{ fontSize: 10, color: "#A1A1AA", textTransform: "uppercase" }}>{effortOf(l).label}</div><div style={{ fontSize: 14, fontWeight: 600 }}>{effortOf(l).value || "—"}</div></div>
                                         <div><div style={{ fontSize: 10, color: "#A1A1AA", textTransform: "uppercase" }}>Category</div><div style={{ fontSize: 14, fontWeight: 600 }}>{l.category || "—"}</div></div>
                                         <div><div style={{ fontSize: 10, color: "#A1A1AA", textTransform: "uppercase" }}>Date</div><div style={{ fontSize: 14, fontWeight: 600 }}>{formatDate(l.date)}</div></div>
                                       </div>
@@ -365,8 +366,8 @@ export default function LogPage({ logs, addLog, deleteLog, unlogDay, athletes, e
                               <div style={{ fontSize: 18, fontWeight: 700 }}>{l.load || "—"}</div>
                             </div>
                             <div style={{ background: "#fff", padding: "8px 10px", borderRadius: 8, border: "1px solid #E4E4E7" }}>
-                              <div style={{ fontSize: 10, color: "#A1A1AA", textTransform: "uppercase", letterSpacing: 0.5 }}>RPE</div>
-                              <div style={{ fontSize: 18, fontWeight: 700 }}>{l.rpe || "—"}</div>
+                              <div style={{ fontSize: 10, color: "#A1A1AA", textTransform: "uppercase", letterSpacing: 0.5 }}>{effortOf(l).label}</div>
+                              <div style={{ fontSize: 18, fontWeight: 700 }}>{effortOf(l).value || "—"}</div>
                             </div>
                           </div>
 
@@ -427,7 +428,7 @@ export default function LogPage({ logs, addLog, deleteLog, unlogDay, athletes, e
             <Input label="Sets" type="number" value={form.sets} onChange={e => setForm({ ...form, sets: e.target.value })} />
             <Input label="Reps" value={form.reps} onChange={e => setForm({ ...form, reps: e.target.value })} />
             <Input label="Load" value={form.load} onChange={e => setForm({ ...form, load: e.target.value })} placeholder="lbs" />
-            <Input label="RPE" value={form.rpe} onChange={e => setForm({ ...form, rpe: e.target.value })} placeholder="1-10" />
+            <Input label="RIR (reps left)" value={form.rir} onChange={e => setForm({ ...form, rir: e.target.value })} placeholder={RIR_PLACEHOLDER} />
           </div>
           <Input label="Notes" value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} />
           <Btn onClick={save} style={{ marginTop: 8 }}>Save</Btn>

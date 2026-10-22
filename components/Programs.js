@@ -15,6 +15,7 @@ import { weekStartFromLabel, weekNumberLabel, weekdayOffset, currentWeekIndex as
 import { fetchAllComments } from "../lib/comments";
 import { fetchCues, cuesForBlock } from "../lib/cues";
 import ProgramBrief, { briefSummary } from "./ProgramBrief";
+import { effortOf, effortText } from "../lib/logging";
 
 /* Local calendar date, not UTC — see the note in AthleteView.js. */
 const localDateISO = () => {
@@ -787,7 +788,7 @@ function ProgramDetail({ program, programs, exercises, updateExercise, addExerci
 
   const handleUnlog = async (day, skipConfirm) => {
     const date = getDateForDay(day.id);
-    if (!skipConfirm && !confirm(`⚠️ This will permanently delete ${ath?.name || "this athlete"}'s logged workout for ${day.label} on ${date}, including their notes, RPE, and load data.\n\nThis cannot be undone. Are you sure?`)) return;
+    if (!skipConfirm && !confirm(`⚠️ This will permanently delete ${ath?.name || "this athlete"}'s logged workout for ${day.label} on ${date}, including their notes, RIR, and load data.\n\nThis cannot be undone. Are you sure?`)) return;
     setUnlogging(day.id);
     await unlogDay(program.athlete_id, date, day.label, week.label);
     setUnlogging(null);
@@ -816,7 +817,7 @@ function ProgramDetail({ program, programs, exercises, updateExercise, addExerci
         sets: "",
         reps: "",
         load: "",
-        rpe: "",
+        rir: "",
         notes: "",
         exercise_status: newStatus,
         date: getDateForDay(dayLabel || ""),
@@ -1112,7 +1113,7 @@ function ProgramDetail({ program, programs, exercises, updateExercise, addExerci
                                       <div><div style={{ fontSize: 9, color: "#71717A" }}>Sets</div><div style={{ fontSize: 14, fontWeight: 700 }}>{ml.sets || "—"}</div></div>
                                       <div><div style={{ fontSize: 9, color: "#71717A" }}>Reps</div><div style={{ fontSize: 14, fontWeight: 700 }}>{ml.reps || "—"}</div></div>
                                       <div><div style={{ fontSize: 9, color: "#71717A" }}>Load</div><div style={{ fontSize: 14, fontWeight: 700 }}>{ml.load || "—"}</div></div>
-                                      <div><div style={{ fontSize: 9, color: "#71717A" }}>RPE</div><div style={{ fontSize: 14, fontWeight: 700 }}>{ml.rpe || "—"}</div></div>
+                                      <div><div style={{ fontSize: 9, color: "#71717A" }}>{effortOf(ml).label}</div><div style={{ fontSize: 14, fontWeight: 700 }}>{effortOf(ml).value || "—"}</div></div>
                                     </div>
                                     <AthleteNoteWithReply ml={ml} athleteFirst={(ath?.name || "Athlete").split(" ")[0]} busy={replyingTo === ml.id} onReply={() => setReplyFor(ml)} />
                                   </div>
@@ -1214,7 +1215,7 @@ function ProgramDetail({ program, programs, exercises, updateExercise, addExerci
                                 <div><div style={{ fontSize: 9, color: "#71717A" }}>Sets</div><div style={{ fontSize: 14, fontWeight: 700 }}>{ml.sets || "—"}</div></div>
                                 <div><div style={{ fontSize: 9, color: "#71717A" }}>Reps</div><div style={{ fontSize: 14, fontWeight: 700 }}>{ml.reps || "—"}</div></div>
                                 <div><div style={{ fontSize: 9, color: "#71717A" }}>Load</div><div style={{ fontSize: 14, fontWeight: 700 }}>{ml.load || "—"}</div></div>
-                                <div><div style={{ fontSize: 9, color: "#71717A" }}>RPE</div><div style={{ fontSize: 14, fontWeight: 700 }}>{ml.rpe || "—"}</div></div>
+                                <div><div style={{ fontSize: 9, color: "#71717A" }}>{effortOf(ml).label}</div><div style={{ fontSize: 14, fontWeight: 700 }}>{effortOf(ml).value || "—"}</div></div>
                               </div>
                               <AthleteNoteWithReply ml={ml} athleteFirst={(ath?.name || "Athlete").split(" ")[0]} busy={replyingTo === ml.id} onReply={() => setReplyFor(ml)} />
 
@@ -1248,11 +1249,11 @@ function ProgramDetail({ program, programs, exercises, updateExercise, addExerci
                         const rows = day.blocks.filter(b => blockLogMap[b.id]);
                         const anyNumbers = rows.some(b => {
                           const m = blockLogMap[b.id];
-                          return (m.sets || m.reps || m.load || m.rpe);
+                          return (m.sets || m.reps || m.load || m.rir || m.rpe);
                         });
                         if (rows.length > 0 && !anyNumbers) return (
                           <div style={{ padding: "6px 8px", fontSize: 12, color: "#B45309", background: "#FFFBEB", borderTop: "1px solid #FDE68A" }}>
-                            Logged as complete, but no sets, reps, load or RPE were entered.
+                            Logged as complete, but no sets, reps, load or RIR were entered.
                           </div>
                         );
                         return null;
@@ -1262,7 +1263,7 @@ function ProgramDetail({ program, programs, exercises, updateExercise, addExerci
                         const val = [
                           ml.sets && ml.reps ? `${ml.sets}\u00d7${ml.reps}` : (ml.reps || ml.sets || ""),
                           ml.load ? `@ ${ml.load}` : "",
-                          ml.rpe ? `RPE ${ml.rpe}` : "",
+                          effortText(ml),
                         ].filter(Boolean).join(" \u00b7 ");
                         return (
                           <div key={b.id} style={{ display: "flex", flexWrap: "wrap", alignItems: "baseline", columnGap: 10, padding: "4px 8px", borderTop: "1px solid #F0FDF4", fontSize: 12 }}>

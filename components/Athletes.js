@@ -9,6 +9,7 @@ import { canExport, exportForReview, reviewBrief } from "../lib/media";
 import VideoFeedbackModal from "./VideoFeedbackModal";
 import { fetchCues } from "../lib/cues";
 import { supabase } from "../lib/supabase";
+import { effortText } from "../lib/logging";
 
 function formatDate(d) {
   return new Date(d + "T12:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
@@ -722,7 +723,7 @@ export default function Athletes({ athletes, programs, addAthlete, updateAthlete
                               <div key={l.id} style={{ padding: "6px 0 6px 12px", borderBottom: "1px solid #F4F4F5" }}>
                                 <div style={{ fontWeight: 600, fontSize: 13 }}>{l.exercise_name}</div>
                                 <div style={{ fontSize: 12, color: "#71717A" }}>
-                                  {[l.sets && l.reps ? `${l.sets}×${l.reps}` : l.reps || l.sets || null, l.load ? `@ ${l.load}` : null, l.rpe ? `RPE ${l.rpe}` : null].filter(Boolean).join(" · ") || "—"}
+                                  {[l.sets && l.reps ? `${l.sets}×${l.reps}` : l.reps || l.sets || null, l.load ? `@ ${l.load}` : null, effortText(l) || null].filter(Boolean).join(" · ") || "—"}
                                 </div>
                                 {l.notes && <div style={{ fontSize: 12, color: "#52525B", fontStyle: "italic", marginTop: 2 }}>📝 {l.notes}</div>}
                               </div>

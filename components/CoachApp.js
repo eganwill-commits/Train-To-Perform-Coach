@@ -279,7 +279,7 @@ export default function CoachApp({ onLogout }) {
         sets: logged?.sets ?? "",
         reps: logged?.reps ?? "",
         load: logged?.load ?? "",
-        rpe: logged?.rpe ?? "",
+        rir: logged?.rir ?? "",
         // logs.notes belongs to the athlete. The coach's programming note lives on the
         // block and must not be copied in here - it reads back as if they wrote it.
         notes: logged?.notes ?? "",

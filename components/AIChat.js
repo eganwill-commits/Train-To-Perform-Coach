@@ -1,6 +1,7 @@
 "use client";
 import { useState, useRef, useEffect, useMemo } from "react";
 import { Btn } from "./ui";
+import { effortText } from "../lib/logging";
 
 const ATHLETE_PROMPTS = [
   "What's my workout for this week?",
@@ -105,7 +106,7 @@ function buildAthleteContext(athlete, programs, logs, baselines, videoSubs) {
           if (!seen[n]) { seen[n] = true; deduped.push(l); }
         });
         ctx += deduped.map(l =>
-          `${l.exercise_name} ${l.sets || ""}×${l.reps || ""}${l.load ? ` @${l.load}` : ""}${l.rpe ? ` RPE${l.rpe}` : ""}${l.notes ? ` "${l.notes}"` : ""}`
+          `${l.exercise_name} ${l.sets || ""}×${l.reps || ""}${l.load ? ` @${l.load}` : ""}${effortText(l) ? ` ${effortText(l)}` : ""}${l.notes ? ` "${l.notes}"` : ""}`
         ).join(" | ");
         ctx += "\n";
       });
@@ -220,7 +221,7 @@ function buildCoachContext(athletes, programs, logs, exercises, baselines, video
           .sort((x, y) => new Date(y[1][0]?.date) - new Date(x[1][0]?.date))
           .forEach(([dateKey, entries]) => {
             ctx += `  ${dateKey}: `;
-            ctx += entries.map(l => `${l.category} ${l.exercise_name} ${l.sets}×${l.reps}${l.load ? ` @${l.load}` : ""}${l.rpe ? ` RPE${l.rpe}` : ""}${l.notes ? ` "${l.notes}"` : ""}`).join(" | ");
+            ctx += entries.map(l => `${l.category} ${l.exercise_name} ${l.sets}×${l.reps}${l.load ? ` @${l.load}` : ""}${effortText(l) ? ` ${effortText(l)}` : ""}${l.notes ? ` "${l.notes}"` : ""}`).join(" | ");
             ctx += "\n";
           });
       }

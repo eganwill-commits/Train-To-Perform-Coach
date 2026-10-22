@@ -9,7 +9,7 @@ Train to Perform — Programming, Tracking & Training for teen athletes.
 - Multi-week program builder with movable exercise blocks
 - Exercise library with the six T2P pillars (MVT/PWR/SKL/STR/COND/FIN) plus REC for cool-down work
 - Printable daily workout sheets
-- Workout logging with sets, reps, load, RPE
+- Workout logging with sets, reps, load, RIR (reps in reserve)
 - Mobile-responsive with collapsible sidebar
 - Supabase backend — data syncs across all devices
 

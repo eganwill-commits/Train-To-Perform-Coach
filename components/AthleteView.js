@@ -4,7 +4,7 @@ import { supabase } from "../lib/supabase";
 import { PILLAR_COLORS, ATHLETE_NAV, EQUIP_OPTIONS, EQUIP_LABEL, roomLabel } from "../lib/constants";
 import Timers from "./Timers";
 import { Badge, Btn, Card, Input, Select, Modal, EmptyState, SearchableSelect, AutoGrow, ScoreField, SideScoreField, ProgressTag } from "./ui";
-import { scoreSpecFor, parseSides, formatSides } from "../lib/logging";
+import { scoreSpecFor, parseSides, formatSides, effortOf, effortText, RIR_PLACEHOLDER } from "../lib/logging";
 import { printDay } from "./printHelper";
 import T2PLogo from "./T2PLogo";
 import AIChat from "./AIChat";
@@ -703,7 +703,7 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
   const saveBlockNow = async (block, day, weekLabel) => {
     if (!addLog || !athlete || !block || !day) return;
     const r = (resultsRef.current || {})[block.id] || {};
-    const filled = ["sets", "reps", "load", "rpe", "notes"].some(k => (r[k] ?? "") !== "") || !!r.status;
+    const filled = ["sets", "reps", "load", "rir", "notes"].some(k => (r[k] ?? "") !== "") || !!r.status;
     if (!filled) return; // never write an empty row from autosave
     const dn = getDisplayName(block, day.id);
     const row = {
@@ -714,7 +714,7 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
       category: block.category || "",
       equipment_tier: tierFor(block, day.id),
       sets: r.sets ?? "", reps: r.reps ?? "", load: r.load ?? "",
-      rpe: r.rpe ?? "", notes: r.notes ?? "",
+      rir: r.rir ?? "", notes: r.notes ?? "",
       exercise_status: r.status ?? "completed",
       date: localDateISO(),
       week_label: weekLabel,
@@ -734,7 +734,7 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
           typed on a conditioning block (whose Sets/Reps boxes are now hidden) would have
           blanked numbers the athlete logged earlier.
         */
-        ["sets", "reps", "load", "rpe", "notes"].forEach(k => { if (r[k] === undefined) row[k] = prior[k] ?? ""; });
+        ["sets", "reps", "load", "rir", "notes"].forEach(k => { if (r[k] === undefined) row[k] = prior[k] ?? ""; });
         if (r.status === undefined && prior.exercise_status) row.exercise_status = prior.exercise_status;
         // An edit is not a new session. Keep the day it was first logged; re-stamping it
         // with today moved Bode's Sep 18 Week 3 rows to Oct 12 when he touched them.
@@ -1241,13 +1241,13 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
               const videoUrl = getVideoUrl(block);
               const isOpen = expandedBlock === block.id;
               const result = blockResults[block.id] || {};
-              const hasInput = result.sets || result.reps || result.load || result.rpe;
+              const hasInput = result.sets || result.reps || result.load || result.rir;
               const loggedResult = blockLogMap[block.id] || null;
               // Effective values: user input > logged result > programmed value
               const effSets = result.sets ?? loggedResult?.sets ?? "";
               const effReps = result.reps ?? loggedResult?.reps ?? "";
               const effLoad = result.load ?? loggedResult?.load ?? "";
-              const effRpe = result.rpe ?? loggedResult?.rpe ?? "";
+              const effRir = result.rir ?? loggedResult?.rir ?? "";
               const effNotes = result.notes ?? loggedResult?.notes ?? "";
               // A test block gets one unmistakable score box instead of a Load field
               // it shares with four other inputs. See lib/logging.js.
@@ -1327,7 +1327,7 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
                         a session-level alert to the coach on its own.
                       */}
                       {NUDGE_CATS.has(block.category) && !hasInput &&
-                        !(loggedResult && ((loggedResult.load || "") !== "" || (loggedResult.sets || "") !== "" || (loggedResult.rpe || "") !== "")) && (
+                        !(loggedResult && ((loggedResult.load || "") !== "" || (loggedResult.sets || "") !== "" || (loggedResult.rir || "") !== "" || (loggedResult.rpe || "") !== "")) && (
                         <span style={{
                           fontSize: 10, fontWeight: 800, color: "#fff",
                           // STR and FIN are the ones the coach chases; PWR is a nice-to-have.
@@ -1487,7 +1487,11 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
                           {!spec.isTest && !spec.isCond && (
                             <label style={{ fontSize: 10, color: "#71717A" }}>{spec.label}{spec.unit ? ` (${spec.unit})` : ""}<AutoGrow singleLine value={effLoad} onChange={e => updateResult(block.id, "load", e.target.value, block, day, week.label)} onBlur={() => flushSave(block, day, week.label)} placeholder={block.category === "PWR" ? (block.load || "e.g. 30in box, 7ft") : (block.load || spec.unit || "lbs")} style={inputStyle} /></label>
                           )}
-                          <label style={{ fontSize: 10, color: "#71717A" }}>RPE<input value={effRpe} onChange={e => updateResult(block.id, "rpe", e.target.value, block, day, week.label)} onBlur={() => flushSave(block, day, week.label)} placeholder="1-10" style={inputStyle} /></label>
+                          {/* Effort is RIR: clean-form reps left. It means nothing on a conditioning piece or a
+                              max test, so those blocks don't ask for it. */}
+                          {!spec.isCond && !spec.isTest && (
+                            <label style={{ fontSize: 10, color: "#71717A" }} title="Reps in reserve: how many more clean reps you could have done">RIR (reps left)<input inputMode="decimal" value={effRir} onChange={e => updateResult(block.id, "rir", e.target.value, block, day, week.label)} onBlur={() => flushSave(block, day, week.label)} placeholder={RIR_PLACEHOLDER} style={inputStyle} /></label>
+                          )}
                         </div>
                         <label style={{ fontSize: 10, color: "#71717A", display: "block", marginTop: 6 }}>Notes<AutoGrow value={effNotes} onChange={e => updateResult(block.id, "notes", e.target.value, block, day, week.label)} onBlur={() => flushSave(block, day, week.label)} placeholder="How did it feel?" style={inputStyle} /></label>
                         {loggedResult && <div style={{ fontSize: 10, color: "#A1A1AA", marginTop: 4 }}>Logged {new Date(loggedResult.date + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}</div>}
@@ -1793,7 +1797,7 @@ function MyLogs({ logs, colors, cats, isMobile, deleteLog, deleteDayLogs }) {
                                   <div style={{ flex: 1 }}>
                                     <div style={{ fontWeight: 600, fontSize: 13 }}>{l.exercise_name}</div>
                                     <div style={{ fontSize: 12, color: "#71717A" }}>
-                                      {[l.sets && l.reps ? `${l.sets}×${l.reps}` : l.reps || l.sets || null, l.load ? `@ ${l.load}` : null, l.rpe ? `RPE ${l.rpe}` : null].filter(Boolean).join(" · ") || "—"}
+                                      {[l.sets && l.reps ? `${l.sets}×${l.reps}` : l.reps || l.sets || null, l.load ? `@ ${l.load}` : null, effortText(l) || null].filter(Boolean).join(" · ") || "—"}
                                     </div>
                                     {l.notes && !isExOpen && <div style={{ fontSize: 11, color: "#A1A1AA", marginTop: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>📝 {l.notes}</div>}
                                   </div>
@@ -1818,8 +1822,8 @@ function MyLogs({ logs, colors, cats, isMobile, deleteLog, deleteDayLogs }) {
                                         <div style={{ fontSize: 16, fontWeight: 700 }}>{l.load || "—"}</div>
                                       </div>
                                       <div style={{ background: "#fff", padding: "6px 8px", borderRadius: 6, border: "1px solid #E4E4E7" }}>
-                                        <div style={{ fontSize: 10, color: "#A1A1AA", textTransform: "uppercase" }}>RPE</div>
-                                        <div style={{ fontSize: 16, fontWeight: 700 }}>{l.rpe || "—"}</div>
+                                        <div style={{ fontSize: 10, color: "#A1A1AA", textTransform: "uppercase" }}>{effortOf(l).label}</div>
+                                        <div style={{ fontSize: 16, fontWeight: 700 }}>{effortOf(l).value || "—"}</div>
                                       </div>
                                     </div>
                                     {l.notes && (

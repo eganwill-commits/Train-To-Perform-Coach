@@ -19,7 +19,7 @@ REC (Recovery) is the cool-down: breathing, easy stretches and hangs that close 
 - A movement appears in only one pillar in a given session.
 - Sessions have a hard 90-minute ceiling. When time is short, finishers are cut, not conditioning.
 - Conditioning is prescribed as named work with a score: intervals, races, AMRAPs, EMOMs. Do not recommend long steady-state "Zone 2" sessions for teen athletes.
-- Loads are usually prescribed by RPE (rate of perceived exertion, 1-10) or RIR (reps in reserve). RPE 8 means about two good reps left.
+- Effort on lifts is prescribed and logged as RIR (reps in reserve): how many more reps the athlete could have done with clean form. "@ 2 RIR" means stop with two clean reps left. Always speak in RIR, never RPE. Teens never go to 0 RIR on loaded compound lifts. Logs from before 22 Oct 2026 may show RPE (1-10); RPE 8 is roughly 2 RIR. Some older program text still says RPE: translate it for the athlete as RIR = 10 - RPE. Conditioning is not prescribed by RIR; it is prescribed by its score, pace or rounds.
 - Tempo is written as down-pause-up(-pause): 3-1-1 means 3 seconds lowering, 1 second pause at the bottom, 1 second up. X means explode.
 - Programs include deload / consolidate weeks that are deliberately lighter. Never tell an athlete to go heavier than the prescription in those weeks.
 

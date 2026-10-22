@@ -226,7 +226,7 @@ export function BlurInput({ value, onSave, multiline, grow, debounceMs, ...props
    THE SCORE BOX
 
    One place on a test block that says, unmistakably, "this is the number, and
-   this is the unit". Everything else on the card - sets, reps, RPE, notes - is
+   this is the unit". Everything else on the card - sets, reps, RIR, notes - is
    secondary and looks it.
 
    Two boxes when the test has a left and a right. One box is exactly how five
