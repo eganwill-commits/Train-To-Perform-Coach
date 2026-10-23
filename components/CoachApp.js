@@ -15,7 +15,7 @@ import AIChat from "./AIChat";
 import Timers from "./Timers";
 import ToastNotifications from "./ToastNotifications";
 import AlertsBell from "./AlertsBell";
-import VideoReview, { isAwaitingReview } from "./VideoReview";
+import VideoReview, { pendingReviewCount } from "./VideoReview";
 import CoachPushPrompt from "./CoachPushPrompt";
 import T2PLogo from "./T2PLogo";
 
@@ -484,7 +484,7 @@ export default function CoachApp({ onLogout }) {
     return () => navigator.serviceWorker?.removeEventListener?.("message", onMsg);
   }, []);
 
-  const pendingVideoCount = videoSubs.filter(isAwaitingReview).length;
+  const pendingVideoCount = pendingReviewCount(videoSubs);
 
   if (!loaded) return (
     <div className="t2p-root" style={{ display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'DM Sans', sans-serif" }}>

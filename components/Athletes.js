@@ -7,6 +7,7 @@ import { baselineColumnLabels } from "../lib/weeks";
 import { MediaLink } from "./VideoPlayer";
 import { canExport, exportForReview, reviewBrief } from "../lib/media";
 import VideoFeedbackModal from "./VideoFeedbackModal";
+import { reviewGroupKey } from "./VideoReview";
 import { fetchCues } from "../lib/cues";
 import { supabase } from "../lib/supabase";
 import { effortText } from "../lib/logging";
@@ -663,6 +664,11 @@ export default function Athletes({ athletes, programs, addAthlete, updateAthlete
                             <div style={{ marginTop: 6, fontSize: 11, color: "#B45309", fontWeight: 600 }}>No cue carried forward yet</div>
                           )}
                           <button onClick={() => setFeedbackFor(v)} style={{ fontSize: 11, color: "#16A34A", background: "none", border: "none", cursor: "pointer", fontFamily: "inherit", marginTop: 4, fontWeight: 600 }}>{cuesByVideo[v.id] ? "Edit feedback or cue" : "Edit feedback · add cue"}</button>
+                        </div>
+                      ) : v.status === "reviewed" || v.status === "needs-work" ? (
+                        <div style={{ display: "flex", gap: 10, alignItems: "center", fontSize: 12 }}>
+                          <span style={{ fontWeight: 700, color: v.status === "reviewed" ? "#16A34A" : "#DC2626" }}>{v.status === "reviewed" ? "✓ Reviewed" : "Needs work"}{athleteVideos.some(o => o.id !== v.id && o.coach_feedback && reviewGroupKey(o) === reviewGroupKey(v)) ? " · covered by feedback on another clip of this set" : ""}</span>
+                          <button onClick={() => setFeedbackFor(v)} style={{ background: "none", border: "none", padding: 0, color: "#2563EB", fontWeight: 700, fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>Add feedback</button>
                         </div>
                       ) : (
                         <div style={{ display: "flex", gap: 6 }}>
