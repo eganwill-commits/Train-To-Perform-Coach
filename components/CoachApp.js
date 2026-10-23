@@ -582,7 +582,7 @@ export default function CoachApp({ onLogout }) {
           {page === "dashboard" && <Dashboard {...pp} onNavigate={navToAthlete} />}
           {page === "seasons" && <Seasons {...pp} />}
           {page === "athletes" && <Athletes {...pp} focusAthleteId={focusAthleteId} onFocusClear={() => setFocusAthleteId(null)} />}
-          {page === "videos" && <VideoReview videoSubs={videoSubs} athletes={athletes} programs={programs} updateVideoSub={updateVideoSub} isMobile={isMobile} focusTarget={focusTarget} onFocusClear={() => setFocusTarget(null)} onOpenAthlete={(id) => navToAthlete(id, "athletes")} />}
+          {page === "videos" && <VideoReview videoSubs={videoSubs} athletes={athletes} programs={programs} logs={logs} updateVideoSub={updateVideoSub} isMobile={isMobile} focusTarget={focusTarget} onFocusClear={() => setFocusTarget(null)} onOpenAthlete={(id) => navToAthlete(id, "athletes")} />}
           {page === "programs" && <Programs {...pp} onOpenVideo={openVideo} focusAthleteId={focusAthleteId} focusTarget={focusTarget} onFocusClear={() => { setFocusAthleteId(null); setFocusTarget(null); }} />}
           {page === "library" && <Library {...pp} />}
           {page === "log" && <LogPage {...pp} />}

@@ -7,6 +7,8 @@ import { raiseAlertReplacing, ALERT_KIND, ALERT_PAGE } from "../lib/alerts";
 import { fetchCues } from "../lib/cues";
 import { supabase } from "../lib/supabase";
 import { canExport, exportForReview } from "../lib/media";
+import { explainTempo } from "../lib/tempo";
+import { effortText } from "../lib/logging";
 
 /*
   Coach video review queue.
@@ -81,6 +83,80 @@ export function pendingReviewCount(videoSubs) {
   return groupVideos(videoSubs).filter(g => g.waiting).length;
 }
 
+const normName = (s) => (s || "").toLowerCase().replace(/[-–—]/g, " ").replace(/\s+/g, " ").trim();
+
+// The prescribed block a clip was filmed from, with the program, week and day around it.
+function findPrescription(programs, v) {
+  if (!v?.block_id) return null;
+  for (const p of programs || []) {
+    if (p.athlete_id && p.athlete_id !== v.athlete_id) continue;
+    for (const w of p.weeks || []) for (const d of w.days || []) for (const b of d.blocks || []) {
+      if (b.id === v.block_id) return { program: p, week: w, day: d, block: b };
+    }
+  }
+  return null;
+}
+
+// What the athlete logged for this exercise in that session, if anything.
+function findLogged(logs, v, rx) {
+  const wl = rx?.week?.label || v.week_label;
+  const dl = rx?.day?.label || v.day_label;
+  const exId = rx?.block?.exerciseId;
+  const names = [v.exercise_name, rx?.block?.exerciseName].filter(Boolean).map(normName);
+  return (logs || []).find(l =>
+    l.athlete_id === v.athlete_id && l.week_label === wl && l.day_label === dl &&
+    ((exId && l.exercise_id === exId) || names.includes(normName(l.exercise_name)))
+  ) || null;
+}
+
+function ProgramPanel({ rx, logged }) {
+  if (!rx) {
+    return <div style={{ marginTop: 10, fontSize: 12, color: "#A1A1AA" }}>Not linked to a program session, so there is no prescription to show.</div>;
+  }
+  const b = rx.block;
+  const t = explainTempo(b.tempo);
+  const line = [b.sets && b.reps ? `${b.sets} × ${b.reps}` : b.sets ? `${b.sets} sets` : b.reps ? `${b.reps} reps` : null, b.load ? `@ ${b.load}` : null].filter(Boolean).join(" ");
+  const cell = (label, value) => value ? (
+    <div style={{ minWidth: 0 }}>
+      <div style={{ fontSize: 9, fontWeight: 800, color: "#71717A", letterSpacing: 0.4 }}>{label}</div>
+      <div style={{ fontSize: 15, fontWeight: 800, color: "#18181B", wordBreak: "break-word" }}>{value}</div>
+    </div>
+  ) : null;
+  const loggedLine = logged ? [
+    logged.sets && logged.reps ? `${logged.sets} × ${logged.reps}` : logged.reps || logged.sets || null,
+    logged.load ? `@ ${logged.load}` : null,
+    effortText(logged) || null,
+  ].filter(Boolean).join("  ·  ") : "";
+  return (
+    <div style={{ marginTop: 10, padding: "10px 12px", background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: 8 }}>
+      <div style={{ fontSize: 10, fontWeight: 800, color: "#334155", textTransform: "uppercase", letterSpacing: 0.5 }}>
+        Programmed · {rx.week.label.split(/[·—]/)[0].trim()} · {rx.day.label}
+      </div>
+      <div style={{ display: "flex", gap: 18, flexWrap: "wrap", marginTop: 6 }}>
+        {cell("SETS", b.sets)}
+        {cell("REPS", b.reps)}
+        {cell("LOAD", b.load)}
+        {cell("TEMPO", b.tempo)}
+        {cell("REST", b.rest ? `${b.rest}${/^\d+$/.test(String(b.rest)) ? "s" : ""}` : "")}
+      </div>
+      {!line && !b.tempo && !b.rest && <div style={{ fontSize: 12, color: "#71717A", marginTop: 4 }}>No sets, reps or load written on this block.</div>}
+      {t && <div style={{ fontSize: 12, color: "#475569", marginTop: 6 }}>Tempo: {t.sentence}{t.extra ? ` (${t.extra})` : ""}</div>}
+      {b.cue && <div style={{ fontSize: 12, color: "#1E3A8A", marginTop: 6 }}><b>Athlete cue:</b> {b.cue}</div>}
+      {b.notes && <div style={{ fontSize: 12, color: "#52525B", marginTop: 6, whiteSpace: "pre-wrap", lineHeight: 1.45 }}>{b.notes}</div>}
+      {b.coachNote && <div style={{ fontSize: 12, color: "#92400E", marginTop: 6, padding: "4px 8px", background: "#FFFBEB", borderRadius: 6, whiteSpace: "pre-wrap" }}><b>Your note:</b> {b.coachNote}</div>}
+      <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid #E2E8F0", fontSize: 12 }}>
+        <span style={{ fontSize: 10, fontWeight: 800, color: "#15803D", textTransform: "uppercase", letterSpacing: 0.5 }}>Logged </span>
+        {logged ? (
+          <>
+            <span style={{ fontWeight: 700, color: "#18181B" }}>{loggedLine || "Logged, no numbers entered"}</span>
+            {(logged.notes || "").trim() && <div style={{ color: "#52525B", marginTop: 3, fontStyle: "italic" }}>"{logged.notes.trim()}"</div>}
+          </>
+        ) : <span style={{ color: "#A1A1AA" }}>Nothing logged for this exercise yet</span>}
+      </div>
+    </div>
+  );
+}
+
 function timeAgo(ts) {
   if (!ts) return "";
   const mins = Math.floor((Date.now() - new Date(ts).getTime()) / 60000);
@@ -102,7 +178,7 @@ async function markBellRead(videoIds) {
   if (error) console.error("video review: bell dismiss failed", error);
 }
 
-export default function VideoReview({ videoSubs, athletes, programs, updateVideoSub, isMobile, focusTarget, onFocusClear, onOpenAthlete }) {
+export default function VideoReview({ videoSubs, athletes, programs, logs, updateVideoSub, isMobile, focusTarget, onFocusClear, onOpenAthlete }) {
   const [filter, setFilter] = useState("todo"); // todo | all
   const [athleteFilter, setAthleteFilter] = useState("");
   const [feedbackFor, setFeedbackFor] = useState(null); // review group
@@ -259,6 +335,8 @@ export default function VideoReview({ videoSubs, athletes, programs, updateVideo
                     </div>
                     <span style={{ fontSize: 11, fontWeight: 800, color: st.color, background: st.bg, padding: "3px 10px", borderRadius: 999, whiteSpace: "nowrap" }}>{st.label}</span>
                   </div>
+
+                  <ProgramPanel rx={findPrescription(programs, v)} logged={findLogged(logs, v, findPrescription(programs, v))} />
 
                   {asked.length > 0 && <div style={{ fontSize: 13, color: "#1E3A8A", marginTop: 8, padding: "6px 10px", background: "#EFF6FF", borderRadius: 6 }}><b>Asked:</b> {asked.join(" · ")}</div>}
 
