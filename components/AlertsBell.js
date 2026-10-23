@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "../lib/supabase";
+import { saveNoteReply } from "../lib/noteReplies";
 
 /*
   Read state lives in `coach_alert_reads`, not localStorage.
@@ -20,7 +21,7 @@ const LOOKBACK_DAYS = 21;
 // Stable key for a day's worth of logs, which are alerted as one grouped entry.
 const dayKey = (l) => `${l.athlete_id}|${l.week_label || ""}|${l.day_label || ""}`;
 
-export default function AlertsBell({ logs, videoSubs, athletes, isMobile, onNavigate }) {
+export default function AlertsBell({ logs, setLogs, videoSubs, athletes, isMobile, onNavigate }) {
   const [open, setOpen] = useState(false);
   // Set of "<source_table>:<source_id>" the coach has already dismissed.
   const [readKeys, setReadKeys] = useState(() => new Set());
@@ -30,6 +31,14 @@ export default function AlertsBell({ logs, videoSubs, athletes, isMobile, onNavi
   // the bell: a comment only surfaced if the coach happened to open that exact card.
   const [athleteComments, setAthleteComments] = useState([]);
   const ref = useRef(null);
+  // Inline reply to an exercise note, right in the bell.
+  const [replyOpen, setReplyOpen] = useState(null); // log id
+  const [replyText, setReplyText] = useState("");
+  const [replySending, setReplySending] = useState(false);
+  const [replyError, setReplyError] = useState("");
+  // Brief confirmation left in place of a note that was just handled: { [logId]: "replied" | "done" }.
+  const [handled, setHandled] = useState({});
+  const [showReplied, setShowReplied] = useState(false);
   const since = new Date(Date.now() - LOOKBACK_DAYS * 86400000).toISOString();
   const isRead = (table, id) => readKeys.has(`${table}:${id}`);
 
@@ -84,8 +93,10 @@ export default function AlertsBell({ logs, videoSubs, athletes, isMobile, onNavi
     routine session - the coach only found it by opening the day and reading every card.
     A note is the athlete telling you something; it gets its own alert.
   */
+  // A note is handled once the coach replies to it (from here or from the program) or
+  // marks it as needing no reply. Replied notes used to stay in the bell forever.
   const newLogNotes = (logs || [])
-    .filter(l => l.logged_at && l.logged_at > since && (l.notes || "").trim() && !isRead("logs", l.id))
+    .filter(l => l.logged_at && l.logged_at > since && (l.notes || "").trim() && ((!(l.coach_reply || "").trim() && !isRead("logs", l.id)) || handled[l.id]))
     .sort((a, b) => String(b.logged_at).localeCompare(String(a.logged_at)));
   const newVideos = (videoSubs || []).filter(v => v.created_at && v.created_at > since && !isRead("video_submissions", v.id));
   const freshNotes = (recentNotes || []).filter(n => !isRead("athlete_notes", n.id));
@@ -101,7 +112,43 @@ export default function AlertsBell({ logs, videoSubs, athletes, isMobile, onNavi
   });
   const logAlerts = Object.values(logGroups).sort((a, b) => b.latest.localeCompare(a.latest));
 
-  const totalNew = logAlerts.length + newVideos.length + unreadMsgs.length + freshNotes.length + newLogNotes.length + freshComments.length;
+  const openNotes = newLogNotes.filter(l => !handled[l.id]);
+  const totalNew = logAlerts.length + newVideos.length + unreadMsgs.length + freshNotes.length + openNotes.length + freshComments.length;
+
+  // Replies sent in the last week, newest first, so the coach can see what was answered.
+  const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString();
+  const recentReplies = (logs || [])
+    .filter(l => (l.coach_reply || "").trim() && l.coach_reply_at && l.coach_reply_at > weekAgo)
+    .sort((a, b) => String(b.coach_reply_at).localeCompare(String(a.coach_reply_at)));
+
+  const flashHandled = (id, kind) => {
+    setHandled(h => ({ ...h, [id]: kind }));
+    setTimeout(() => setHandled(h => { const n = { ...h }; delete n[id]; return n; }), 2500);
+  };
+
+  const sendReply = async (l) => {
+    if (replySending || !replyText.trim()) return;
+    setReplySending(true);
+    setReplyError("");
+    try {
+      const { row, notified } = await saveNoteReply(l, replyText);
+      setReadKeys(prev => new Set(prev).add(`logs:${l.id}`));
+      if (row && setLogs) setLogs(prev => prev.map(x => (x.id === row.id ? row : x)));
+      setReplyOpen(null);
+      setReplyText("");
+      flashHandled(l.id, notified ? "replied" : "replied-no-alert");
+    } catch (e) {
+      console.error("bell reply failed", e);
+      setReplyError("Reply could not be saved. Try again.");
+    }
+    setReplySending(false);
+  };
+
+  const noReplyNeeded = (l) => {
+    dismiss("logs", l.id);
+    if (replyOpen === l.id) { setReplyOpen(null); setReplyText(""); }
+    flashHandled(l.id, "done");
+  };
 
   /*
     Marking all read now records each visible alert individually rather than moving one
@@ -111,7 +158,7 @@ export default function AlertsBell({ logs, videoSubs, athletes, isMobile, onNavi
   const markRead = async () => {
     const rows = [
       ...logAlerts.map(g => ({ source_table: "log_day", source_id: g.key })),
-      ...newLogNotes.map(l => ({ source_table: "logs", source_id: String(l.id) })),
+      ...openNotes.map(l => ({ source_table: "logs", source_id: String(l.id) })),
       ...newVideos.map(v => ({ source_table: "video_submissions", source_id: String(v.id) })),
       ...freshComments.map(c => ({ source_table: "exercise_comments", source_id: String(c.id) })),
       ...freshNotes.map(n => ({ source_table: "athlete_notes", source_id: String(n.id) })),
@@ -162,7 +209,7 @@ export default function AlertsBell({ logs, videoSubs, athletes, isMobile, onNavi
           </div>
 
           <div style={{ overflowY: "auto", flex: 1, WebkitOverflowScrolling: "touch" }}>
-            {totalNew === 0 ? (
+            {totalNew === 0 && newLogNotes.length === 0 ? (
               <div style={{ padding: "40px 20px", textAlign: "center", color: "#A1A1AA" }}>
                 <div style={{ fontSize: 32, marginBottom: 8 }}>✓</div>
                 <div style={{ fontSize: 14, fontWeight: 600 }}>All caught up!</div>
@@ -174,8 +221,22 @@ export default function AlertsBell({ logs, videoSubs, athletes, isMobile, onNavi
                 {newLogNotes.map(l => {
                   const name = l.athlete_name || getAthleteName(l.athlete_id);
                   const initials = getInitials(name);
+                  const first = (name || "").split(/\s+/)[0] || "athlete";
+                  const done = handled[l.id];
+                  if (done) {
+                    return (
+                      <div key={"ln-" + l.id} style={{ display: "flex", gap: 8, padding: "12px 16px", borderBottom: "1px solid #F4F4F5", alignItems: "center", background: "#F0FDF4" }}>
+                        <span style={{ fontSize: 16 }}>{"✓"}</span>
+                        <span style={{ fontSize: 13, fontWeight: 700, color: "#15803D" }}>
+                          {done === "done" ? `Cleared: ${l.exercise_name || "note"}` : done === "replied" ? `Reply sent to ${first} · ${l.exercise_name || "note"}` : `Reply saved, but ${first} could not be notified`}
+                        </span>
+                      </div>
+                    );
+                  }
+                  const isReplying = replyOpen === l.id;
+                  const goView = () => { if (onNavigate) { onNavigate(l.athlete_id, "programs", { weekLabel: l.week_label, dayLabel: l.day_label, logId: l.id }); setOpen(false); } };
                   return (
-                  <div key={"ln-" + l.id} onClick={() => { dismiss("logs", l.id); if (onNavigate) { onNavigate(l.athlete_id, "programs", { weekLabel: l.week_label, dayLabel: l.day_label, logId: l.id }); setOpen(false); } }} style={{ display: "flex", gap: 10, padding: "12px 16px", borderBottom: "1px solid #F4F4F5", alignItems: "start", cursor: onNavigate ? "pointer" : "default" }}>
+                  <div key={"ln-" + l.id} style={{ display: "flex", gap: 10, padding: "12px 16px", borderBottom: "1px solid #F4F4F5", alignItems: "start" }}>
                     <div style={{ width: 36, height: 36, borderRadius: 18, background: "#FEF2F2", color: "#DC2626", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 13, flexShrink: 0 }}>{initials}</div>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
@@ -184,11 +245,35 @@ export default function AlertsBell({ logs, videoSubs, athletes, isMobile, onNavi
                       </div>
                       <div style={{ fontSize: 13, color: "#52525B", marginTop: 1 }}>
                         {"💬"} Note on <strong>{l.exercise_name || "an exercise"}</strong>
+                        {l.day_label ? <span style={{ color: "#A1A1AA" }}> · {l.day_label.split("·").pop().trim()}</span> : null}
                       </div>
                       <div style={{ fontSize: 13, color: "#18181B", marginTop: 3, background: "#FAFAFA", border: "1px solid #E4E4E7", borderRadius: 6, padding: "5px 8px", wordBreak: "break-word" }}>
                         {l.notes}
                       </div>
-                      {onNavigate && <div style={{ fontSize: 11, color: "#2563EB", fontWeight: 600, marginTop: 3 }}>View {"→"}</div>}
+                      {isReplying ? (
+                        <div style={{ marginTop: 6 }}>
+                          <textarea
+                            autoFocus
+                            value={replyText}
+                            onChange={e => setReplyText(e.target.value)}
+                            onKeyDown={e => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); sendReply(l); } }}
+                            placeholder={`Reply to ${first}…`}
+                            rows={3}
+                            style={{ width: "100%", boxSizing: "border-box", padding: "6px 8px", border: "1px solid #93C5FD", borderRadius: 6, fontSize: 16, fontFamily: "inherit", resize: "vertical" }}
+                          />
+                          {replyError && <div style={{ fontSize: 12, color: "#DC2626", marginTop: 2 }}>{replyError}</div>}
+                          <div style={{ display: "flex", gap: 8, marginTop: 4, alignItems: "center" }}>
+                            <button onClick={() => sendReply(l)} disabled={replySending || !replyText.trim()} style={{ padding: "5px 12px", background: "#2563EB", color: "#fff", border: "none", borderRadius: 999, fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", opacity: replySending || !replyText.trim() ? 0.5 : 1 }}>{replySending ? "Sending…" : "Send reply"}</button>
+                            <button onClick={() => { setReplyOpen(null); setReplyText(""); setReplyError(""); }} disabled={replySending} style={{ background: "none", border: "none", color: "#71717A", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>Cancel</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div style={{ display: "flex", gap: 10, marginTop: 5, alignItems: "center", flexWrap: "wrap" }}>
+                          <button onClick={() => { setReplyOpen(l.id); setReplyText(""); setReplyError(""); }} style={{ padding: "4px 12px", background: "#2563EB", color: "#fff", border: "none", borderRadius: 999, fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Reply</button>
+                          <button onClick={() => noReplyNeeded(l)} style={{ padding: "4px 10px", background: "#fff", color: "#15803D", border: "1px solid #86EFAC", borderRadius: 999, fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>{"✓"} No reply needed</button>
+                          {onNavigate && <button onClick={goView} style={{ background: "none", border: "none", padding: 0, fontSize: 12, color: "#2563EB", fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>View session {"→"}</button>}
+                        </div>
+                      )}
                     </div>
                   </div>
                   );
@@ -301,6 +386,24 @@ export default function AlertsBell({ logs, videoSubs, athletes, isMobile, onNavi
                   </div>
                   );
                 })}
+              </div>
+            )}
+
+            {/* What you have already answered, so nothing is replied to twice or lost. */}
+            {recentReplies.length > 0 && (
+              <div style={{ borderTop: "1px solid #E4E4E7", background: "#FAFAFA" }}>
+                <button onClick={() => setShowReplied(v => !v)} style={{ width: "100%", textAlign: "left", padding: "10px 16px", background: "none", border: "none", cursor: "pointer", fontFamily: "inherit", fontSize: 12, fontWeight: 700, color: "#15803D" }}>
+                  {"✓"} Replied this week ({recentReplies.length}) {showReplied ? "▴" : "▾"}
+                </button>
+                {showReplied && recentReplies.map(l => (
+                  <div key={"rr-" + l.id} onClick={() => { if (onNavigate) { onNavigate(l.athlete_id, "programs", { weekLabel: l.week_label, dayLabel: l.day_label, logId: l.id }); setOpen(false); } }} style={{ padding: "8px 16px 10px", borderTop: "1px solid #F4F4F5", cursor: onNavigate ? "pointer" : "default" }}>
+                    <div style={{ fontSize: 12, color: "#52525B" }}>
+                      <strong>{l.athlete_name || getAthleteName(l.athlete_id)}</strong> · {l.exercise_name || "Exercise"} <span style={{ color: "#A1A1AA" }}>· replied {timeAgo(l.coach_reply_at)}</span>
+                    </div>
+                    <div style={{ fontSize: 12, color: "#71717A", marginTop: 2, fontStyle: "italic", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>"{(l.notes || "").trim()}"</div>
+                    <div style={{ fontSize: 12, color: "#1E3A8A", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>You: {l.coach_reply}</div>
+                  </div>
+                ))}
               </div>
             )}
           </div>

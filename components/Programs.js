@@ -13,6 +13,7 @@ import ExerciseVideoControl from "./ExerciseVideoControl";
 import { MediaLink } from "./VideoPlayer";
 import { weekStartFromLabel, weekNumberLabel, weekdayOffset, currentWeekIndex as weekCurrentIndex } from "../lib/weeks";
 import { fetchAllComments } from "../lib/comments";
+import { saveNoteReply } from "../lib/noteReplies";
 import { fetchCues, cuesForBlock } from "../lib/cues";
 import ProgramBrief, { briefSummary } from "./ProgramBrief";
 import { effortOf, effortText } from "../lib/logging";
@@ -626,22 +627,9 @@ function ProgramDetail({ program, programs, exercises, updateExercise, addExerci
   const replyToNote = async (logRow, text) => {
     setReplyingTo(logRow.id);
     try {
-      const nowIso = new Date().toISOString();
-      const { data, error } = await supabase.from("logs")
-        .update({ coach_reply: text, coach_reply_at: nowIso })
-        .eq("id", logRow.id).select().single();
-      if (error) throw error;
-      if (data && setLogs) setLogs(prev => prev.map(l => (l.id === data.id ? data : l)));
-      const raised = await raiseAlertReplacing({
-        athleteId: logRow.athlete_id,
-        kind: ALERT_KIND.NOTE_REPLY,
-        title: `Coach replied about ${logRow.exercise_name || "your note"}`,
-        body: text,
-        refTable: "log_replies",
-        refId: logRow.id,
-        linkPage: ALERT_PAGE.PROGRAM,
-      });
-      if (!raised) window.alert("Reply saved, but the notification to the athlete could not be sent.");
+      const { row, notified } = await saveNoteReply(logRow, text);
+      if (row && setLogs) setLogs(prev => prev.map(l => (l.id === row.id ? row : l)));
+      if (!notified) window.alert("Reply saved, but the notification to the athlete could not be sent.");
     } catch (e) {
       console.error("replyToNote failed", e);
       window.alert("That reply could not be saved. Please try again.");

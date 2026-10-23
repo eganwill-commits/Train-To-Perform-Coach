@@ -539,7 +539,7 @@ export default function CoachApp({ onLogout }) {
         <div style={{ padding: "0 20px 28px", borderBottom: "1px solid #27272A", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <T2PLogo />
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <AlertsBell logs={logs} videoSubs={videoSubs} athletes={athletes} isMobile={isMobile} onNavigate={navToAthlete} />
+            <AlertsBell logs={logs} setLogs={setLogs} videoSubs={videoSubs} athletes={athletes} isMobile={isMobile} onNavigate={navToAthlete} />
             {isMobile && <button onClick={() => setNavOpen(false)} style={{ background: "none", border: "none", color: "#A1A1AA", fontSize: 22, cursor: "pointer", padding: 4 }}>✕</button>}
           </div>
         </div>
@@ -572,7 +572,7 @@ export default function CoachApp({ onLogout }) {
             </button>
             <T2PLogo size="small" variant="dark" />
             <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
-              <AlertsBell logs={logs} videoSubs={videoSubs} athletes={athletes} isMobile={isMobile} onNavigate={navToAthlete} />
+              <AlertsBell logs={logs} setLogs={setLogs} videoSubs={videoSubs} athletes={athletes} isMobile={isMobile} onNavigate={navToAthlete} />
               <span style={{ fontSize: 13, color: "#A1A1AA", textTransform: "capitalize" }}>{page}</span>
             </div>
           </header>
