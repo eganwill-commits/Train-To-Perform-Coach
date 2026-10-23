@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { Badge, Btn, Card, Input, Select, Modal, EmptyState, SearchableSelect, BlurInput, ProgressTag, PROGRESS_TYPES } from "./ui";
 import { supabase } from "../lib/supabase";
 import { raiseAlertReplacing, ALERT_KIND, ALERT_PAGE } from "../lib/alerts";
@@ -51,7 +51,7 @@ function warmupForDay(label) {
   return DAY_WARMUPS.generic;
 }
 
-export default function Programs({ programs, addProgram, updateProgram, deleteProgram, athletes, exercises, updateExercise, addExercise, cats, colors, isMobile, submitDay, unlogDay, logs, groups, setLogs, addGroup, addAthleteToGroup, addSeasonMembership, focusAthleteId, focusTarget, onFocusClear }) {
+export default function Programs({ programs, addProgram, updateProgram, deleteProgram, athletes, exercises, updateExercise, addExercise, cats, colors, isMobile, submitDay, unlogDay, logs, groups, setLogs, addGroup, addAthleteToGroup, addSeasonMembership, focusAthleteId, focusTarget, onFocusClear, videoSubs, onOpenVideo }) {
   const [modal, setModal] = useState(false);
   const [form, setForm] = useState({ name: "", selectedAthletes: [], weeks: 4, description: "", group_id: "", trackAsSeason: false, start_date: "" });
   const [detail, setDetail] = useState(null);
@@ -298,7 +298,7 @@ export default function Programs({ programs, addProgram, updateProgram, deletePr
     await updateProgram(ap.id, { weeks });
   };
 
-  if (detail && ap) return <ProgramDetail focusTarget={focusTarget} onFocusClear={onFocusClear} program={ap} programs={programs} exercises={exercises} updateExercise={updateExercise} addExercise={addExercise} cats={cats} colors={colors} addBlock={addBlock} updateBlock={updateBlock} removeBlock={removeBlock} moveBlock={moveBlock} onBack={() => setDetail(null)} athletes={athletes} isMobile={isMobile} submitDay={submitDay} unlogDay={unlogDay} logs={logs || []} copyToAthletes={copyToAthletes} updateProgram={updateProgram} groups={groups} setLogs={setLogs} />;
+  if (detail && ap) return <ProgramDetail focusTarget={focusTarget} onFocusClear={onFocusClear} program={ap} programs={programs} exercises={exercises} updateExercise={updateExercise} addExercise={addExercise} cats={cats} colors={colors} addBlock={addBlock} updateBlock={updateBlock} removeBlock={removeBlock} moveBlock={moveBlock} onBack={() => setDetail(null)} athletes={athletes} isMobile={isMobile} submitDay={submitDay} unlogDay={unlogDay} logs={logs || []} copyToAthletes={copyToAthletes} updateProgram={updateProgram} groups={groups} setLogs={setLogs} videoSubs={videoSubs} onOpenVideo={onOpenVideo} />;
 
   // ---- Folder detail: the athletes inside one program folder ----
   const activeFolder = folderKey ? folders.find(f => f.key === folderKey) : null;
@@ -542,7 +542,17 @@ function VariantHint({ ex }) {
   );
 }
 
-function ProgramDetail({ program, programs, exercises, updateExercise, addExercise, cats, colors, addBlock, updateBlock, removeBlock, moveBlock, onBack, athletes, isMobile, submitDay, unlogDay, logs, copyToAthletes, updateProgram, groups, setLogs, focusTarget, onFocusClear }) {
+function ProgramDetail({ program, programs, exercises, updateExercise, addExercise, cats, colors, addBlock, updateBlock, removeBlock, moveBlock, onBack, athletes, isMobile, submitDay, unlogDay, logs, copyToAthletes, updateProgram, groups, setLogs, focusTarget, onFocusClear, videoSubs, onOpenVideo }) {
+  // The athlete's filmed sets, by the block they were filmed from, so a video shows up
+  // on the exercise it belongs to instead of only in a list elsewhere.
+  const videosByBlock = useMemo(() => {
+    const m = {};
+    (videoSubs || []).forEach(v => {
+      if (v.athlete_id !== program.athlete_id || !v.block_id) return;
+      (m[v.block_id] = m[v.block_id] || []).push(v);
+    });
+    return m;
+  }, [videoSubs, program.athlete_id]);
   // Keep a ref to latest program to prevent stale closures in async handlers
   const programRef = useRef(program);
   programRef.current = program;
@@ -1100,6 +1110,7 @@ function ProgramDetail({ program, programs, exercises, updateExercise, addExerci
                                 preloaded={commentsByBlock[block.id] || []}
                                 onChanged={reloadComments}
                               />
+                              <BlockVideos videos={videosByBlock[block.id]} onOpen={onOpenVideo} />
                               {block.notes && !expandedBlock && <div style={{ fontSize: 11, color: "#71717A", marginTop: 4, fontStyle: "italic", whiteSpace: "pre-wrap", lineHeight: 1.4, wordBreak: "break-word" }}>{block.notes}</div>}
 
                               {/* Athlete's logged results */}
@@ -1203,6 +1214,7 @@ function ProgramDetail({ program, programs, exercises, updateExercise, addExerci
                           preloaded={commentsByBlock[block.id] || []}
                           onChanged={reloadComments}
                         />
+                        <BlockVideos videos={videosByBlock[block.id]} onOpen={onOpenVideo} />
 
                         {/* Athlete's logged results */}
                         {(() => {
@@ -1520,4 +1532,35 @@ function VideoCueNote({ cues }) {
       <div style={{ fontSize: 13, fontWeight: 600, color: "#78350F", marginTop: 1, whiteSpace: "pre-wrap" }}>{c.cue}</div>
     </div>
   ));
+}
+
+/*
+  "Filmed this set" on the coach's exercise card: the athlete's videos for this block,
+  newest first. Watch plays it in place; Review opens it in the Videos queue with the
+  feedback flow.
+*/
+function BlockVideos({ videos, onOpen }) {
+  if (!videos || videos.length === 0) return null;
+  const list = [...videos].sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+  const waiting = list.filter(v => (v.status || "pending") === "pending" && !(v.coach_feedback || "").trim()).length;
+  return (
+    <div style={{ marginTop: 8, padding: "8px 10px", background: waiting ? "#FFF7ED" : "#F8FAFC", border: `1px solid ${waiting ? "#FDBA74" : "#E2E8F0"}`, borderRadius: 8 }}>
+      <div style={{ fontSize: 11, fontWeight: 800, color: waiting ? "#9A3412" : "#334155", textTransform: "uppercase", letterSpacing: 0.4 }}>
+        {"🎥"} Athlete video{list.length > 1 ? `s (${list.length})` : ""}{waiting ? ` · ${waiting} to review` : ""}
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 4 }}>
+        {list.map((v, i) => (
+          <div key={v.id} style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: 12 }}>
+            <MediaLink url={v.video_url} title={v.exercise_name} style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, color: "#fff", background: "#2563EB", fontWeight: 700, padding: "3px 10px", borderRadius: 999 }}>{"▶"} Watch{list.length > 1 ? ` ${i + 1}` : ""}</MediaLink>
+            <span style={{ color: "#71717A" }}>{new Date(v.created_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</span>
+            {onOpen && (
+              <button onClick={() => onOpen(v.id)} style={{ background: "none", border: "none", padding: 0, color: "#2563EB", fontWeight: 700, fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>
+                {(v.coach_feedback || "").trim() ? "Feedback sent →" : "Review →"}
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }

@@ -15,6 +15,8 @@ import AIChat from "./AIChat";
 import Timers from "./Timers";
 import ToastNotifications from "./ToastNotifications";
 import AlertsBell from "./AlertsBell";
+import VideoReview, { isAwaitingReview } from "./VideoReview";
+import CoachPushPrompt from "./CoachPushPrompt";
 import T2PLogo from "./T2PLogo";
 
 /* Local calendar date, not UTC — see the note in AthleteView.js. */
@@ -58,6 +60,9 @@ async function fetchAllLogs() {
   }
   return all;
 }
+
+// Pages a coach notification can deep-link to.
+const COACH_DEEP_PAGES = new Set(["videos", "messages", "programs"]);
 
 export default function CoachApp({ onLogout }) {
   const [page, setPage] = useState("dashboard");
@@ -446,6 +451,40 @@ export default function CoachApp({ onLogout }) {
 
   const nav = (id) => { setPage(id); setFocusAthleteId(null); if (isMobile) setNavOpen(false); };
   const navToAthlete = (athleteId, targetPage, target) => { setFocusAthleteId(athleteId); setFocusTarget(target || null); setPage(targetPage || "athletes"); if (isMobile) setNavOpen(false); };
+  const openVideo = (videoId) => navToAthlete(null, "videos", { videoId });
+
+  /*
+    Tapping a phone notification. A cold start arrives as ?page=…&ref=…&t=…; an app
+    that was already open gets a message from the service worker instead. Either way
+    the coach lands on the video, comment or message the notification was about.
+  */
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const go = (pg, ref, target) => {
+      const t = target || {};
+      if (pg === "videos") navToAthlete(null, "videos", { videoId: ref || t.videoId });
+      else if (pg === "messages") navToAthlete(t.athleteId || null, "messages");
+      else if (pg === "programs") navToAthlete(t.athleteId || null, "programs", { weekLabel: t.weekLabel, dayLabel: t.dayLabel, blockId: t.blockId });
+    };
+    try {
+      const q = new URLSearchParams(window.location.search);
+      const pg = q.get("page");
+      if (pg && COACH_DEEP_PAGES.has(pg)) {
+        let target = null;
+        try { target = q.get("t") ? JSON.parse(q.get("t")) : null; } catch { target = null; }
+        go(pg, q.get("ref"), target);
+        window.history.replaceState(null, "", window.location.pathname);
+      }
+    } catch { /* bad link: open normally */ }
+    const onMsg = (e) => {
+      const d = e.data || {};
+      if (d.type === "t2p-nav" && COACH_DEEP_PAGES.has(d.page)) go(d.page, d.refId, d.target);
+    };
+    navigator.serviceWorker?.addEventListener?.("message", onMsg);
+    return () => navigator.serviceWorker?.removeEventListener?.("message", onMsg);
+  }, []);
+
+  const pendingVideoCount = videoSubs.filter(isAwaitingReview).length;
 
   if (!loaded) return (
     <div className="t2p-root" style={{ display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'DM Sans', sans-serif" }}>
@@ -514,6 +553,7 @@ export default function CoachApp({ onLogout }) {
             }}>
               <span style={{ fontSize: 16 }}>{n.icon}</span>{n.label}
               {n.id === "messages" && unreadMsgCount > 0 && <span style={{ background: "#DC2626", color: "#fff", fontSize: 10, fontWeight: 700, borderRadius: 10, padding: "1px 5px", minWidth: 16, textAlign: "center", marginLeft: "auto" }}>{unreadMsgCount}</span>}
+              {n.id === "videos" && pendingVideoCount > 0 && <span style={{ background: "#F97316", color: "#fff", fontSize: 10, fontWeight: 700, borderRadius: 10, padding: "1px 5px", minWidth: 16, textAlign: "center", marginLeft: "auto" }}>{pendingVideoCount}</span>}
             </button>
           ))}
         </div>
@@ -538,10 +578,12 @@ export default function CoachApp({ onLogout }) {
           </header>
         )}
         <main className="t2p-main" style={{ flex: 1, padding: isMobile ? "12px 10px" : 32, maxWidth: "100%", overflowX: "hidden" }}>
+          <CoachPushPrompt />
           {page === "dashboard" && <Dashboard {...pp} onNavigate={navToAthlete} />}
           {page === "seasons" && <Seasons {...pp} />}
           {page === "athletes" && <Athletes {...pp} focusAthleteId={focusAthleteId} onFocusClear={() => setFocusAthleteId(null)} />}
-          {page === "programs" && <Programs {...pp} focusAthleteId={focusAthleteId} focusTarget={focusTarget} onFocusClear={() => { setFocusAthleteId(null); setFocusTarget(null); }} />}
+          {page === "videos" && <VideoReview videoSubs={videoSubs} athletes={athletes} programs={programs} updateVideoSub={updateVideoSub} isMobile={isMobile} focusTarget={focusTarget} onFocusClear={() => setFocusTarget(null)} onOpenAthlete={(id) => navToAthlete(id, "athletes")} />}
+          {page === "programs" && <Programs {...pp} onOpenVideo={openVideo} focusAthleteId={focusAthleteId} focusTarget={focusTarget} onFocusClear={() => { setFocusAthleteId(null); setFocusTarget(null); }} />}
           {page === "library" && <Library {...pp} />}
           {page === "log" && <LogPage {...pp} />}
           {page === "timers" && <Timers role="coach" athletes={pp.athletes} exercises={pp.exercises} isMobile={isMobile} />}

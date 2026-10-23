@@ -1,4 +1,4 @@
-const CACHE_NAME = "t2p-v2";
+const CACHE_NAME = "t2p-v3";
 const PRECACHE = ["/"];
 
 self.addEventListener("install", (e) => {
@@ -60,19 +60,21 @@ self.addEventListener("push", (e) => {
     badge: "/icon-192.png",
     tag: data.tag || "t2p",
     renotify: true,
-    data: { page: data.page || "my-program", refId: data.refId || null },
+    data: { page: data.page || "my-program", refId: data.refId || null, target: data.target || null },
   }));
 });
 
 self.addEventListener("notificationclick", (e) => {
   e.notification.close();
-  const { page, refId } = e.notification.data || {};
-  const url = "/?page=" + encodeURIComponent(page || "my-program") + (refId ? "&ref=" + encodeURIComponent(refId) : "");
+  const { page, refId, target } = e.notification.data || {};
+  // target: coach notifications carry where to land (athlete, week, day, video).
+  const url = "/?page=" + encodeURIComponent(page || "my-program") + (refId ? "&ref=" + encodeURIComponent(refId) : "")
+    + (target ? "&t=" + encodeURIComponent(JSON.stringify(target)) : "");
   e.waitUntil((async () => {
     const all = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
     for (const c of all) {
       if (new URL(c.url).origin === self.location.origin) {
-        c.postMessage({ type: "t2p-nav", page, refId });
+        c.postMessage({ type: "t2p-nav", page, refId, target });
         return c.focus();
       }
     }

@@ -26,6 +26,9 @@ export default function AlertsBell({ logs, videoSubs, athletes, isMobile, onNavi
   const [readKeys, setReadKeys] = useState(() => new Set());
   const [unreadMsgs, setUnreadMsgs] = useState([]);
   const [recentNotes, setRecentNotes] = useState([]);
+  // Questions and replies an athlete wrote on an exercise card. These were never in
+  // the bell: a comment only surfaced if the coach happened to open that exact card.
+  const [athleteComments, setAthleteComments] = useState([]);
   const ref = useRef(null);
   const since = new Date(Date.now() - LOOKBACK_DAYS * 86400000).toISOString();
   const isRead = (table, id) => readKeys.has(`${table}:${id}`);
@@ -38,11 +41,13 @@ export default function AlertsBell({ logs, videoSubs, athletes, isMobile, onNavi
 
   useEffect(() => {
     const pull = async () => {
-      const [msgRes, noteRes, readRes] = await Promise.all([
+      const [msgRes, noteRes, readRes, comRes] = await Promise.all([
         supabase.from("messages").select("*").eq("sender_role", "athlete").is("read_at", null).order("created_at", { ascending: false }).limit(10),
         supabase.from("athlete_notes").select("*").eq("author_role", "athlete").gt("created_at", since).order("created_at", { ascending: false }).limit(30),
         supabase.from("coach_alert_reads").select("source_table,source_id").eq("coach_id", COACH_ID),
+        supabase.from("exercise_comments").select("*").eq("author_role", "athlete").is("read_at", null).gt("created_at", since).order("created_at", { ascending: false }).limit(30),
       ]);
+      if (comRes.error) console.error("alerts: exercise comments", comRes.error); else setAthleteComments(comRes.data || []);
       if (msgRes.error) console.error("alerts: messages", msgRes.error); else setUnreadMsgs(msgRes.data || []);
       if (noteRes.error) console.error("alerts: notes", noteRes.error); else setRecentNotes(noteRes.data || []);
       if (readRes.error) console.error("alerts: reads", readRes.error);
@@ -84,6 +89,7 @@ export default function AlertsBell({ logs, videoSubs, athletes, isMobile, onNavi
     .sort((a, b) => String(b.logged_at).localeCompare(String(a.logged_at)));
   const newVideos = (videoSubs || []).filter(v => v.created_at && v.created_at > since && !isRead("video_submissions", v.id));
   const freshNotes = (recentNotes || []).filter(n => !isRead("athlete_notes", n.id));
+  const freshComments = (athleteComments || []).filter(c => !isRead("exercise_comments", c.id));
 
   // Group logs by athlete + date + day
   const logGroups = {};
@@ -95,7 +101,7 @@ export default function AlertsBell({ logs, videoSubs, athletes, isMobile, onNavi
   });
   const logAlerts = Object.values(logGroups).sort((a, b) => b.latest.localeCompare(a.latest));
 
-  const totalNew = logAlerts.length + newVideos.length + unreadMsgs.length + freshNotes.length + newLogNotes.length;
+  const totalNew = logAlerts.length + newVideos.length + unreadMsgs.length + freshNotes.length + newLogNotes.length + freshComments.length;
 
   /*
     Marking all read now records each visible alert individually rather than moving one
@@ -107,6 +113,7 @@ export default function AlertsBell({ logs, videoSubs, athletes, isMobile, onNavi
       ...logAlerts.map(g => ({ source_table: "log_day", source_id: g.key })),
       ...newLogNotes.map(l => ({ source_table: "logs", source_id: String(l.id) })),
       ...newVideos.map(v => ({ source_table: "video_submissions", source_id: String(v.id) })),
+      ...freshComments.map(c => ({ source_table: "exercise_comments", source_id: String(c.id) })),
       ...freshNotes.map(n => ({ source_table: "athlete_notes", source_id: String(n.id) })),
     ].map(r => ({ coach_id: COACH_ID, ...r }));
     setReadKeys(prev => {
@@ -187,12 +194,36 @@ export default function AlertsBell({ logs, videoSubs, athletes, isMobile, onNavi
                   );
                 })}
 
+                {/* Comments an athlete left on an exercise card */}
+                {freshComments.map(c => {
+                  const name = c.author_name || getAthleteName(c.athlete_id);
+                  const initials = getInitials(name);
+                  return (
+                  <div key={"ec-" + c.id} onClick={() => { dismiss("exercise_comments", c.id); if (onNavigate) { onNavigate(c.athlete_id, "programs", { weekLabel: c.week_label, dayLabel: c.day_label, blockId: c.block_id }); setOpen(false); } }} style={{ display: "flex", gap: 10, padding: "12px 16px", borderBottom: "1px solid #F4F4F5", alignItems: "start", cursor: onNavigate ? "pointer" : "default" }}>
+                    <div style={{ width: 36, height: 36, borderRadius: 18, background: "#F5F3FF", color: "#7C3AED", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 13, flexShrink: 0 }}>{initials}</div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                        <span style={{ fontWeight: 700, fontSize: 14 }}>{name}</span>
+                        <span style={{ fontSize: 11, color: "#A1A1AA" }}>{timeAgo(c.created_at)}</span>
+                      </div>
+                      <div style={{ fontSize: 13, color: "#52525B", marginTop: 1 }}>
+                        {"💬"} Comment on <strong>{c.exercise_name || "an exercise"}</strong>
+                      </div>
+                      <div style={{ fontSize: 13, color: "#18181B", marginTop: 3, background: "#FAFAFA", border: "1px solid #E4E4E7", borderRadius: 6, padding: "5px 8px", wordBreak: "break-word" }}>
+                        {c.body}
+                      </div>
+                      {onNavigate && <div style={{ fontSize: 11, color: "#2563EB", fontWeight: 600, marginTop: 3 }}>View {"→"}</div>}
+                    </div>
+                  </div>
+                  );
+                })}
+
                 {/* Video submissions */}
                 {newVideos.map(v => {
                   const name = v.athlete_name || getAthleteName(v.athlete_id);
                   const initials = getInitials(name);
                   return (
-                  <div key={v.id} onClick={() => { dismiss("video_submissions", v.id); if (onNavigate) { onNavigate(v.athlete_id); setOpen(false); } }} style={{ display: "flex", gap: 10, padding: "12px 16px", borderBottom: "1px solid #F4F4F5", alignItems: "start", cursor: onNavigate ? "pointer" : "default" }}>
+                  <div key={v.id} onClick={() => { dismiss("video_submissions", v.id); if (onNavigate) { onNavigate(null, "videos", { videoId: v.id }); setOpen(false); } }} style={{ display: "flex", gap: 10, padding: "12px 16px", borderBottom: "1px solid #F4F4F5", alignItems: "start", cursor: onNavigate ? "pointer" : "default" }}>
                     <div style={{ width: 36, height: 36, borderRadius: 18, background: "#DBEAFE", color: "#2563EB", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 13, flexShrink: 0 }}>{initials}</div>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
