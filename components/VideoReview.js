@@ -6,6 +6,7 @@ import VideoFeedbackModal from "./VideoFeedbackModal";
 import { raiseAlertReplacing, ALERT_KIND, ALERT_PAGE } from "../lib/alerts";
 import { fetchCues } from "../lib/cues";
 import { supabase } from "../lib/supabase";
+import { canExport, exportForReview } from "../lib/media";
 
 /*
   Coach video review queue.
@@ -57,6 +58,7 @@ export default function VideoReview({ videoSubs, athletes, programs, updateVideo
   const [feedbackFor, setFeedbackFor] = useState(null);
   const [cuesByVideo, setCuesByVideo] = useState({});
   const [glow, setGlow] = useState(null);
+  const [saveState, setSaveState] = useState({}); // video id -> busy | done | error
   const focusRef = useRef(null);
 
   const nameOf = (id) => (athletes || []).find(a => a.id === id)?.name || "Athlete";
@@ -116,6 +118,20 @@ export default function VideoReview({ videoSubs, athletes, programs, updateVideo
       linkPage: ALERT_PAGE.VIDEOS,
     });
     if (!alert_) window.alert("Feedback saved, but the notification to the athlete could not be sent. They will not see a bell for it.");
+  };
+
+  // Downloads the clip, named "Athlete - Movement - session", via a short-lived signed
+  // link. On iPhone it lands in Files > Downloads.
+  const saveClip = async (v) => {
+    setSaveState(s => ({ ...s, [v.id]: "busy" }));
+    try {
+      await exportForReview(v, v.athlete_name || nameOf(v.athlete_id));
+      setSaveState(s => ({ ...s, [v.id]: "done" }));
+      setTimeout(() => setSaveState(s => ({ ...s, [v.id]: undefined })), 4000);
+    } catch (e) {
+      console.error("save clip failed", e);
+      setSaveState(s => ({ ...s, [v.id]: "error" }));
+    }
   };
 
   const setStatus = async (v, status) => {
@@ -184,6 +200,12 @@ export default function VideoReview({ videoSubs, athletes, programs, updateVideo
                     <div style={{ marginTop: 8 }}>
                       <MediaLink url={v.video_url} title={v.exercise_name} style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, color: "#fff", background: "#2563EB", fontWeight: 700, padding: "5px 12px", borderRadius: 999 }}>▶ Watch</MediaLink>
                     </div>
+                  )}
+
+                  {canExport(v.video_url) && (
+                    <button onClick={() => saveClip(v)} disabled={saveState[v.id] === "busy"} style={{ marginTop: 8, display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, fontWeight: 700, padding: "5px 12px", borderRadius: 999, cursor: "pointer", fontFamily: "inherit", background: saveState[v.id] === "done" ? "#F0FDF4" : "#fff", color: saveState[v.id] === "error" ? "#DC2626" : "#18181B", border: `1px solid ${saveState[v.id] === "done" ? "#4ADE80" : saveState[v.id] === "error" ? "#FCA5A5" : "#D4D4D8"}` }}>
+                      {saveState[v.id] === "busy" ? "Saving…" : saveState[v.id] === "done" ? "✓ Downloaded" : saveState[v.id] === "error" ? "Save failed - retry" : "⬇ Save video"}
+                    </button>
                   )}
 
                   <div style={{ marginTop: 10 }}>
