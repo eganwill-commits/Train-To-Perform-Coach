@@ -635,7 +635,20 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
     if (!v || v === block.exerciseName || v === f.name || v === "As written") return "";
     return v;
   };
-  const getVideoUrl = (block) => {
+  /*
+    When the athlete is training somewhere that swaps this exercise, show the demo for
+    the swap (exercises.variant_videos[tier]). Anything missing falls back to the
+    exercise's own video, so a swap without a video behaves exactly as before.
+  */
+  const getSwapVideoUrl = (block, dayId) => {
+    if (!getSubstitution(block, dayId)) return "";
+    const f = exerciseFor(block);
+    const v = f && f.variant_videos ? f.variant_videos[tierFor(block, dayId)] : "";
+    return typeof v === "string" ? v.trim() : "";
+  };
+  const getVideoUrl = (block, dayId) => {
+    const swap = dayId ? getSwapVideoUrl(block, dayId) : "";
+    if (swap) return swap;
     if (block.exerciseId) { const f = exercises.find(e => e.id === block.exerciseId); if (f && f.video_url) return f.video_url; }
     if (block.exerciseName) { const f = exercises.find(e => e.name === block.exerciseName); if (f && f.video_url) return f.video_url; }
     return "";
@@ -1238,7 +1251,8 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
             ); })()}
             {day.blocks.map((block, bi) => {
               const cc = colors[block.category];
-              const videoUrl = getVideoUrl(block);
+              const videoUrl = getVideoUrl(block, day.id);
+              const swapVideo = !!getSwapVideoUrl(block, day.id);
               const isOpen = expandedBlock === block.id;
               const result = blockResults[block.id] || {};
               const hasInput = result.sets || result.reps || result.load || result.rir;
@@ -1436,11 +1450,11 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
                       ) : <ClampedNotes text={block.notes} />)}
                       {videoUrl && (showDemo === block.id ? (
                         <div>
-                          <VideoPlayer url={videoUrl} title={getDisplayName(block, day.id)} compact={isMobile} />
+                          <VideoPlayer url={videoUrl} title={swapVideo ? getSubstitution(block, day.id) : getDisplayName(block, day.id)} compact={isMobile} />
                           <button onClick={() => setShowDemo(null)} style={{ display: "block", marginTop: 4, background: "none", border: "none", padding: 0, color: "#71717A", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>Hide demo</button>
                         </div>
                       ) : (
-                        <button onClick={() => setShowDemo(block.id)} style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, color: "#fff", background: "#2563EB", border: "none", fontWeight: 700, padding: "6px 14px", borderRadius: 999, marginTop: 8, cursor: "pointer", fontFamily: "inherit" }}>▶ Watch demo</button>
+                        <button onClick={() => setShowDemo(block.id)} style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, color: "#fff", background: "#2563EB", border: "none", fontWeight: 700, padding: "6px 14px", borderRadius: 999, marginTop: 8, cursor: "pointer", fontFamily: "inherit" }}>{swapVideo ? "▶ Watch swap demo" : "▶ Watch demo"}</button>
                       ))}
 
                       {/* Log / Edit inputs */}
