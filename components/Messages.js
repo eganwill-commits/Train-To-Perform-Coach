@@ -3,6 +3,7 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { supabase, supabaseUrl, supabaseAnonKey } from "../lib/supabase";
 import { notifyAthlete } from "../lib/push";
 import { resolveMediaUrl, storageRef } from "../lib/media";
+import { isSandbox } from "../lib/sandbox";
 
 const timeAgo = (d) => {
   const s = Math.floor((Date.now() - new Date(d).getTime()) / 1000);
@@ -193,6 +194,8 @@ export default function Messages({ isCoach, currentUserId, currentUserName, athl
   };
 
   const uploadFile = async (file, ownerId) => {
+    // Coach "View as athlete" preview: show the file on screen, upload nothing.
+    if (isSandbox()) return URL.createObjectURL(file);
     const ext = file.name.split(".").pop() || "bin";
     // Prefixed with the athlete the conversation belongs to, so ownership is readable
     // from the path once the bucket is private.
