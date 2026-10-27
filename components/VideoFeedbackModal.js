@@ -2,6 +2,8 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { Modal, Btn } from "./ui";
 import { programExercises, findBlock, suggestCue, fetchCueForVideo, saveCueForVideo, removeCue } from "../lib/cues";
+import { AttachmentComposer } from "./MediaAttachments";
+import { mediaList, sameMedia, mediaErrorMessage } from "../lib/feedbackMedia";
 
 /*
   Video feedback, then the cue that carries it forward.
@@ -18,6 +20,8 @@ const norm = (s) => String(s || "").trim().toLowerCase();
 export default function VideoFeedbackModal({ open, video, programs, athleteName, onSaveFeedback, onClose, onCueChanged }) {
   const [step, setStep] = useState("feedback");
   const [text, setText] = useState("");
+  const [media, setMedia] = useState([]);
+  const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [cue, setCue] = useState("");
   const [picked, setPicked] = useState([]); // keys
@@ -45,6 +49,8 @@ export default function VideoFeedbackModal({ open, video, programs, athleteName,
     if (!open) return;
     setStep("feedback");
     setText(video?.coach_feedback || "");
+    setMedia(mediaList(video?.coach_feedback_media));
+    setUploading(false);
     setSaving(false);
     setCue(""); setPicked([]); setExisting(null); setDraftNote("");
     const t = setTimeout(() => {
@@ -85,24 +91,29 @@ export default function VideoFeedbackModal({ open, video, programs, athleteName,
     await draft(fb, live);
   };
 
-  const dirty = (text || "") !== (video?.coach_feedback || "");
+  const mediaDirty = !sameMedia(media, video?.coach_feedback_media);
+  const dirty = (text || "") !== (video?.coach_feedback || "") || mediaDirty;
+  const hasContent = !!text.trim() || media.length > 0;
 
   const attemptClose = () => {
-    if (saving || cueBusy) return;
+    if (saving || cueBusy || uploading) return;
     if (step === "feedback" && dirty && !window.confirm("Discard what you've written?")) return;
     onClose();
   };
 
   const sendFeedback = async () => {
-    if (saving || !text.trim()) return;
+    if (saving || uploading || !hasContent) return;
     setSaving(true);
     try {
-      if (dirty || !video?.coach_feedback) await onSaveFeedback(text);
+      if (dirty || !video?.coach_feedback) await onSaveFeedback(text, media);
       sentFeedback.current = text;
       setSaving(false);
+      // A photo-only note has nothing to draft a cue from.
+      if (!text.trim()) { onClose(); return; }
       await goToCue(text);
     } catch (e) {
       console.error("Video feedback save failed", e);
+      window.alert(mediaErrorMessage(e) || "That feedback could not be saved. Your text is still here - try again.");
       setSaving(false);
     }
   };
@@ -157,20 +168,22 @@ export default function VideoFeedbackModal({ open, video, programs, athleteName,
       {step === "feedback" ? (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           <div style={{ fontSize: 12, color: "#71717A", lineHeight: 1.5 }}>
-            {video.exercise_name || "Movement video"}. This is sent to the athlete and rings their bell. Next you&rsquo;ll approve a short cue that shows on this exercise in later sessions.
+            {video.exercise_name || "Movement video"}. This is sent to the athlete and rings their bell. Add screenshots or a demo clip if they help. Next you&rsquo;ll approve a short cue that shows on this exercise in later sessions.
           </div>
-          <textarea
-            ref={areaRef}
-            value={text}
-            onChange={e => setText(e.target.value)}
-            onKeyDown={onKeyDown}
-            placeholder="What did you see? What should they change next time?"
-            rows={9}
-            style={taStyle(180)}
-          />
+          <AttachmentComposer athleteId={video.athlete_id} value={media} onChange={setMedia} onBusyChange={setUploading} disabled={saving}>
+            <textarea
+              ref={areaRef}
+              value={text}
+              onChange={e => setText(e.target.value)}
+              onKeyDown={onKeyDown}
+              placeholder="What did you see? What should they change next time?"
+              rows={9}
+              style={taStyle(180)}
+            />
+          </AttachmentComposer>
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-            <Btn onClick={sendFeedback} disabled={saving || !text.trim()}>
-              {saving ? "Saving…" : dirty || !video.coach_feedback ? (video.coach_feedback ? "Update feedback" : "Send feedback") : "Next: cue"}
+            <Btn onClick={sendFeedback} disabled={saving || uploading || !hasContent}>
+              {uploading ? "Uploading…" : saving ? "Saving…" : dirty || !video.coach_feedback ? (video.coach_feedback || mediaList(video.coach_feedback_media).length ? "Update feedback" : "Send feedback") : "Next: cue"}
             </Btn>
             <Btn variant="secondary" onClick={attemptClose} disabled={saving}>Cancel</Btn>
             <span style={{ marginLeft: "auto", fontSize: 11, color: "#A1A1AA" }}>{"⌘↵"} to save</span>

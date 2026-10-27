@@ -32,6 +32,8 @@ const localDateISO = () => {
 
 import AthleteAlertsBell from "./AthleteAlertsBell";
 import ExerciseThread from "./ExerciseThread";
+import { AttachmentDisplay } from "./MediaAttachments";
+import { mediaList } from "../lib/feedbackMedia";
 import { weekStartFromLabel, weekNumberLabel, currentWeekIndex as weekCurrentIndex, baselineColumnLabels, sessionDate, sessionDateISO as scheduledSessionISO, defaultDayId } from "../lib/weeks";
 import { fetchAllComments } from "../lib/comments";
 import { fetchCues, cuesForBlock } from "../lib/cues";
@@ -1412,10 +1414,11 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
                           <div key={c.id} style={{ marginTop: 8, padding: "8px 10px", background: "#FFFBEB", border: "1px solid #FCD34D", borderLeft: "4px solid #F59E0B", borderRadius: 8 }}>
                             <div style={{ fontSize: 10, fontWeight: 800, color: "#B45309", textTransform: "uppercase", letterSpacing: 0.5 }}>★ Coach cue{c.source_label ? ` · from your ${c.source_label} video` : ""}</div>
                             <div style={{ fontSize: 14, color: "#78350F", fontWeight: 700, lineHeight: 1.45, marginTop: 2, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{c.cue}</div>
-                            {src?.coach_feedback && (
+                            {(src?.coach_feedback || mediaList(src?.coach_feedback_media).length > 0) && (
                               <details style={{ marginTop: 4 }}>
-                                <summary style={{ cursor: "pointer", fontSize: 11.5, fontWeight: 700, color: "#92400E" }}>Full video feedback</summary>
-                                <div style={{ marginTop: 4, fontSize: 12, color: "#52525B", whiteSpace: "pre-wrap", lineHeight: 1.45, wordBreak: "break-word" }}>{src.coach_feedback}</div>
+                                <summary style={{ cursor: "pointer", fontSize: 11.5, fontWeight: 700, color: "#92400E" }}>Full video feedback{mediaList(src.coach_feedback_media).length ? " 📎" : ""}</summary>
+                                {src.coach_feedback && <div style={{ marginTop: 4, fontSize: 12, color: "#52525B", whiteSpace: "pre-wrap", lineHeight: 1.45, wordBreak: "break-word" }}>{src.coach_feedback}</div>}
+                                <AttachmentDisplay media={src.coach_feedback_media} size={64} />
                               </details>
                             )}
                           </div>
@@ -1495,10 +1498,11 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
                         {loggedResult && <div style={{ fontSize: 10, color: "#A1A1AA", marginTop: 4 }}>Logged {new Date(loggedResult.date + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}</div>}
                         {/* The coach answering a note the athlete left here. Shown on the
                             exercise it belongs to, so the reply sits next to what it is about. */}
-                        {loggedResult?.coach_reply && (
+                        {(loggedResult?.coach_reply || mediaList(loggedResult?.coach_reply_media).length > 0) && (
                           <div style={{ marginTop: 8, padding: "8px 10px", background: "#EFF6FF", borderRadius: 8, border: "1px solid #BFDBFE" }}>
                             <div style={{ fontSize: 10, fontWeight: 700, color: "#1E40AF", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 2 }}>Coach Reply</div>
-                            <div style={{ fontSize: 13, color: "#18181B", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{loggedResult.coach_reply}</div>
+                            {loggedResult.coach_reply && <div style={{ fontSize: 13, color: "#18181B", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{loggedResult.coach_reply}</div>}
+                            <AttachmentDisplay media={loggedResult.coach_reply_media} size={72} />
                           </div>
                         )}
                       </div>
@@ -1579,10 +1583,11 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
                                   <div style={{ fontSize: 11, color: "#A1A1AA" }}>
                                     {new Date(v.date || v.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
                                   </div>
-                                  {v.coach_feedback && (
+                                  {(v.coach_feedback || mediaList(v.coach_feedback_media).length > 0) && (
                                     <div style={{ marginTop: 4, padding: "6px 8px", background: "#fff", borderRadius: 6, border: "1px solid #E4E4E7" }}>
                                       <div style={{ fontSize: 10, color: "#A1A1AA", textTransform: "uppercase", marginBottom: 2 }}>Coach Feedback</div>
-                                      <div style={{ fontSize: 12, color: "#18181B", whiteSpace: "pre-wrap" }}>{v.coach_feedback}</div>
+                                      {v.coach_feedback && <div style={{ fontSize: 12, color: "#18181B", whiteSpace: "pre-wrap" }}>{v.coach_feedback}</div>}
+                                      <AttachmentDisplay media={v.coach_feedback_media} size={64} />
                                     </div>
                                   )}
                                 </div>
@@ -1985,10 +1990,11 @@ function MyVideos({ videoSubs, addVideoSub, deleteVideoSub, athlete, exercises, 
               {(v.week_label || v.day_label) && <div style={{ fontSize: 11, color: "#71717A", marginTop: 4 }}>From {[v.week_label ? v.week_label.split(/[·—]/)[0].trim() : "", v.day_label].filter(Boolean).join(" · ")}</div>}
               <MediaLink url={v.video_url} title={v.exercise_name} style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 13, color: "#fff", background: "#2563EB", textDecoration: "none", fontWeight: 700, padding: "5px 14px", borderRadius: 999, marginTop: 10 }}>▶ Watch Video</MediaLink>
               {v.notes && <div style={{ fontSize: 13, color: "#52525B", marginTop: 8, fontStyle: "italic" }}>{v.notes}</div>}
-              {v.coach_feedback && (
+              {(v.coach_feedback || mediaList(v.coach_feedback_media).length > 0) && (
                 <div style={{ marginTop: 10, padding: "10px 14px", background: "#F0FDF4", borderRadius: 8, border: "1px solid #4ADE80" }}>
                   <div style={{ fontSize: 11, fontWeight: 700, color: "#16A34A", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 4 }}>Coach Feedback</div>
-                  <div style={{ fontSize: 13, color: "#18181B" }}>{v.coach_feedback}</div>
+                  {v.coach_feedback && <div style={{ fontSize: 13, color: "#18181B", whiteSpace: "pre-wrap" }}>{v.coach_feedback}</div>}
+                  <AttachmentDisplay media={v.coach_feedback_media} size={88} />
                 </div>
               )}
             </Card>
