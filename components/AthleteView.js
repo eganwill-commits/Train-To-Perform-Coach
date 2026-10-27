@@ -31,7 +31,7 @@ const localDateISO = () => {
 
 import AthleteAlertsBell from "./AthleteAlertsBell";
 import ExerciseThread from "./ExerciseThread";
-import { weekStartFromLabel, weekNumberLabel, currentWeekIndex as weekCurrentIndex, baselineColumnLabels, sessionDate, sessionDateISO, defaultDayId } from "../lib/weeks";
+import { weekStartFromLabel, weekNumberLabel, currentWeekIndex as weekCurrentIndex, baselineColumnLabels, sessionDate, sessionDateISO as scheduledSessionISO, defaultDayId } from "../lib/weeks";
 import { fetchAllComments } from "../lib/comments";
 import { fetchCues, cuesForBlock } from "../lib/cues";
 import { MUST_LOG_CATS, NUDGE_CATS, findMissingNumberSessions, mustLogProgress } from "../lib/logging";
@@ -1153,7 +1153,7 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
         // This session's calendar date: "Last time" never reaches forward past it.
         const sessionDateISO = (() => {
           const today = localDateISO();
-          const iso = sessionDateISO(week.label, aw, day.label, prog.start_date);
+          const iso = scheduledSessionISO(week.label, aw, day.label, prog.start_date);
           return iso < today ? iso : today;
         })();
         return (
