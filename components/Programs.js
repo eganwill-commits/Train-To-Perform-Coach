@@ -11,7 +11,7 @@ import FeedbackModal from "./FeedbackModal";
 import ExerciseThread from "./ExerciseThread";
 import ExerciseVideoControl from "./ExerciseVideoControl";
 import { MediaLink } from "./VideoPlayer";
-import { weekStartFromLabel, weekNumberLabel, weekdayOffset, currentWeekIndex as weekCurrentIndex } from "../lib/weeks";
+import { weekStartFromLabel, weekNumberLabel, currentWeekIndex as weekCurrentIndex, sessionDate } from "../lib/weeks";
 import { fetchAllComments } from "../lib/comments";
 import { saveNoteReply } from "../lib/noteReplies";
 import { fetchCues, cuesForBlock } from "../lib/cues";
@@ -52,7 +52,7 @@ function warmupForDay(label) {
   return DAY_WARMUPS.generic;
 }
 
-export default function Programs({ programs, addProgram, updateProgram, deleteProgram, athletes, exercises, updateExercise, addExercise, cats, colors, isMobile, submitDay, unlogDay, logs, groups, setLogs, addGroup, addAthleteToGroup, addSeasonMembership, focusAthleteId, focusTarget, onFocusClear, videoSubs, onOpenVideo }) {
+export default function Programs({ programs, addProgram, updateProgram, deleteProgram, athletes, exercises, updateExercise, addExercise, cats, colors, isMobile, submitDay, unlogDay, logs, groups, setLogs, addGroup, addAthleteToGroup, addSeasonMembership, focusAthleteId, focusTarget, onFocusClear, videoSubs, onOpenVideo, viewAsAthlete, focusProgramId, onFocusProgramDone }) {
   const [modal, setModal] = useState(false);
   const [form, setForm] = useState({ name: "", selectedAthletes: [], weeks: 4, description: "", group_id: "", trackAsSeason: false, start_date: "" });
   const [detail, setDetail] = useState(null);
@@ -70,6 +70,12 @@ export default function Programs({ programs, addProgram, updateProgram, deletePr
       : null;
     setDetail((match || mine[0]).id);
   }, [focusAthleteId, focusTarget, programs]);
+  // Back from "View as athlete": reopen the program the coach left from.
+  useEffect(() => {
+    if (!focusProgramId) return;
+    if ((programs || []).some(p => p.id === focusProgramId)) setDetail(focusProgramId);
+    if (onFocusProgramDone) onFocusProgramDone();
+  }, [focusProgramId]);
   const [folderKey, setFolderKey] = useState(null);
   const [addAthModal, setAddAthModal] = useState(false);
   const [addAthTargets, setAddAthTargets] = useState([]);
@@ -299,7 +305,7 @@ export default function Programs({ programs, addProgram, updateProgram, deletePr
     await updateProgram(ap.id, { weeks });
   };
 
-  if (detail && ap) return <ProgramDetail focusTarget={focusTarget} onFocusClear={onFocusClear} program={ap} programs={programs} exercises={exercises} updateExercise={updateExercise} addExercise={addExercise} cats={cats} colors={colors} addBlock={addBlock} updateBlock={updateBlock} removeBlock={removeBlock} moveBlock={moveBlock} onBack={() => setDetail(null)} athletes={athletes} isMobile={isMobile} submitDay={submitDay} unlogDay={unlogDay} logs={logs || []} copyToAthletes={copyToAthletes} updateProgram={updateProgram} groups={groups} setLogs={setLogs} videoSubs={videoSubs} onOpenVideo={onOpenVideo} />;
+  if (detail && ap) return <ProgramDetail focusTarget={focusTarget} onFocusClear={onFocusClear} program={ap} programs={programs} exercises={exercises} updateExercise={updateExercise} addExercise={addExercise} cats={cats} colors={colors} addBlock={addBlock} updateBlock={updateBlock} removeBlock={removeBlock} moveBlock={moveBlock} onBack={() => setDetail(null)} athletes={athletes} isMobile={isMobile} submitDay={submitDay} unlogDay={unlogDay} logs={logs || []} copyToAthletes={copyToAthletes} updateProgram={updateProgram} groups={groups} setLogs={setLogs} videoSubs={videoSubs} onOpenVideo={onOpenVideo} onViewAsAthlete={viewAsAthlete ? (a) => viewAsAthlete(a, { programId: ap.id }) : null} />;
 
   // ---- Folder detail: the athletes inside one program folder ----
   const activeFolder = folderKey ? folders.find(f => f.key === folderKey) : null;
@@ -543,7 +549,7 @@ function VariantHint({ ex }) {
   );
 }
 
-function ProgramDetail({ program, programs, exercises, updateExercise, addExercise, cats, colors, addBlock, updateBlock, removeBlock, moveBlock, onBack, athletes, isMobile, submitDay, unlogDay, logs, copyToAthletes, updateProgram, groups, setLogs, focusTarget, onFocusClear, videoSubs, onOpenVideo }) {
+function ProgramDetail({ program, programs, exercises, updateExercise, addExercise, cats, colors, addBlock, updateBlock, removeBlock, moveBlock, onBack, athletes, isMobile, submitDay, unlogDay, logs, copyToAthletes, updateProgram, groups, setLogs, focusTarget, onFocusClear, videoSubs, onOpenVideo, onViewAsAthlete }) {
   // The athlete's filmed sets, by the block they were filmed from, so a video shows up
   // on the exercise it belongs to instead of only in a list elsewhere.
   const videosByBlock = useMemo(() => {
@@ -848,6 +854,9 @@ function ProgramDetail({ program, programs, exercises, updateExercise, addExerci
         <h2 style={{ margin: 0, fontSize: isMobile ? 20 : 24, fontFamily: "'Space Mono', monospace" }}>{program.name}</h2>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           {ath && <Badge color="#71717A">{ath.name}</Badge>}
+          {ath && onViewAsAthlete && (
+            <button onClick={() => onViewAsAthlete(ath)} title="Open this athlete's app on this program. Nothing you do there is saved." style={{ background: "#EFF6FF", border: "1px solid #BFDBFE", borderRadius: 6, padding: "5px 12px", fontSize: 12, cursor: "pointer", fontFamily: "inherit", color: "#1E40AF", fontWeight: 700 }}>👁 View as athlete</button>
+          )}
           <button onClick={() => { setCopyOpen(true); setCopyMode("program"); setCopyTargets([]); }} style={{ background: "none", border: "1px solid #E4E4E7", borderRadius: 6, padding: "5px 12px", fontSize: 12, cursor: "pointer", fontFamily: "inherit", color: "#52525B", fontWeight: 600 }}>⧉ Copy</button>
         </div>
       </div>
@@ -941,7 +950,7 @@ function ProgramDetail({ program, programs, exercises, updateExercise, addExerci
                   {day.status === "missed" && <span style={{ color: "#DC2626", fontWeight: 700, fontSize: 14 }}>✗</span>}
                   <h4 style={{ margin: 0, fontSize: 15 }}>{day.label}
                     <span style={{ fontWeight: 400, fontSize: 12, color: "#71717A", marginLeft: 6 }}>
-                      {(() => { const ws = weekStartFromLabel(week.label, aw, program.start_date); const d = new Date(ws); d.setDate(ws.getDate() + weekdayOffset(day.label)); return d.toLocaleDateString("en-US", { month: "short", day: "numeric" }); })()}
+                      {sessionDate(week.label, aw, day.label, program.start_date).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
                     </span>
                   </h4>
                 </div>

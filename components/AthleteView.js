@@ -31,7 +31,7 @@ const localDateISO = () => {
 
 import AthleteAlertsBell from "./AthleteAlertsBell";
 import ExerciseThread from "./ExerciseThread";
-import { weekStartFromLabel, weekNumberLabel, weekdayOffset, currentWeekIndex as weekCurrentIndex, baselineColumnLabels } from "../lib/weeks";
+import { weekStartFromLabel, weekNumberLabel, currentWeekIndex as weekCurrentIndex, baselineColumnLabels, sessionDate, sessionDateISO, defaultDayId } from "../lib/weeks";
 import { fetchAllComments } from "../lib/comments";
 import { fetchCues, cuesForBlock } from "../lib/cues";
 import { MUST_LOG_CATS, NUDGE_CATS, findMissingNumberSessions, mustLogProgress } from "../lib/logging";
@@ -93,24 +93,6 @@ function pickCurrentProgram(programs, today = new Date()) {
   return upcoming.length ? upcoming[0].p : null;
 }
 
-// The day of a week to open on: today's session, else the next one coming up, else the
-// first session nobody has marked yet, else the first.
-function defaultDayId(week, wi, isCurrentWeek, startDate) {
-  const days = ((week && week.days) || []).filter(d => (d.blocks || []).length > 0);
-  if (days.length === 0) return ((week && week.days) || [])[0]?.id || null;
-  if (isCurrentWeek) {
-    const start = weekStartFromLabel(week.label, wi, startDate);
-    const today = new Date(); today.setHours(0, 0, 0, 0);
-    const dated = days.map(d => { const dt = new Date(start); dt.setDate(start.getDate() + weekdayOffset(d.label)); dt.setHours(0, 0, 0, 0); return { d, dt }; });
-    const exact = dated.find(x => x.dt.getTime() === today.getTime());
-    if (exact) return exact.d.id;
-    const next = dated.find(x => x.dt > today);
-    if (next) return next.d.id;
-  }
-  const open = days.find(d => !d.status);
-  return (open || days[0]).id;
-}
-
 /*
   Coach notes, shown in full only on request. Some notes run to a dozen lines and include
   set-up meant for the coach; the athlete sees the start and can open the rest.
@@ -131,7 +113,7 @@ function ClampedNotes({ text, limit = 220 }) {
   );
 }
 
-export default function AthleteView({ athlete, onLogout, readOnly }) {
+export default function AthleteView({ athlete, onLogout, readOnly, initialProgramId }) {
   const [page, setPage] = useState("my-program");
   const [programs, setPrograms] = useState([]);
   const [exercises, setExercises] = useState([]);
@@ -350,7 +332,7 @@ export default function AthleteView({ athlete, onLogout, readOnly }) {
           </header>
         )}
         <main className="t2p-main" style={{ flex: 1, padding: isMobile ? "12px 10px" : 32, maxWidth: "100%", overflowX: "hidden" }}>
-          {page === "my-program" && <MyProgram programs={programs} setPrograms={setPrograms} exercises={exercises} colors={colors} cats={cats} isMobile={isMobile} athlete={athlete} addLog={addLogRO} logs={logs} groups={groups} addVideoSub={addVideoSubRO} videoSubs={videoSubs} deleteVideoSub={deleteVideoSubRO} setLogs={setLogs} focusBlockId={focusRef} onFocusDone={clearFocus} />}
+          {page === "my-program" && <MyProgram programs={programs} setPrograms={setPrograms} exercises={exercises} colors={colors} cats={cats} isMobile={isMobile} athlete={athlete} addLog={addLogRO} logs={logs} groups={groups} addVideoSub={addVideoSubRO} videoSubs={videoSubs} deleteVideoSub={deleteVideoSubRO} setLogs={setLogs} focusBlockId={focusRef} onFocusDone={clearFocus} initialProgramId={initialProgramId} />}
           {page === "my-progress" && <MyProgress logs={logs} programs={programs} isMobile={isMobile} />}
           {page === "my-baselines" && <MyBaselines baselines={baselines} groups={groups} programs={programs} athleteId={athlete.id} updateBaseline={updateBaselineRO} isMobile={isMobile} />}
           {page === "my-logs" && <MyLogs logs={logs} colors={colors} cats={cats} isMobile={isMobile} deleteLog={deleteLogRO} deleteDayLogs={deleteDayLogsRO} />}
@@ -365,7 +347,7 @@ export default function AthleteView({ athlete, onLogout, readOnly }) {
 }
 
 
-function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, athlete, addLog, logs, groups, addVideoSub, videoSubs, deleteVideoSub, setLogs, focusBlockId, onFocusDone }) {
+function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, athlete, addLog, logs, groups, addVideoSub, videoSubs, deleteVideoSub, setLogs, focusBlockId, onFocusDone, initialProgramId }) {
   const [selectedProg, setSelectedProg] = useState(null);
   const [expandedBlock, setExpandedBlock] = useState(null);
   const [aw, setAw] = useState(0);
@@ -493,7 +475,9 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
   useEffect(() => {
     if (autoPicked.current || selectedProg || programs.length === 0) return;
     autoPicked.current = true;
-    const cur = pickCurrentProgram(programs);
+    // Coach preview opened from a specific program: show that one.
+    const asked = initialProgramId && programs.find(p => p.id === initialProgramId);
+    const cur = asked || pickCurrentProgram(programs);
     if (cur) setSelectedProg(cur.id);
   }, [programs, selectedProg]);
 
@@ -1096,12 +1080,11 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
             is a session; "Today" marks the one on the calendar for today.
           */}
           {week && (week.days || []).length > 1 && (() => {
-            const start = weekStartFromLabel(week.label, aw, prog.start_date);
             const today = new Date(); today.setHours(0, 0, 0, 0);
             return (
               <div style={{ display: "flex", gap: 6, margin: "6px 0 10px", overflowX: "auto", paddingBottom: 2, WebkitOverflowScrolling: "touch" }}>
                 {week.days.map(d => {
-                  const dt = new Date(start); dt.setDate(start.getDate() + weekdayOffset(d.label)); dt.setHours(0, 0, 0, 0);
+                  const dt = sessionDate(week.label, aw, d.label, prog.start_date);
                   const isToday = dt.getTime() === today.getTime();
                   const ids = week.days.map(x => x.id);
                   const shownId = ids.includes(activeDay) ? activeDay : defaultDayId(week, aw, aw === currentWeekIndex, prog.start_date);
@@ -1169,9 +1152,8 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
         const isFocusDay = dayGlow === day.id;
         // This session's calendar date: "Last time" never reaches forward past it.
         const sessionDateISO = (() => {
-          const d = weekStartFromLabel(week.label, aw, prog.start_date); d.setDate(d.getDate() + weekdayOffset(day.label));
           const today = localDateISO();
-          const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+          const iso = sessionDateISO(week.label, aw, day.label, prog.start_date);
           return iso < today ? iso : today;
         })();
         return (
@@ -1185,7 +1167,7 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
                 {dayStatus === "missed" && <span style={{ color: "#DC2626", fontWeight: 700, fontSize: 14 }}>✗</span>}
                 <h4 style={{ margin: 0, fontSize: 15 }}>{day.label}
                   <span style={{ fontWeight: 400, fontSize: 12, color: "#71717A", marginLeft: 6 }}>
-                    {(() => { const d = weekStartFromLabel(week.label, aw, prog.start_date); d.setDate(d.getDate() + weekdayOffset(day.label)); return d.toLocaleDateString("en-US", { month: "short", day: "numeric" }); })()}
+                    {sessionDate(week.label, aw, day.label, prog.start_date).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
                   </span>
                 </h4>
               </div>

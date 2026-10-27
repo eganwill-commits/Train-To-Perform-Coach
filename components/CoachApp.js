@@ -84,10 +84,20 @@ export default function CoachApp({ onLogout }) {
   const [navOpen, setNavOpen] = useState(false);
   const [unreadMsgCount, setUnreadMsgCount] = useState(0);
   const [previewAthlete, setPreviewAthlete] = useState(null);
+  // Entered from an athlete's program, the preview opens on that program, and leaving it
+  // returns the coach to the same program instead of the program list.
+  const [previewProgramId, setPreviewProgramId] = useState(null);
+  const [returnProgramId, setReturnProgramId] = useState(null);
+  const previewProgramIdRef = useRef(null);
+  previewProgramIdRef.current = previewProgramId;
   // The sandbox must be on before the athlete app mounts (its first loads mark messages
   // read), so it is switched in the click handler rather than in an effect.
-  const enterPreview = useCallback((a) => { setSandbox(true); setPreviewAthlete(a); }, []);
-  const exitPreview = useCallback(() => { setPreviewAthlete(null); setSandbox(false); }, []);
+  const enterPreview = useCallback((a, opts) => { setSandbox(true); setPreviewProgramId(opts?.programId || null); setPreviewAthlete(a); }, []);
+  const exitPreview = useCallback(() => {
+    setReturnProgramId(previewProgramIdRef.current);
+    setPreviewProgramId(null); setPreviewAthlete(null); setSandbox(false);
+  }, []);
+
   useEffect(() => () => setSandbox(false), []);
   const isMobile = useIsMobile();
 
@@ -523,7 +533,7 @@ export default function CoachApp({ onLogout }) {
   if (previewAthlete) {
     return (
       <>
-        <AthleteView key={previewAthlete.id} athlete={previewAthlete} onLogout={exitPreview} />
+        <AthleteView key={previewAthlete.id} athlete={previewAthlete} onLogout={exitPreview} initialProgramId={previewProgramId} />
         <button
           onClick={exitPreview}
           title="Coach preview: nothing you do here is saved"
@@ -595,7 +605,7 @@ export default function CoachApp({ onLogout }) {
           {page === "seasons" && <Seasons {...pp} />}
           {page === "athletes" && <Athletes {...pp} focusAthleteId={focusAthleteId} onFocusClear={() => setFocusAthleteId(null)} />}
           {page === "videos" && <VideoReview videoSubs={videoSubs} athletes={athletes} programs={programs} logs={logs} updateVideoSub={updateVideoSub} isMobile={isMobile} focusTarget={focusTarget} onFocusClear={() => setFocusTarget(null)} onOpenAthlete={(id) => navToAthlete(id, "athletes")} />}
-          {page === "programs" && <Programs {...pp} onOpenVideo={openVideo} focusAthleteId={focusAthleteId} focusTarget={focusTarget} onFocusClear={() => { setFocusAthleteId(null); setFocusTarget(null); }} />}
+          {page === "programs" && <Programs {...pp} onOpenVideo={openVideo} focusAthleteId={focusAthleteId} focusTarget={focusTarget} onFocusClear={() => { setFocusAthleteId(null); setFocusTarget(null); }} focusProgramId={returnProgramId} onFocusProgramDone={() => setReturnProgramId(null)} />}
           {page === "library" && <Library {...pp} />}
           {page === "log" && <LogPage {...pp} />}
           {page === "timers" && <Timers role="coach" athletes={pp.athletes} exercises={pp.exercises} isMobile={isMobile} />}
