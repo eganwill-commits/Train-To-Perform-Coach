@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { supabase } from "../lib/supabase";
+import { uploadVideo } from "../lib/videoUpload";
 import { MediaLink } from "./VideoPlayer";
 
 /*
@@ -58,7 +59,7 @@ export default function ExerciseVideoControl({ libraryEx, exerciseName, category
       const ext = (file.name.split(".").pop() || "mp4").toLowerCase();
       const slug = norm(name).replace(/[^a-z0-9]+/g, "-").slice(0, 40) || "exercise";
       const path = `library/${slug}_${Date.now()}.${ext}`;
-      const { error } = await supabase.storage.from("videos").upload(path, blob, { contentType, upsert: false });
+      const { error } = await uploadVideo("videos", path, blob, { contentType, onProgress: (pct) => setBusy(`Uploading… ${pct}%`) });
       if (error) throw error;
       const { data } = supabase.storage.from("videos").getPublicUrl(path);
       setBusy("Saving…");

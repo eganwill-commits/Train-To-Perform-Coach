@@ -4,6 +4,7 @@ import { supabase } from "../lib/supabase";
 import { PILLAR_COLORS, ATHLETE_NAV, EQUIP_OPTIONS, EQUIP_LABEL, roomLabel } from "../lib/constants";
 import Timers from "./Timers";
 import { Badge, Btn, Card, Input, Select, Modal, EmptyState, SearchableSelect, AutoGrow, ScoreField, SideScoreField, ProgressTag } from "./ui";
+import { uploadVideo } from "../lib/videoUpload";
 import { scoreSpecFor, parseSides, formatSides, effortOf, effortText, RIR_PLACEHOLDER } from "../lib/logging";
 import { printDay } from "./printHelper";
 import T2PLogo from "./T2PLogo";
@@ -408,6 +409,7 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
     return () => { live = false; clearInterval(iv); };
   }, [athlete?.id]);
   const [uploadingVideo, setUploadingVideo] = useState(null); // block.id being uploaded
+  const [uploadPct, setUploadPct] = useState(null);           // % sent for that block, large clips only
   const [videoSuccess, setVideoSuccess] = useState(null); // block.id that succeeded
   const [filmOpen, setFilmOpen] = useState(null);         // block.id with the film panel open
   const [filmQuestion, setFilmQuestion] = useState({});   // block.id -> "what should I look at?"
@@ -422,6 +424,7 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
     const maxSize = 100 * 1024 * 1024;
     if (file.size > maxSize) { alert("Video must be under 100MB"); return; }
     setUploadingVideo(block.id);
+    setUploadPct(null);
     try {
       // Read the bytes immediately. On iOS the File is a reference to an OS-managed
       // asset that can go stale once the picker closes — uploading the reference then
@@ -435,8 +438,8 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
       }
       // Owner-prefixed path: readable ownership once the bucket is private (lib/media.js).
       const fileName = athleteUploadPath(athlete.id, file.name);
-      const { error: upErr } = await supabase.storage.from("videos").upload(fileName, blob, { contentType });
-      if (upErr) { alert("Upload failed: " + upErr.message); setUploadingVideo(null); return; }
+      const { error: upErr } = await uploadVideo("videos", fileName, blob, { contentType, onProgress: setUploadPct });
+      if (upErr) { alert("Upload failed: " + upErr.message); setUploadingVideo(null); setUploadPct(null); return; }
       const { data: urlData } = supabase.storage.from("videos").getPublicUrl(fileName);
       const exName = getDisplayName(block, dayId);
       // Filmed FROM a block: the coach sees which session and set it came from, and the
@@ -457,6 +460,7 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
       // Never show "sent" for a clip the coach cannot see.
       if (!savedSub) throw new Error("the video uploaded but could not be sent to your coach. Please try again.");
       setUploadingVideo(null);
+      setUploadPct(null);
       setFilmOpen(null);
       setFilmQuestion(prev => { const n = { ...prev }; delete n[block.id]; return n; });
       setVideoSuccess(block.id);
@@ -464,6 +468,7 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
     } catch (err) {
       alert("Upload error: " + err.message);
       setUploadingVideo(null);
+      setUploadPct(null);
     }
   };
 
@@ -1530,7 +1535,7 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
                           {videoSuccess === block.id ? (
                             <div style={{ background: "#F0FDF4", padding: "8px 10px", borderRadius: 6, fontSize: 12, color: "#16A34A", fontWeight: 600, textAlign: "center" }}>✓ Sent to your coach. Their feedback will show up right here.</div>
                           ) : uploadingVideo === block.id ? (
-                            <div style={{ background: "#EFF6FF", padding: "8px 10px", borderRadius: 6, fontSize: 12, color: "#2563EB", fontWeight: 600, textAlign: "center" }}>Uploading… keep the app open</div>
+                            <div style={{ background: "#EFF6FF", padding: "8px 10px", borderRadius: 6, fontSize: 12, color: "#2563EB", fontWeight: 600, textAlign: "center" }}>{uploadPct != null ? `Uploading ${uploadPct}%` : "Uploading…"} keep the app open</div>
                           ) : filmOpen !== block.id ? (
                             <button onClick={() => setFilmOpen(block.id)} style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "10px", border: "1px dashed #BFDBFE", borderRadius: 8, background: "#F8FAFF", cursor: "pointer", fontSize: 13, fontWeight: 700, color: "#2563EB", fontFamily: "inherit" }}>
                               <span>🎥</span> Film this set for your coach
@@ -1915,9 +1920,12 @@ function MyVideos({ videoSubs, addVideoSub, deleteVideoSub, athlete, exercises, 
       try {
         const fileName = athleteUploadPath(athlete.id, selectedFile.name);
         const body = selectedBlob || selectedFile;
-        const { data, error } = await supabase.storage.from("videos").upload(fileName, body, { cacheControl: "3600", upsert: false, contentType: body.type || "video/mp4" });
+        const { error } = await uploadVideo("videos", fileName, body, {
+          contentType: body.type || "video/mp4",
+          onProgress: (pct) => setUploadProgress(`Uploading video… ${pct}%`),
+        });
         if (error) { alert("Upload failed: " + error.message); setUploading(false); setUploadProgress(""); return; }
-        const { data: urlData } = supabase.storage.from("videos").getPublicUrl(data.path);
+        const { data: urlData } = supabase.storage.from("videos").getPublicUrl(fileName);
         const publicUrl = urlData.publicUrl;
         setUploadProgress("Saving…");
         await addVideoSub({
