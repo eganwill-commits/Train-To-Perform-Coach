@@ -1,4 +1,5 @@
 "use client";
+import { readVideo } from "../lib/videoUpload";
 import { useState, useEffect, useRef, useMemo } from "react";
 import { supabase, supabaseUrl, supabaseAnonKey } from "../lib/supabase";
 import { notifyAthlete } from "../lib/push";
@@ -182,11 +183,10 @@ export default function Messages({ isCoach, currentUserId, currentUserName, athl
       // that goes stale once the picker closes; because this uploads via raw XHR, a stale
       // reference sends an EMPTY body and still returns 200 — a silently corrupt upload.
       try {
-        const blob = new Blob([await file.arrayBuffer()], { type: file.type || "video/mp4" });
-        if (!blob.size) { alert("That video came back empty. Try again, or paste a link instead."); e.target.value = ""; return; }
+        const blob = await readVideo(file);
         setPendingFile({ file: blob, name: file.name, size: blob.size, type, preview });
-      } catch {
-        alert("Could not read that video. Try again, or paste a link instead.");
+      } catch (readErr) {
+        alert(readErr.message + " Or paste a link instead.");
         e.target.value = ""; return;
       }
     }

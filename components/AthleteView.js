@@ -4,7 +4,7 @@ import { supabase } from "../lib/supabase";
 import { PILLAR_COLORS, ATHLETE_NAV, EQUIP_OPTIONS, EQUIP_LABEL, roomLabel } from "../lib/constants";
 import Timers from "./Timers";
 import { Badge, Btn, Card, Input, Select, Modal, EmptyState, SearchableSelect, AutoGrow, ScoreField, SideScoreField, ProgressTag } from "./ui";
-import { uploadVideo } from "../lib/videoUpload";
+import { uploadVideo, readVideo } from "../lib/videoUpload";
 import { scoreSpecFor, parseSides, formatSides, effortOf, effortText, RIR_PLACEHOLDER } from "../lib/logging";
 import { printDay } from "./printHelper";
 import T2PLogo from "./T2PLogo";
@@ -430,12 +430,9 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
       // asset that can go stale once the picker closes — uploading the reference then
       // sends an empty body and Storage replies "No content provided".
       const contentType = file.type || "video/mp4";
-      const blob = new Blob([await file.arrayBuffer()], { type: contentType });
-      if (!blob.size) {
-        alert("That video came back empty. Try recording again, or use Submit Video → Link.");
-        setUploadingVideo(null);
-        return;
-      }
+      let blob;
+      try { blob = await readVideo(file, contentType); }
+      catch (readErr) { alert(readErr.message); setUploadingVideo(null); setUploadPct(null); return; }
       // Owner-prefixed path: readable ownership once the bucket is private (lib/media.js).
       const fileName = athleteUploadPath(athlete.id, file.name);
       const { error: upErr } = await uploadVideo("videos", fileName, blob, { contentType, onProgress: setUploadPct });
@@ -1891,14 +1888,9 @@ function MyVideos({ videoSubs, addVideoSub, deleteVideoSub, athlete, exercises, 
     }
     // Materialise the bytes now — see handleVideoUpload for why.
     try {
-      const blob = new Blob([await file.arrayBuffer()], { type: file.type || "video/mp4" });
-      if (!blob.size) {
-        alert("That video came back empty. Try again, or switch to the Link tab.");
-        return;
-      }
-      setSelectedBlob(blob);
-    } catch {
-      alert("Could not read that video. Try again, or switch to the Link tab.");
+      setSelectedBlob(await readVideo(file));
+    } catch (readErr) {
+      alert(readErr.message + " Or switch to the Link tab.");
       return;
     }
     setSelectedFile(file);

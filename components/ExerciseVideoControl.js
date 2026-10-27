@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 import { supabase } from "../lib/supabase";
-import { uploadVideo } from "../lib/videoUpload";
+import { uploadVideo, readVideo } from "../lib/videoUpload";
 import { MediaLink } from "./VideoPlayer";
 
 /*
@@ -54,8 +54,7 @@ export default function ExerciseVideoControl({ libraryEx, exerciseName, category
     try {
       // Read the bytes now — on iOS the picked File can go stale once the picker closes.
       const contentType = file.type || "video/mp4";
-      const blob = new Blob([await file.arrayBuffer()], { type: contentType });
-      if (!blob.size) throw new Error("That video came back empty. Try again, or paste a link.");
+      const blob = await readVideo(file, contentType);
       const ext = (file.name.split(".").pop() || "mp4").toLowerCase();
       const slug = norm(name).replace(/[^a-z0-9]+/g, "-").slice(0, 40) || "exercise";
       const path = `library/${slug}_${Date.now()}.${ext}`;
