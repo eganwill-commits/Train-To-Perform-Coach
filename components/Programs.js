@@ -14,6 +14,8 @@ import { MediaLink } from "./VideoPlayer";
 import { weekStartFromLabel, weekNumberLabel, currentWeekIndex as weekCurrentIndex, sessionDate } from "../lib/weeks";
 import { fetchAllComments } from "../lib/comments";
 import { saveNoteReply } from "../lib/noteReplies";
+import { AttachmentDisplay } from "./MediaAttachments";
+import { mediaList, mediaErrorMessage } from "../lib/feedbackMedia";
 import { fetchCues, cuesForBlock } from "../lib/cues";
 import ProgramBrief, { briefSummary } from "./ProgramBrief";
 import { effortOf, effortText } from "../lib/logging";
@@ -630,15 +632,15 @@ function ProgramDetail({ program, programs, exercises, updateExercise, addExerci
   */
   const [replyingTo, setReplyingTo] = useState(null);
   const [replyFor, setReplyFor] = useState(null); // log row being replied to
-  const replyToNote = async (logRow, text) => {
+  const replyToNote = async (logRow, text, media) => {
     setReplyingTo(logRow.id);
     try {
-      const { row, notified } = await saveNoteReply(logRow, text);
+      const { row, notified } = await saveNoteReply(logRow, text, media);
       if (row && setLogs) setLogs(prev => prev.map(l => (l.id === row.id ? row : l)));
       if (!notified) window.alert("Reply saved, but the notification to the athlete could not be sent.");
     } catch (e) {
       console.error("replyToNote failed", e);
-      window.alert("That reply could not be saved. Please try again.");
+      window.alert(mediaErrorMessage(e) || "That reply could not be saved. Please try again.");
       setReplyingTo(null);
       throw e; // keep the editor open so the coach does not lose what they wrote
     }
@@ -1412,7 +1414,9 @@ function ProgramDetail({ program, programs, exercises, updateExercise, addExerci
         initialValue={replyFor?.coach_reply || ""}
         placeholder="Answer them here — this rings their bell and appears on the exercise."
         saveLabel={replyFor?.coach_reply ? "Update reply" : "Send reply"}
-        onSave={async (text) => { if (replyFor) await replyToNote(replyFor, text); }}
+        mediaAthleteId={replyFor?.athlete_id}
+        initialMedia={replyFor?.coach_reply_media}
+        onSave={async (text, media) => { if (replyFor) await replyToNote(replyFor, text, media); }}
         onClose={() => setReplyFor(null)}
       />
 
@@ -1491,7 +1495,9 @@ function ProgramDetail({ program, programs, exercises, updateExercise, addExerci
   "Coach Reply" under that exercise, and raises an alert so they are told.
 */
 function AthleteNoteWithReply({ ml, athleteFirst, busy, onReply }) {
-  if (!ml || (!ml.notes && !ml.coach_reply)) return null;
+  const replyMedia = mediaList(ml?.coach_reply_media);
+  const replied = !!(ml?.coach_reply || replyMedia.length);
+  if (!ml || (!ml.notes && !replied)) return null;
   return (
     <div style={{ marginTop: 6, padding: "4px 6px", background: "#fff", borderRadius: 4, border: "1px solid #BBF7D0" }}>
       {ml.notes && (
@@ -1500,22 +1506,23 @@ function AthleteNoteWithReply({ ml, athleteFirst, busy, onReply }) {
           <div style={{ fontSize: 12, color: "#18181B", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{ml.notes}</div>
         </>
       )}
-      {ml.coach_reply && (
+      {replied && (
         <div style={{ marginTop: 6, padding: "4px 6px", background: "#EFF6FF", borderRadius: 4, border: "1px solid #BFDBFE" }}>
           <div style={{ fontSize: 9, color: "#1E40AF", fontWeight: 700 }}>
             Your reply{ml.coach_reply_at ? ` · ${new Date(ml.coach_reply_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}` : ""}
           </div>
-          <div style={{ fontSize: 12, color: "#18181B", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{ml.coach_reply}</div>
+          {ml.coach_reply && <div style={{ fontSize: 12, color: "#18181B", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{ml.coach_reply}</div>}
+          <AttachmentDisplay media={replyMedia} size={56} style={{ marginTop: 4 }} />
         </div>
       )}
       <button
         onClick={onReply}
         disabled={busy}
-        style={{ marginTop: 6, padding: "3px 10px", borderRadius: 999, border: "1px solid #2563EB", background: ml.coach_reply ? "#fff" : "#2563EB", color: ml.coach_reply ? "#2563EB" : "#fff", fontSize: 11, fontWeight: 700, cursor: busy ? "default" : "pointer", fontFamily: "inherit" }}
+        style={{ marginTop: 6, padding: "3px 10px", borderRadius: 999, border: "1px solid #2563EB", background: replied ? "#fff" : "#2563EB", color: replied ? "#2563EB" : "#fff", fontSize: 11, fontWeight: 700, cursor: busy ? "default" : "pointer", fontFamily: "inherit" }}
       >
-        {busy ? "Sending…" : ml.coach_reply ? "Edit reply" : `Reply to ${athleteFirst}`}
+        {busy ? "Sending…" : replied ? "Edit reply" : `Reply to ${athleteFirst}`}
       </button>
-      {!ml.coach_reply && <span style={{ marginLeft: 6, fontSize: 10, color: "#71717A" }}>Shows under this exercise for {athleteFirst}, and notifies them</span>}
+      {!replied && <span style={{ marginLeft: 6, fontSize: 10, color: "#71717A" }}>Shows under this exercise for {athleteFirst}, and notifies them</span>}
     </div>
   );
 }

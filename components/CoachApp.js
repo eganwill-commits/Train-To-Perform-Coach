@@ -458,6 +458,10 @@ export default function CoachApp({ onLogout }) {
   const updateVideoSub = useCallback(async (id, updates) => {
     const { error } = await supabase.from("video_submissions").update(updates).eq("id", id);
     if (!error) setVideoSubs(prev => prev.map(v => v.id === id ? { ...v, ...updates } : v));
+    else console.error("updateVideoSub failed", error, updates);
+    // Returned so feedback saves can tell the coach it failed instead of ringing the
+    // athlete's bell for feedback that never landed.
+    return { error };
   }, []);
 
   const deleteVideoSub = useCallback(async (id) => {

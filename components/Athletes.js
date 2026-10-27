@@ -7,6 +7,8 @@ import { baselineColumnLabels } from "../lib/weeks";
 import { MediaLink } from "./VideoPlayer";
 import { canExport, exportForReview, reviewBrief } from "../lib/media";
 import VideoFeedbackModal from "./VideoFeedbackModal";
+import { AttachmentDisplay } from "./MediaAttachments";
+import { withMedia, mediaSummary, mediaList } from "../lib/feedbackMedia";
 import { reviewGroupKey } from "./VideoReview";
 import { fetchCues } from "../lib/cues";
 import { supabase } from "../lib/supabase";
@@ -112,13 +114,14 @@ export default function Athletes({ athletes, programs, addAthlete, updateAthlete
     reloadCues(detail);
   }, [detail]);
 
-  const saveFeedback = async (v, fb) => {
-    await updateVideoSub(v.id, { coach_feedback: fb, status: "reviewed" });
+  const saveFeedback = async (v, fb, media) => {
+    const res = await updateVideoSub(v.id, withMedia({ coach_feedback: fb, status: "reviewed" }, "coach_feedback_media", media, v.coach_feedback_media));
+    if (res?.error) throw res.error;
     const alert_ = await raiseAlertReplacing({
       athleteId: v.athlete_id,
       kind: ALERT_KIND.VIDEO_FEEDBACK,
       title: `Coach feedback on your ${v.exercise_name || "video"}`,
-      body: fb,
+      body: fb || `Sent ${mediaSummary(media)}`,
       refTable: "video_submissions",
       refId: v.id,
       linkPage: ALERT_PAGE.VIDEOS,
@@ -642,10 +645,11 @@ export default function Athletes({ athletes, programs, addAthlete, updateAthlete
                     </div>
                     {/* Coach feedback area */}
                     <div style={{ marginTop: 8 }}>
-                      {v.coach_feedback ? (
+                      {v.coach_feedback || mediaList(v.coach_feedback_media).length ? (
                         <div style={{ padding: "8px 12px", background: "#F0FDF4", borderRadius: 6, border: "1px solid #4ADE80" }}>
                           <div style={{ fontSize: 11, fontWeight: 700, color: "#16A34A", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 2 }}>Your Feedback</div>
-                          <div style={{ fontSize: 13 }}>{v.coach_feedback}</div>
+                          <div style={{ fontSize: 13, whiteSpace: "pre-wrap" }}>{v.coach_feedback}</div>
+                          <AttachmentDisplay media={v.coach_feedback_media} size={64} />
                           {(() => {
                             // Did the athlete actually open it? This is the whole point of
                             // storing read state in the database rather than on their device.
@@ -750,7 +754,7 @@ export default function Athletes({ athletes, programs, addAthlete, updateAthlete
           video={feedbackFor}
           programs={feedbackFor ? (programs || []).filter(p => p.athlete_id === feedbackFor.athlete_id) : []}
           athleteName={(athletes || []).find(a => a.id === feedbackFor?.athlete_id)?.name}
-          onSaveFeedback={async (text) => { if (feedbackFor) await saveFeedback(feedbackFor, text); }}
+          onSaveFeedback={async (text, media) => { if (feedbackFor) await saveFeedback(feedbackFor, text, media); }}
           onCueChanged={() => { if (feedbackFor) reloadCues(feedbackFor.athlete_id); }}
           onClose={() => setFeedbackFor(null)}
         />

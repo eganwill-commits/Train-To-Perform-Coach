@@ -1,6 +1,8 @@
 "use client";
 import { useState, useEffect, useCallback, useRef, Component } from "react";
 import { fetchThread, postComment, markThreadRead, COMMENT_ROLE } from "../lib/comments";
+import { AttachmentComposer, AttachmentDisplay } from "./MediaAttachments";
+import { mediaErrorMessage } from "../lib/feedbackMedia";
 
 /*
   The conversation attached to one exercise in one session.
@@ -23,6 +25,8 @@ function ExerciseThreadInner({
   const [open, setOpen] = useState(!!autoOpen);
   const [items, setItems] = useState([]);
   const [text, setText] = useState("");
+  const [media, setMedia] = useState([]);
+  const [uploading, setUploading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const areaRef = useRef(null);
@@ -56,18 +60,19 @@ function ExerciseThreadInner({
 
   const send = async () => {
     const body = text.trim();
-    if (!body || busy) return;
+    if ((!body && !media.length) || busy || uploading) return;
     setBusy(true);
     try {
       await postComment({
         athleteId, programId, weekLabel, dayLabel, dayId, blockId, exerciseName,
-        authorRole: role, authorName, body,
+        authorRole: role, authorName, body, media,
       });
       setText("");
+      setMedia([]);
       await load();
     } catch (e) {
       // Keep what they wrote on screen.
-      window.alert("That comment could not be sent. Your text is still here - try again.");
+      window.alert(mediaErrorMessage(e) || "That comment could not be sent. Your text is still here - try again.");
     } finally {
       setBusy(false);
     }
@@ -85,7 +90,7 @@ function ExerciseThreadInner({
   };
 
   const label = role === COMMENT_ROLE.COACH
-    ? (items.length ? `Discussion (${items.length})` : "Ask about this exercise")
+    ? (items.length ? `Discussion (${items.length})` : "Add note / question")
     : (items.length ? `Coach discussion (${items.length})` : "Ask your coach");
 
   return (
@@ -128,39 +133,44 @@ function ExerciseThreadInner({
                   </span>
                   <span style={{ fontSize: 10, color: "#A1A1AA" }}>{when(c.created_at)}</span>
                 </div>
-                <div style={{ fontSize: 13, color: "#18181B", whiteSpace: "pre-wrap", wordBreak: "break-word", marginTop: 2 }}>
-                  {c.body}
-                </div>
+                {c.body && (
+                  <div style={{ fontSize: 13, color: "#18181B", whiteSpace: "pre-wrap", wordBreak: "break-word", marginTop: 2 }}>
+                    {c.body}
+                  </div>
+                )}
+                <AttachmentDisplay media={c.media} size={compact ? 64 : 80} style={{ marginTop: 4 }} />
               </div>
             );
           })}
 
-          <textarea
-            ref={areaRef}
-            value={text}
-            onChange={e => setText(e.target.value)}
-            onKeyDown={onKeyDown}
-            placeholder={role === COMMENT_ROLE.COACH
-              ? "Ask about this exercise — they'll get a notification."
-              : "Reply to your coach…"}
-            rows={compact ? 2 : 3}
-            style={{
-              width: "100%", padding: "8px 10px", border: "1px solid #E4E4E7", borderRadius: 8,
-              fontSize: 14, fontFamily: "inherit", lineHeight: 1.5, boxSizing: "border-box",
-              resize: "vertical", color: "#18181B", minHeight: 56,
-            }}
-          />
+          <AttachmentComposer athleteId={athleteId} value={media} onChange={setMedia} onBusyChange={setUploading} compact disabled={busy}>
+            <textarea
+              ref={areaRef}
+              value={text}
+              onChange={e => setText(e.target.value)}
+              onKeyDown={onKeyDown}
+              placeholder={role === COMMENT_ROLE.COACH
+                ? "Note or question on this exercise. They'll get a notification."
+                : "Reply to your coach…"}
+              rows={compact ? 2 : 3}
+              style={{
+                width: "100%", padding: "8px 10px", border: "1px solid #E4E4E7", borderRadius: 8,
+                fontSize: 14, fontFamily: "inherit", lineHeight: 1.5, boxSizing: "border-box",
+                resize: "vertical", color: "#18181B", minHeight: 56,
+              }}
+            />
+          </AttachmentComposer>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 5 }}>
             <button
               onClick={send}
-              disabled={busy || !text.trim()}
+              disabled={busy || uploading || (!text.trim() && !media.length)}
               style={{
                 padding: "6px 14px", background: "#18181B", color: "#fff", border: "none",
                 borderRadius: 6, fontSize: 12, fontWeight: 700, fontFamily: "inherit",
-                cursor: busy || !text.trim() ? "default" : "pointer",
-                opacity: busy || !text.trim() ? 0.4 : 1,
+                cursor: busy || uploading || (!text.trim() && !media.length) ? "default" : "pointer",
+                opacity: busy || uploading || (!text.trim() && !media.length) ? 0.4 : 1,
               }}
-            >{busy ? "Sending…" : role === COMMENT_ROLE.COACH ? "Send question" : "Send"}</button>
+            >{uploading ? "Uploading…" : busy ? "Sending…" : "Send"}</button>
             <span style={{ fontSize: 10, color: "#A1A1AA" }}>{"⌘↵"}</span>
           </div>
         </div>

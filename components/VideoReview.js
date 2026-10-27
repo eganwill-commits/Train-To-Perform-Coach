@@ -7,6 +7,8 @@ import { raiseAlertReplacing, ALERT_KIND, ALERT_PAGE } from "../lib/alerts";
 import { fetchCues } from "../lib/cues";
 import { supabase } from "../lib/supabase";
 import { canExport, exportForReview } from "../lib/media";
+import { AttachmentDisplay } from "./MediaAttachments";
+import { withMedia, mediaSummary, mediaList } from "../lib/feedbackMedia";
 import { explainTempo } from "../lib/tempo";
 import { effortText } from "../lib/logging";
 
@@ -33,7 +35,8 @@ const STATUS = {
   "needs-work": { label: "Needs work", color: "#DC2626", bg: "#FEF2F2" },
 };
 
-const hasFeedback = (v) => !!(v.coach_feedback || "").trim();
+// Photo-only feedback (a marked-up frame, no text) counts as feedback too.
+const hasFeedback = (v) => !!(v.coach_feedback || "").trim() || mediaList(v.coach_feedback_media).length > 0;
 
 // Single clip still untouched. Kept for callers that work clip by clip.
 export function isAwaitingReview(v) {
@@ -240,9 +243,10 @@ export default function VideoReview({ videoSubs, athletes, programs, logs, updat
 
   // Feedback goes on the lead clip (one alert to the athlete), and every other clip in
   // the set is marked reviewed so nothing in the group still reads "Add feedback".
-  const saveFeedback = async (g, fb) => {
+  const saveFeedback = async (g, fb, media) => {
     const v = g.lead;
-    await updateVideoSub(v.id, { coach_feedback: fb, status: "reviewed" });
+    const res = await updateVideoSub(v.id, withMedia({ coach_feedback: fb, status: "reviewed" }, "coach_feedback_media", media, v.coach_feedback_media));
+    if (res?.error) throw res.error;
     await Promise.all(g.clips.filter(c => c.id !== v.id && c.status !== "reviewed").map(c => updateVideoSub(c.id, { status: "reviewed" })));
     markBellRead(g.clips.map(c => c.id));
     flashSaved(g.key);
@@ -250,7 +254,7 @@ export default function VideoReview({ videoSubs, athletes, programs, logs, updat
       athleteId: v.athlete_id,
       kind: ALERT_KIND.VIDEO_FEEDBACK,
       title: `Coach feedback on your ${v.exercise_name || "video"}`,
-      body: fb,
+      body: fb || `Sent ${mediaSummary(media)}`,
       refTable: "video_submissions",
       refId: v.id,
       linkPage: ALERT_PAGE.VIDEOS,
@@ -368,6 +372,7 @@ export default function VideoReview({ videoSubs, athletes, programs, logs, updat
                       <div style={{ padding: "8px 12px", background: "#F0FDF4", borderRadius: 6, border: "1px solid #4ADE80" }}>
                         <div style={{ fontSize: 11, fontWeight: 700, color: "#16A34A", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 2 }}>✓ Feedback added{multi ? ` · covers all ${g.clips.length} clips` : ""}</div>
                         <div style={{ fontSize: 13, whiteSpace: "pre-wrap" }}>{v.coach_feedback}</div>
+                        <AttachmentDisplay media={v.coach_feedback_media} size={72} />
                         {cue && (
                           <div style={{ marginTop: 8, padding: "6px 10px", background: "#FFFBEB", border: "1px solid #FCD34D", borderRadius: 6 }}>
                             <div style={{ fontSize: 10, fontWeight: 700, color: "#B45309", textTransform: "uppercase", letterSpacing: 0.5 }}>Cue on future sessions</div>
@@ -402,7 +407,7 @@ export default function VideoReview({ videoSubs, athletes, programs, logs, updat
         video={feedbackFor?.lead || null}
         programs={feedbackFor ? (programs || []).filter(p => p.athlete_id === feedbackFor.lead.athlete_id) : []}
         athleteName={feedbackFor ? (feedbackFor.lead.athlete_name || nameOf(feedbackFor.lead.athlete_id)) : ""}
-        onSaveFeedback={async (text) => { if (feedbackFor) await saveFeedback(feedbackFor, text); }}
+        onSaveFeedback={async (text, media) => { if (feedbackFor) await saveFeedback(feedbackFor, text, media); }}
         onCueChanged={() => { if (feedbackFor) reloadCues([feedbackFor.lead.athlete_id]); }}
         onClose={() => setFeedbackFor(null)}
       />
