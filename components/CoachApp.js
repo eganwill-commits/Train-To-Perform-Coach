@@ -408,6 +408,7 @@ export default function CoachApp({ onLogout }) {
         description: tp.description || "",
         weeks: newWeeks,
         group_id: groupId,
+        delivery: tp.delivery || "in_person",
       }).select().single();
       if (!newProg.error && newProg.data) {
         setPrograms(prev => [...prev, newProg.data]);

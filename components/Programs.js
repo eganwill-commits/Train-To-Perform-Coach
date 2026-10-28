@@ -54,10 +54,66 @@ function warmupForDay(label) {
   return DAY_WARMUPS.generic;
 }
 
+/*
+  Delivery: where a program is coached. Lives on each program (programs.delivery),
+  not on the athlete, so an athlete can be in person one season and remote the next.
+  Hybrid clients are filed under Remote for now.
+*/
+const DELIVERY = {
+  in_person: { id: "in_person", label: "In Person", color: "#16A34A" },
+  remote: { id: "remote", label: "Remote", color: "#2563EB" },
+};
+const DELIVERY_ORDER = ["in_person", "remote"];
+const DELIVERY_STORAGE_KEY = "t2p_programs_delivery_view";
+const deliveryOf = (p) => (p && DELIVERY[p.delivery] ? p.delivery : "in_person");
+
+function DeliveryToggle({ value, onChange, counts, small }) {
+  return (
+    <div role="tablist" aria-label="Delivery" style={{ display: "inline-flex", gap: 3, background: "#F4F4F5", borderRadius: 8, padding: 3 }}>
+      {DELIVERY_ORDER.map(id => {
+        const d = DELIVERY[id];
+        const active = value === id;
+        return (
+          <button
+            key={id}
+            role="tab"
+            aria-selected={active}
+            onClick={(e) => { e.stopPropagation(); onChange(id); }}
+            style={{
+              padding: small ? "4px 10px" : "7px 16px",
+              borderRadius: 6,
+              border: "none",
+              cursor: "pointer",
+              fontFamily: "inherit",
+              fontSize: small ? 12 : 14,
+              fontWeight: 700,
+              background: active ? "#fff" : "transparent",
+              color: active ? d.color : "#71717A",
+              boxShadow: active ? "0 1px 3px rgba(0,0,0,.12)" : "none",
+            }}
+          >
+            {d.label}{counts ? <span style={{ marginLeft: 6, fontWeight: 600, color: active ? d.color : "#A1A1AA" }}>{counts[id] || 0}</span> : null}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function Programs({ programs, addProgram, updateProgram, deleteProgram, athletes, exercises, updateExercise, addExercise, cats, colors, isMobile, submitDay, unlogDay, logs, groups, setLogs, addGroup, addAthleteToGroup, addSeasonMembership, focusAthleteId, focusTarget, onFocusClear, videoSubs, onOpenVideo, viewAsAthlete, focusProgramId, onFocusProgramDone }) {
   const [modal, setModal] = useState(false);
-  const [form, setForm] = useState({ name: "", selectedAthletes: [], weeks: 4, description: "", group_id: "", trackAsSeason: false, start_date: "" });
+  const [form, setForm] = useState({ name: "", selectedAthletes: [], weeks: 4, description: "", group_id: "", trackAsSeason: false, start_date: "", delivery: "in_person" });
   const [detail, setDetail] = useState(null);
+
+  // In Person / Remote toggle. Remembered per device so the coach lands back where they were.
+  const [deliveryView, setDeliveryViewState] = useState("in_person");
+  useEffect(() => {
+    try { const v = localStorage.getItem(DELIVERY_STORAGE_KEY); if (v && DELIVERY[v]) setDeliveryViewState(v); } catch (e) {}
+  }, []);
+  const setDeliveryView = (v) => {
+    setDeliveryViewState(v);
+    try { localStorage.setItem(DELIVERY_STORAGE_KEY, v); } catch (e) {}
+  };
 
   // Arriving from an alert: open the athlete's program straight away. Prefer the program
   // that actually contains the week the alert names, so an athlete with more than one
@@ -84,7 +140,7 @@ export default function Programs({ programs, addProgram, updateProgram, deletePr
   const [renameOpen, setRenameOpen] = useState(false);
   const [renameVal, setRenameVal] = useState("");
 
-  const openNew = () => { const t = new Date(); const add = ((8 - t.getDay()) % 7) || 7; const nm = new Date(t); nm.setDate(t.getDate() + add); const iso = `${nm.getFullYear()}-${String(nm.getMonth() + 1).padStart(2, "0")}-${String(nm.getDate()).padStart(2, "0")}`; setForm({ name: "", selectedAthletes: [], weeks: 4, description: "", group_id: groups?.[0]?.id || "", trackAsSeason: false, start_date: iso }); setModal(true); };
+  const openNew = () => { const t = new Date(); const add = ((8 - t.getDay()) % 7) || 7; const nm = new Date(t); nm.setDate(t.getDate() + add); const iso = `${nm.getFullYear()}-${String(nm.getMonth() + 1).padStart(2, "0")}-${String(nm.getDate()).padStart(2, "0")}`; setForm({ name: "", selectedAthletes: [], weeks: 4, description: "", group_id: groups?.[0]?.id || "", trackAsSeason: false, start_date: iso, delivery: deliveryView }); setModal(true); };
 
   const toggleAthlete = (id) => {
     setForm(prev => ({
@@ -117,7 +173,7 @@ export default function Programs({ programs, addProgram, updateProgram, deletePr
 
     let lastProg = null;
     for (const athId of targets) {
-      const prog = await addProgram({ name: form.name, athlete_id: athId, description: form.description, weeks: makeWeeks(), group_id: groupId, start_date: form.start_date || null });
+      const prog = await addProgram({ name: form.name, athlete_id: athId, description: form.description, weeks: makeWeeks(), group_id: groupId, start_date: form.start_date || null, delivery: form.delivery || "in_person" });
       if (prog) lastProg = prog;
     }
 
@@ -174,6 +230,7 @@ export default function Programs({ programs, addProgram, updateProgram, deletePr
           // hardcoded April 2026, so a copied program shows week dates months away from
           // the ones baked into its own day labels — and it looks like real data.
           start_date: sourceProgram.start_date || null,
+          delivery: deliveryOf(sourceProgram),
         });
       } else if (mode === "week") {
         const target = findTargetProgram(athId, sourceProgram);
@@ -196,7 +253,7 @@ export default function Programs({ programs, addProgram, updateProgram, deletePr
           // No existing program, create one
           const athName = athletes.find(a => a.id === athId)?.name || "";
           const baseName = sourceProgram.name.replace(/^[^—]*—\s*/, "").trim();
-          await addProgram({ name: `${athName} — ${baseName}`, athlete_id: athId, description: sourceProgram.description || "", weeks: [newWeek], group_id: sourceProgram.group_id || "", start_date: sourceProgram.start_date || null });
+          await addProgram({ name: `${athName} — ${baseName}`, athlete_id: athId, description: sourceProgram.description || "", weeks: [newWeek], group_id: sourceProgram.group_id || "", start_date: sourceProgram.start_date || null, delivery: deliveryOf(sourceProgram) });
         }
       } else if (mode === "day") {
         const target = findTargetProgram(athId, sourceProgram);
@@ -224,7 +281,7 @@ export default function Programs({ programs, addProgram, updateProgram, deletePr
           const baseName = sourceProgram.name.replace(/^[^—]*—\s*/, "").trim();
           const days = [];
           for (let d = 0; d < 4; d++) days.push({ id: uid(), label: ["Mon", "Tue", "Thu", "Fri"][d], blocks: d === dayIndex ? newDay.blocks : [] });
-          await addProgram({ name: `${athName} — ${baseName}`, athlete_id: athId, description: sourceProgram.description || "", weeks: [{ id: uid(), label: srcWeek.label, days }], group_id: sourceProgram.group_id || "", start_date: sourceProgram.start_date || null });
+          await addProgram({ name: `${athName} — ${baseName}`, athlete_id: athId, description: sourceProgram.description || "", weeks: [{ id: uid(), label: srcWeek.label, days }], group_id: sourceProgram.group_id || "", start_date: sourceProgram.start_date || null, delivery: deliveryOf(sourceProgram) });
         }
       }
     }
@@ -251,11 +308,23 @@ export default function Programs({ programs, addProgram, updateProgram, deletePr
     return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
   })();
 
+  // A folder shows under every delivery its copies use (normally just one).
+  const folderDeliveries = (folder) => new Set(folder.programs.map(deliveryOf));
+  const deliveryCounts = DELIVERY_ORDER.reduce((acc, id) => {
+    acc[id] = folders.filter(f => folderDeliveries(f).has(id)).length;
+    return acc;
+  }, {});
+  const visibleFolders = folders.filter(f => folderDeliveries(f).has(deliveryView));
+  const setFolderDelivery = async (folder, value) => {
+    for (const p of folder.programs) if (deliveryOf(p) !== value) await updateProgram(p.id, { delivery: value });
+    setDeliveryView(value);
+  };
+
   const addAthletesToFolder = async (folder, targetIds) => {
     const source = folder.programs[0];
     for (const athId of targetIds) {
       const weeks = reIdWeeks(JSON.parse(JSON.stringify(source?.weeks || [])));
-      await addProgram({ name: folder.name, athlete_id: athId, description: source?.description || "", weeks, group_id: source?.group_id || "", start_date: source?.start_date || null });
+      await addProgram({ name: folder.name, athlete_id: athId, description: source?.description || "", weeks, group_id: source?.group_id || "", start_date: source?.start_date || null, delivery: deliveryOf(source) });
       // Keep Program ↔ Season in sync: if this folder is linked to a season, enroll them too.
       if (source?.group_id && addSeasonMembership) await addSeasonMembership(source.group_id, athId);
     }
@@ -307,7 +376,7 @@ export default function Programs({ programs, addProgram, updateProgram, deletePr
     await updateProgram(ap.id, { weeks });
   };
 
-  if (detail && ap) return <ProgramDetail focusTarget={focusTarget} onFocusClear={onFocusClear} program={ap} programs={programs} exercises={exercises} updateExercise={updateExercise} addExercise={addExercise} cats={cats} colors={colors} addBlock={addBlock} updateBlock={updateBlock} removeBlock={removeBlock} moveBlock={moveBlock} onBack={() => setDetail(null)} athletes={athletes} isMobile={isMobile} submitDay={submitDay} unlogDay={unlogDay} logs={logs || []} copyToAthletes={copyToAthletes} updateProgram={updateProgram} groups={groups} setLogs={setLogs} videoSubs={videoSubs} onOpenVideo={onOpenVideo} onViewAsAthlete={viewAsAthlete ? (a) => viewAsAthlete(a, { programId: ap.id }) : null} />;
+  if (detail && ap) return <ProgramDetail focusTarget={focusTarget} onFocusClear={onFocusClear} program={ap} programs={programs} exercises={exercises} updateExercise={updateExercise} addExercise={addExercise} cats={cats} colors={colors} addBlock={addBlock} updateBlock={updateBlock} removeBlock={removeBlock} moveBlock={moveBlock} onBack={() => { setDeliveryView(deliveryOf(ap)); setDetail(null); }} athletes={athletes} isMobile={isMobile} submitDay={submitDay} unlogDay={unlogDay} logs={logs || []} copyToAthletes={copyToAthletes} updateProgram={updateProgram} groups={groups} setLogs={setLogs} videoSubs={videoSubs} onOpenVideo={onOpenVideo} onViewAsAthlete={viewAsAthlete ? (a) => viewAsAthlete(a, { programId: ap.id }) : null} />;
 
   // ---- Folder detail: the athletes inside one program folder ----
   const activeFolder = folderKey ? folders.find(f => f.key === folderKey) : null;
@@ -323,6 +392,11 @@ export default function Programs({ programs, addProgram, updateProgram, deletePr
             <Btn small variant="secondary" onClick={() => { setRenameVal(activeFolder.name); setRenameOpen(true); }}>Rename</Btn>
             {availableAthletes.length > 0 && <Btn small onClick={() => { setAddAthTargets([]); setAddAthModal(true); }}>+ Add Athletes</Btn>}
           </div>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 12, fontWeight: 600, color: "#71717A" }}>Delivery:</span>
+          <DeliveryToggle small value={folderDeliveries(activeFolder).size === 1 ? deliveryOf(activeFolder.programs[0]) : null} onChange={(v) => setFolderDelivery(activeFolder, v)} />
+          {folderDeliveries(activeFolder).size > 1 && <span style={{ fontSize: 12, color: "#F97316" }}>Mixed. Pick one to set every athlete in this folder.</span>}
         </div>
         <div style={{ fontSize: 13, color: "#71717A", marginBottom: 16 }}>{activeFolder.programs.length} athlete{activeFolder.programs.length !== 1 ? "s" : ""} · {(activeFolder.programs[0]?.weeks || []).length} weeks · each athlete logs their own copy</div>
         <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill, minmax(280px, 1fr))", gap: 12 }}>
@@ -407,9 +481,14 @@ export default function Programs({ programs, addProgram, updateProgram, deletePr
         <h2 style={{ margin: 0, fontSize: isMobile ? 22 : 28, fontFamily: "'Space Mono', monospace" }}>Programs</h2>
         <Btn onClick={openNew} small={isMobile}>+ New</Btn>
       </div>
-      {programs.length === 0 ? <EmptyState icon="▦" title="No programs yet" sub="Create a training program." action="+ New Program" onAction={openNew} /> : (
+      {programs.length > 0 && (
+        <div style={{ marginBottom: 16 }}>
+          <DeliveryToggle value={deliveryView} onChange={setDeliveryView} counts={deliveryCounts} />
+        </div>
+      )}
+      {programs.length === 0 ? <EmptyState icon="▦" title="No programs yet" sub="Create a training program." action="+ New Program" onAction={openNew} /> : visibleFolders.length === 0 ? <EmptyState icon="▦" title={`No ${DELIVERY[deliveryView].label.toLowerCase()} programs`} sub="Create one, or open a program and change its delivery." action="+ New Program" onAction={openNew} /> : (
         <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill, minmax(280px, 1fr))", gap: 12 }}>
-          {folders.map(folder => {
+          {visibleFolders.map(folder => {
             // Single-athlete program → behaves like a normal program card (opens directly)
             if (folder.programs.length === 1) {
               const p = folder.programs[0];
@@ -477,6 +556,10 @@ export default function Programs({ programs, addProgram, updateProgram, deletePr
       <Modal open={modal} onClose={() => setModal(false)} title="New Program">
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           <Input label="Program Name" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="e.g. Off-Season Block 1" />
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6, color: "#18181B" }}>Delivery</div>
+            <DeliveryToggle small value={form.delivery} onChange={(v) => setForm({ ...form, delivery: v })} />
+          </div>
           {athletes.length > 0 && (
             <div>
               <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6, color: "#18181B" }}>Assign to Athletes</div>
@@ -864,7 +947,11 @@ function ProgramDetail({ program, programs, exercises, updateExercise, addExerci
       </div>
       {program.description && <ProgramBrief text={program.description} />}
 
-      {/* Season link */}
+      {/* Delivery + Season link */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
+        <span style={{ fontSize: 12, fontWeight: 600, color: "#71717A" }}>Delivery:</span>
+        <DeliveryToggle small value={deliveryOf(program)} onChange={(v) => { if (v !== deliveryOf(program)) updateProgram(program.id, { delivery: v }); }} />
+      </div>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
         <span style={{ fontSize: 12, fontWeight: 600, color: "#71717A" }}>Season:</span>
         <select
