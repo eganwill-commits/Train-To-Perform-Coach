@@ -19,6 +19,7 @@ import { mediaList, mediaErrorMessage } from "../lib/feedbackMedia";
 import { fetchCues, cuesForBlock } from "../lib/cues";
 import ProgramBrief, { briefSummary } from "./ProgramBrief";
 import { effortOf, effortText } from "../lib/logging";
+import { InsertSessionModal, SaveTemplateModal } from "./SessionLibrary";
 
 /* Local calendar date, not UTC — see the note in AthleteView.js. */
 const localDateISO = () => {
@@ -660,6 +661,10 @@ function ProgramDetail({ program, programs, exercises, updateExercise, addExerci
   const [copyTargets, setCopyTargets] = useState([]);
   const [expandedBlock, setExpandedBlock] = useState(null);
   const [recapSaved, setRecapSaved] = useState(false);
+  // Session Library: insert a saved session into this week, or save a day as one.
+  const [insertOpen, setInsertOpen] = useState(false);
+  const [saveTplDay, setSaveTplDay] = useState(null);
+  const [dayMenu, setDayMenu] = useState(null);
   // One query for every exercise comment on this athlete, grouped by block. A week can
   // hold fifty exercises and a fetch per card would be fifty round trips per render.
   const [commentsByBlock, setCommentsByBlock] = useState({});
@@ -810,6 +815,23 @@ function ProgramDetail({ program, programs, exercises, updateExercise, addExerci
         if (!raised) window.alert("Note saved, but the notification to the athlete could not be sent.");
       }
     } catch (e) { console.error("day note alert failed", e); }
+  };
+
+  /*
+    Remove a whole day from this week. Needed now that sessions can be inserted: without
+    it an inserted day could only be emptied, never taken out. Logs are left alone - the
+    athlete's history is theirs - so a logged day says so before it goes.
+  */
+  const removeDay = async (wi, di, loggedCount) => {
+    const day = programRef.current.weeks?.[wi]?.days?.[di];
+    if (!day) return;
+    const warn = loggedCount > 0
+      ? `\n\n${loggedCount} logged exercise${loggedCount !== 1 ? "s" : ""} for this day stay in the athlete's history, but the session will no longer show in their program.`
+      : "";
+    if (!confirm(`Remove "${day.label}" from this week?${warn}`)) return;
+    const weeks = JSON.parse(JSON.stringify(programRef.current.weeks));
+    weeks[wi].days.splice(di, 1);
+    await updateProgram(programRef.current.id, { weeks });
   };
 
   const ath = athletes.find(a => a.id === program.athlete_id);
@@ -1008,6 +1030,9 @@ function ProgramDetail({ program, programs, exercises, updateExercise, addExerci
           ✗ Missed
         </button>
         {week.status && <span style={{ fontSize: 11, color: "#A1A1AA" }}>Click again to clear</span>}
+        <button onClick={() => setInsertOpen(true)} title="Add a saved session (mobility, recovery…) to this week" style={{ marginLeft: "auto", padding: "4px 12px", borderRadius: 6, border: "1px solid #18181B", background: "#fff", color: "#18181B", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
+          ＋ Insert session
+        </button>
       </div>
       <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fit, minmax(320px, 1fr))", gap: 12 }}>
         {week.days.map((day, di) => {
@@ -1045,6 +1070,15 @@ function ProgramDetail({ program, programs, exercises, updateExercise, addExerci
                 </div>
                 <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                   <button onClick={() => printDay(program, week.label, day, exercises, colors)} style={{ background: "none", border: "1px solid #E4E4E7", borderRadius: 6, cursor: "pointer", padding: "4px 10px", fontSize: 12, color: "#52525B", fontFamily: "inherit", fontWeight: 600 }}>🖨</button>
+                  <div style={{ position: "relative" }}>
+                    <button onClick={() => setDayMenu(dayMenu === day.id ? null : day.id)} title="Session options" style={{ background: "none", border: "1px solid #E4E4E7", borderRadius: 6, cursor: "pointer", padding: "4px 10px", fontSize: 12, color: "#52525B", fontFamily: "inherit", fontWeight: 700 }}>⋯</button>
+                    {dayMenu === day.id && (
+                      <div style={{ position: "absolute", top: "100%", right: 0, marginTop: 4, background: "#fff", border: "1px solid #E4E4E7", borderRadius: 8, boxShadow: "0 4px 16px rgba(0,0,0,.12)", zIndex: 50, overflow: "hidden", minWidth: 170 }}>
+                        <button onClick={() => { setSaveTplDay(day); setDayMenu(null); }} disabled={day.blocks.length === 0} style={{ display: "block", width: "100%", padding: "10px 14px", border: "none", borderBottom: "1px solid #F4F4F5", background: "#fff", cursor: day.blocks.length ? "pointer" : "default", fontFamily: "inherit", fontSize: 13, fontWeight: 600, textAlign: "left", color: day.blocks.length ? "#18181B" : "#A1A1AA" }}>Save as template</button>
+                        <button onClick={() => { setDayMenu(null); removeDay(aw, di, dayLogs.length); }} style={{ display: "block", width: "100%", padding: "10px 14px", border: "none", background: "#fff", cursor: "pointer", fontFamily: "inherit", fontSize: 13, fontWeight: 600, textAlign: "left", color: "#DC2626" }}>Remove day</button>
+                      </div>
+                    )}
+                  </div>
                   <div style={{ position: "relative" }}>
                     <Btn small variant="secondary" onClick={() => setCatPicker(catPicker === day.id ? null : day.id)}>+ Ex</Btn>
                     {catPicker === day.id && (
@@ -1506,6 +1540,9 @@ function ProgramDetail({ program, programs, exercises, updateExercise, addExerci
         onSave={async (text, media) => { if (replyFor) await replyToNote(replyFor, text, media); }}
         onClose={() => setReplyFor(null)}
       />
+
+      <InsertSessionModal open={insertOpen} onClose={() => setInsertOpen(false)} program={program} weekIndex={aw} programs={programs} athletes={athletes} updateProgram={updateProgram} />
+      <SaveTemplateModal open={!!saveTplDay} onClose={() => setSaveTplDay(null)} day={saveTplDay} />
 
       <Modal open={copyOpen} onClose={() => setCopyOpen(false)} title="Copy Programming">
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>

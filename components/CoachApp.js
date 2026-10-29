@@ -233,6 +233,9 @@ export default function CoachApp({ onLogout }) {
   const updateProgram = useCallback(async (id, updates) => {
     const { error } = await supabase.from("programs").update(updates).eq("id", id);
     if (!error) setPrograms(prev => prev.map(p => p.id === id ? { ...p, ...updates } : p));
+    // Callers that need to know (the Session Library reports per program) read this;
+    // everything else ignores the return value exactly as before.
+    return { error };
   }, []);
 
   const deleteProgram = useCallback(async (id) => {
