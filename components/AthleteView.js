@@ -1491,7 +1491,7 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
                           {/* Effort is RIR: clean-form reps left. It means nothing on a conditioning piece or a
                               max test, so those blocks don't ask for it. */}
                           {!spec.isCond && !spec.isTest && (
-                            <label style={{ fontSize: 10, color: "#71717A" }} title="Reps in reserve: how many more clean reps you could have done">RIR (reps left)<input inputMode="decimal" value={effRir} onChange={e => updateResult(block.id, "rir", e.target.value, block, day, week.label)} onBlur={() => flushSave(block, day, week.label)} placeholder={RIR_PLACEHOLDER} style={inputStyle} /></label>
+                            <label style={{ fontSize: 10, color: "#71717A" }} title="Reps in reserve: how many more clean reps you could have done">RIR (reps left)<AutoGrow singleLine value={effRir} onChange={e => updateResult(block.id, "rir", e.target.value, block, day, week.label)} onBlur={() => flushSave(block, day, week.label)} placeholder={RIR_PLACEHOLDER} style={inputStyle} /></label>
                           )}
                         </div>
                         <label style={{ fontSize: 10, color: "#71717A", display: "block", marginTop: 6 }}>Notes<AutoGrow value={effNotes} onChange={e => updateResult(block.id, "notes", e.target.value, block, day, week.label)} onBlur={() => flushSave(block, day, week.label)} placeholder="How did it feel?" style={inputStyle} /></label>
