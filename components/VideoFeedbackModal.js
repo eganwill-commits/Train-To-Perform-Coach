@@ -3,6 +3,7 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { Modal, Btn } from "./ui";
 import { programExercises, findBlock, suggestCue, fetchCues, fetchCueForVideo, saveCueForVideo, removeCue, cueOverlap, detachCueFromExercises } from "../lib/cues";
 import { AttachmentComposer } from "./MediaAttachments";
+import PreviousReview from "./PreviousReview";
 import { mediaList, sameMedia, mediaErrorMessage } from "../lib/feedbackMedia";
 
 /*
@@ -17,7 +18,7 @@ import { mediaList, sameMedia, mediaErrorMessage } from "../lib/feedbackMedia";
 const keyOf = (e) => e.id || `name:${e.name}`;
 const norm = (s) => String(s || "").trim().toLowerCase();
 
-export default function VideoFeedbackModal({ open, video, programs, athleteName, onSaveFeedback, onClose, onCueChanged }) {
+export default function VideoFeedbackModal({ open, video, programs, athleteName, previous, onSaveFeedback, onClose, onCueChanged }) {
   const [step, setStep] = useState("feedback");
   const [text, setText] = useState("");
   const [media, setMedia] = useState([]);
@@ -229,6 +230,7 @@ export default function VideoFeedbackModal({ open, video, programs, athleteName,
           <div style={{ fontSize: 12, color: "#71717A", lineHeight: 1.5 }}>
             {video.exercise_name || "Movement video"}. This is sent to the athlete and rings their bell. Add screenshots or a demo clip if they help. Next you&rsquo;ll approve a short cue that shows on this exercise in later sessions.
           </div>
+          <PreviousReview prev={previous} currentName={video.exercise_name} compact />
           <AttachmentComposer athleteId={video.athlete_id} value={media} onChange={setMedia} onBusyChange={setUploading} disabled={saving}>
             <textarea
               ref={areaRef}
