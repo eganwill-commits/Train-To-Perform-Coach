@@ -3,6 +3,7 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { Card, EmptyState } from "./ui";
 import VideoPlayer, { MediaLink } from "./VideoPlayer";
 import VideoFeedbackModal from "./VideoFeedbackModal";
+import PreviousReview from "./PreviousReview";
 import { raiseAlertReplacing, ALERT_KIND, ALERT_PAGE } from "../lib/alerts";
 import { fetchCues } from "../lib/cues";
 import { supabase } from "../lib/supabase";
@@ -89,15 +90,57 @@ export function pendingReviewCount(videoSubs) {
 const normName = (s) => (s || "").toLowerCase().replace(/[-–—]/g, " ").replace(/\s+/g, " ").trim();
 
 // The prescribed block a clip was filmed from, with the program, week and day around it.
+// The indices place it in the program grid, so the same slot can be found in other weeks.
 function findPrescription(programs, v) {
   if (!v?.block_id) return null;
   for (const p of programs || []) {
     if (p.athlete_id && p.athlete_id !== v.athlete_id) continue;
-    for (const w of p.weeks || []) for (const d of w.days || []) for (const b of d.blocks || []) {
-      if (b.id === v.block_id) return { program: p, week: w, day: d, block: b };
+    const weeks = p.weeks || [];
+    for (let wi = 0; wi < weeks.length; wi++) {
+      const days = weeks[wi].days || [];
+      for (let di = 0; di < days.length; di++) {
+        const blocks = days[di].blocks || [];
+        for (let bi = 0; bi < blocks.length; bi++) {
+          if (blocks[bi].id === v.block_id) return { program: p, week: weeks[wi], day: days[di], block: blocks[bi], wi, di, bi };
+        }
+      }
     }
   }
   return null;
+}
+
+/*
+  The athlete's most recent earlier review of the same thing, for the "Last time" panel.
+
+  First choice is the same slot in the program (same day and block position in an
+  earlier week). That follows a progression even when the exercise changes, e.g. the
+  Friday pistol block going from Elevated Counterweight Pistol Squat to Elevated Pistol
+  Squat. Failing that, the same exercise by library id or by name.
+*/
+export function findPreviousReview(groups, g, programs, logs) {
+  const cur = g.lead;
+  const curRx = findPrescription(programs, cur);
+  const curStart = String(g.clips[0].created_at);
+  const curExId = curRx?.block?.exerciseId;
+  const curName = normName(curRx?.block?.exerciseName || cur.exercise_name);
+
+  let bySlot = null;
+  let byExercise = null;
+  for (const o of groups) { // newest first, so the first hit is the most recent
+    if (o.key === g.key || o.lead.athlete_id !== cur.athlete_id) continue;
+    if (String(o.latest.created_at) >= curStart) continue;
+    const rx = findPrescription(programs, o.lead);
+    if (!bySlot && curRx && rx && rx.program.id === curRx.program.id && rx.di === curRx.di && rx.bi === curRx.bi && rx.wi < curRx.wi) bySlot = { group: o, rx };
+    if (!byExercise) {
+      const exId = rx?.block?.exerciseId;
+      const name = normName(rx?.block?.exerciseName || o.lead.exercise_name);
+      if ((curExId && exId === curExId) || (curName && name === curName)) byExercise = { group: o, rx };
+    }
+    if (bySlot) break;
+  }
+  const hit = bySlot || byExercise;
+  if (!hit) return null;
+  return { group: hit.group, logged: findLogged(logs, hit.group.lead, hit.rx) };
 }
 
 // What the athlete logged for this exercise in that session, if anything.
@@ -204,6 +247,13 @@ export default function VideoReview({ videoSubs, athletes, programs, logs, updat
     if (athleteFilter) list = list.filter(g => g.lead.athlete_id === athleteFilter);
     return list;
   }, [groups, filter, athleteFilter, justSaved, glow]);
+
+  // Last time's review for each group on screen.
+  const previousByKey = useMemo(() => {
+    const m = new Map();
+    shown.forEach(g => m.set(g.key, findPreviousReview(groups, g, programs, logs)));
+    return m;
+  }, [shown, groups, programs, logs]);
 
   const senders = useMemo(() => {
     const ids = Array.from(new Set(all.map(v => v.athlete_id)));
@@ -342,6 +392,8 @@ export default function VideoReview({ videoSubs, athletes, programs, logs, updat
 
                   <ProgramPanel rx={findPrescription(programs, v)} logged={findLogged(logs, v, findPrescription(programs, v))} />
 
+                  <PreviousReview prev={previousByKey.get(g.key)} currentName={v.exercise_name} />
+
                   {asked.length > 0 && <div style={{ fontSize: 13, color: "#1E3A8A", marginTop: 8, padding: "6px 10px", background: "#EFF6FF", borderRadius: 6 }}><b>Asked:</b> {asked.join(" · ")}</div>}
 
                   {/* Every clip in the set. Waiting reviews play inline; done ones stay folded
@@ -407,6 +459,7 @@ export default function VideoReview({ videoSubs, athletes, programs, logs, updat
         video={feedbackFor?.lead || null}
         programs={feedbackFor ? (programs || []).filter(p => p.athlete_id === feedbackFor.lead.athlete_id) : []}
         athleteName={feedbackFor ? (feedbackFor.lead.athlete_name || nameOf(feedbackFor.lead.athlete_id)) : ""}
+        previous={feedbackFor ? findPreviousReview(groups, feedbackFor, programs, logs) : null}
         onSaveFeedback={async (text, media) => { if (feedbackFor) await saveFeedback(feedbackFor, text, media); }}
         onCueChanged={() => { if (feedbackFor) reloadCues([feedbackFor.lead.athlete_id]); }}
         onClose={() => setFeedbackFor(null)}
