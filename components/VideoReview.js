@@ -4,6 +4,7 @@ import { Card, EmptyState } from "./ui";
 import VideoPlayer, { MediaLink } from "./VideoPlayer";
 import VideoFeedbackModal from "./VideoFeedbackModal";
 import PreviousReview from "./PreviousReview";
+import { VideoReplies } from "./ExerciseThread";
 import { raiseAlertReplacing, ALERT_KIND, ALERT_PAGE } from "../lib/alerts";
 import { fetchCues } from "../lib/cues";
 import { supabase } from "../lib/supabase";
@@ -425,6 +426,7 @@ export default function VideoReview({ videoSubs, athletes, programs, logs, updat
                         <div style={{ fontSize: 11, fontWeight: 700, color: "#16A34A", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 2 }}>✓ Feedback added{multi ? ` · covers all ${g.clips.length} clips` : ""}</div>
                         <div style={{ fontSize: 13, whiteSpace: "pre-wrap" }}>{v.coach_feedback}</div>
                         <AttachmentDisplay media={v.coach_feedback_media} size={72} />
+                        <VideoReplies video={v} clips={g.clips} role="coach" authorName="Coach" />
                         {cue && (
                           <div style={{ marginTop: 8, padding: "6px 10px", background: "#FFFBEB", border: "1px solid #FCD34D", borderRadius: 6 }}>
                             <div style={{ fontSize: 10, fontWeight: 700, color: "#B45309", textTransform: "uppercase", letterSpacing: 0.5 }}>Cue on future sessions</div>

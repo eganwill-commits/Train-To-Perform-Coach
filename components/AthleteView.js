@@ -31,7 +31,7 @@ const localDateISO = () => {
 };
 
 import AthleteAlertsBell from "./AthleteAlertsBell";
-import ExerciseThread from "./ExerciseThread";
+import ExerciseThread, { VideoReplies } from "./ExerciseThread";
 import { AttachmentDisplay } from "./MediaAttachments";
 import { mediaList } from "../lib/feedbackMedia";
 import { weekStartFromLabel, weekNumberLabel, currentWeekIndex as weekCurrentIndex, baselineColumnLabels, sessionDate, sessionDateISO as scheduledSessionISO, defaultDayId } from "../lib/weeks";
@@ -387,12 +387,14 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
   };
   // Every exercise comment for this athlete, in one query, grouped by block.
   const [commentsByBlock, setCommentsByBlock] = useState({});
+  const [allComments, setAllComments] = useState([]);
   const reloadComments = useCallback(async () => {
     if (!athlete?.id) return;
     const rows = await fetchAllComments(athlete.id);
     const byBlock = {};
     rows.forEach(c => { (byBlock[c.block_id] = byBlock[c.block_id] || []).push(c); });
     setCommentsByBlock(byBlock);
+    setAllComments(rows);
   }, [athlete?.id]);
   useEffect(() => {
     reloadComments();
@@ -1496,15 +1498,8 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
                         </div>
                         <label style={{ fontSize: 10, color: "#71717A", display: "block", marginTop: 6 }}>Notes<AutoGrow value={effNotes} onChange={e => updateResult(block.id, "notes", e.target.value, block, day, week.label)} onBlur={() => flushSave(block, day, week.label)} placeholder="How did it feel?" style={inputStyle} /></label>
                         {loggedResult && <div style={{ fontSize: 10, color: "#A1A1AA", marginTop: 4 }}>Logged {new Date(loggedResult.date + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}</div>}
-                        {/* The coach answering a note the athlete left here. Shown on the
-                            exercise it belongs to, so the reply sits next to what it is about. */}
-                        {(loggedResult?.coach_reply || mediaList(loggedResult?.coach_reply_media).length > 0) && (
-                          <div style={{ marginTop: 8, padding: "8px 10px", background: "#EFF6FF", borderRadius: 8, border: "1px solid #BFDBFE" }}>
-                            <div style={{ fontSize: 10, fontWeight: 700, color: "#1E40AF", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 2 }}>Coach Reply</div>
-                            {loggedResult.coach_reply && <div style={{ fontSize: 13, color: "#18181B", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{loggedResult.coach_reply}</div>}
-                            <AttachmentDisplay media={loggedResult.coach_reply_media} size={72} />
-                          </div>
-                        )}
+                        {/* The coach's answer to a note left here now sits in the conversation
+                            below, where the athlete can reply to it. */}
                       </div>
 
                       {/* Conversation with the coach about this exercise */}
@@ -1521,7 +1516,11 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
                           authorName={athlete.name}
                           compact
                           autoOpen={focusBlockId === block.id}
-                          preloaded={commentsByBlock[block.id] || []}
+                          names={[block.exerciseName, getSubstitution(block, day.id), ...cuesForBlock(cues, block, getDisplayName(block, day.id)).flatMap(c => c.exercise_names || [])].filter(Boolean)}
+                          comments={allComments}
+                          videos={videoSubs}
+                          logs={logs}
+                          currentLogId={loggedResult?.id}
                           onChanged={reloadComments}
                         />
                       )}
@@ -1584,11 +1583,7 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
                                     {new Date(v.date || v.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
                                   </div>
                                   {(v.coach_feedback || mediaList(v.coach_feedback_media).length > 0) && (
-                                    <div style={{ marginTop: 4, padding: "6px 8px", background: "#fff", borderRadius: 6, border: "1px solid #E4E4E7" }}>
-                                      <div style={{ fontSize: 10, color: "#A1A1AA", textTransform: "uppercase", marginBottom: 2 }}>Coach Feedback</div>
-                                      {v.coach_feedback && <div style={{ fontSize: 12, color: "#18181B", whiteSpace: "pre-wrap" }}>{v.coach_feedback}</div>}
-                                      <AttachmentDisplay media={v.coach_feedback_media} size={64} />
-                                    </div>
+                                    <div style={{ marginTop: 3, fontSize: 11, color: "#15803D", fontWeight: 600 }}>Feedback and replies are in the conversation above ↑</div>
                                   )}
                                 </div>
                               );
@@ -1996,6 +1991,10 @@ function MyVideos({ videoSubs, addVideoSub, deleteVideoSub, athlete, exercises, 
                   {v.coach_feedback && <div style={{ fontSize: 13, color: "#18181B", whiteSpace: "pre-wrap" }}>{v.coach_feedback}</div>}
                   <AttachmentDisplay media={v.coach_feedback_media} size={88} />
                 </div>
+              )}
+              {/* Answer the feedback right here; it also shows on the exercise card. */}
+              {(v.coach_feedback || mediaList(v.coach_feedback_media).length > 0) && (
+                <VideoReplies video={v} role="athlete" authorName={athlete?.name} />
               )}
             </Card>
             </div>

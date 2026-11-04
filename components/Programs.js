@@ -668,6 +668,7 @@ function ProgramDetail({ program, programs, exercises, updateExercise, addExerci
   // One query for every exercise comment on this athlete, grouped by block. A week can
   // hold fifty exercises and a fetch per card would be fifty round trips per render.
   const [commentsByBlock, setCommentsByBlock] = useState({});
+  const [allComments, setAllComments] = useState([]);
   const reloadComments = useCallback(async () => {
     const id = programRef.current?.athlete_id;
     if (!id) return;
@@ -675,6 +676,7 @@ function ProgramDetail({ program, programs, exercises, updateExercise, addExerci
     const byBlock = {};
     rows.forEach(c => { (byBlock[c.block_id] = byBlock[c.block_id] || []).push(c); });
     setCommentsByBlock(byBlock);
+    setAllComments(rows);
   }, []);
   useEffect(() => {
     reloadComments();
@@ -1227,7 +1229,11 @@ function ProgramDetail({ program, programs, exercises, updateExercise, addExerci
                                 role="coach"
                                 authorName="Coach"
                                 compact
-                                preloaded={commentsByBlock[block.id] || []}
+                                names={[block.exerciseName, ...cuesForBlock(videoCues, block, getDisplayName(block)).flatMap(c => c.exercise_names || [])].filter(Boolean)}
+                                comments={allComments}
+                                videos={videoSubs}
+                                logs={logs}
+                                currentLogId={blockLogMap[block.id]?.id}
                                 onChanged={reloadComments}
                               />
                               <BlockVideos videos={videosByBlock[block.id]} onOpen={onOpenVideo} />
@@ -1331,7 +1337,11 @@ function ProgramDetail({ program, programs, exercises, updateExercise, addExerci
                           role="coach"
                           authorName="Coach"
                           compact
-                          preloaded={commentsByBlock[block.id] || []}
+                          names={[block.exerciseName, ...cuesForBlock(videoCues, block, getDisplayName(block)).flatMap(c => c.exercise_names || [])].filter(Boolean)}
+                          comments={allComments}
+                          videos={videoSubs}
+                          logs={logs}
+                          currentLogId={blockLogMap[block.id]?.id}
                           onChanged={reloadComments}
                         />
                         <BlockVideos videos={videosByBlock[block.id]} onOpen={onOpenVideo} />

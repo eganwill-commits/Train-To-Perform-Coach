@@ -5,6 +5,7 @@ import { raiseAlertReplacing, fetchAlertReceipts, ALERT_KIND, ALERT_PAGE } from 
 import { notifyAthlete, fetchPushStatus } from "../lib/push";
 import { baselineColumnLabels } from "../lib/weeks";
 import { MediaLink } from "./VideoPlayer";
+import { VideoReplies } from "./ExerciseThread";
 import { canExport, exportForReview, reviewBrief } from "../lib/media";
 import VideoFeedbackModal from "./VideoFeedbackModal";
 import { AttachmentDisplay } from "./MediaAttachments";
@@ -650,6 +651,7 @@ export default function Athletes({ athletes, programs, addAthlete, updateAthlete
                           <div style={{ fontSize: 11, fontWeight: 700, color: "#16A34A", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 2 }}>Your Feedback</div>
                           <div style={{ fontSize: 13, whiteSpace: "pre-wrap" }}>{v.coach_feedback}</div>
                           <AttachmentDisplay media={v.coach_feedback_media} size={64} />
+                          <VideoReplies video={v} role="coach" authorName="Coach" />
                           {(() => {
                             // Did the athlete actually open it? This is the whole point of
                             // storing read state in the database rather than on their device.

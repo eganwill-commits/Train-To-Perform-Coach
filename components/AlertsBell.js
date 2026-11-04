@@ -292,7 +292,8 @@ export default function AlertsBell({ logs, setLogs, videoSubs, athletes, isMobil
                         <span style={{ fontSize: 11, color: "#A1A1AA" }}>{timeAgo(c.created_at)}</span>
                       </div>
                       <div style={{ fontSize: 13, color: "#52525B", marginTop: 1 }}>
-                        {"💬"} Comment on <strong>{c.exercise_name || "an exercise"}</strong>
+                        {c.video_id ? "🎥" : c.log_id ? "📝" : "💬"} {c.video_id ? "Replied to your video feedback on" : c.log_id ? "Replied about their log on" : "Comment on"} <strong>{c.exercise_name || "an exercise"}</strong>
+                        {(c.week_label || c.day_label) && <span style={{ color: "#A1A1AA" }}> · {[(c.week_label || "").split(/[·—|]/)[0].trim(), c.day_label].filter(Boolean).join(" · ")}</span>}
                       </div>
                       <div style={{ fontSize: 13, color: "#18181B", marginTop: 3, background: "#FAFAFA", border: "1px solid #E4E4E7", borderRadius: 6, padding: "5px 8px", wordBreak: "break-word" }}>
                         {c.body}
