@@ -150,10 +150,22 @@ function findLogged(logs, v, rx) {
   const dl = rx?.day?.label || v.day_label;
   const exId = rx?.block?.exerciseId;
   const names = [v.exercise_name, rx?.block?.exerciseName].filter(Boolean).map(normName);
-  return (logs || []).find(l =>
+  const hits = (logs || []).filter(l =>
     l.athlete_id === v.athlete_id && l.week_label === wl && l.day_label === dl &&
     ((exId && l.exercise_id === exId) || names.includes(normName(l.exercise_name)))
-  ) || null;
+  );
+  if (!hits.length) return null;
+  /*
+    One exercise in one session can have more than one log row (a save from the phone and
+    another from a second tap). Taking the first one showed numbers but silently dropped the
+    athlete's note when the note sat on the other row - "No 50 lb db" never reached review.
+    Use the most recent row for the numbers and keep every distinct note.
+  */
+  const at = (l) => new Date(l.logged_at || (l.date ? l.date + "T12:00:00" : 0)).getTime() || 0;
+  hits.sort((a, b) => at(b) - at(a));
+  const withNumbers = hits.find(l => l.load || l.reps || l.sets) || hits[0];
+  const notes = [...new Set(hits.map(l => (l.notes || "").trim()).filter(Boolean))];
+  return { ...withNumbers, notes: notes.join("\n") };
 }
 
 function ProgramPanel({ rx, logged }) {
@@ -196,7 +208,12 @@ function ProgramPanel({ rx, logged }) {
         {logged ? (
           <>
             <span style={{ fontWeight: 700, color: "#18181B" }}>{loggedLine || "Logged, no numbers entered"}</span>
-            {(logged.notes || "").trim() && <div style={{ color: "#52525B", marginTop: 3, fontStyle: "italic" }}>"{logged.notes.trim()}"</div>}
+            {(logged.notes || "").trim() && (
+              <div style={{ marginTop: 4, padding: "5px 8px", background: "#F4F4F5", border: "1px solid #E4E4E7", borderRadius: 6 }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: "#71717A", textTransform: "uppercase", letterSpacing: 0.4 }}>Athlete's log note</div>
+                <div style={{ color: "#18181B", marginTop: 2, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{logged.notes.trim()}</div>
+              </div>
+            )}
           </>
         ) : <span style={{ color: "#A1A1AA" }}>Nothing logged for this exercise yet</span>}
       </div>
