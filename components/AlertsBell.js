@@ -68,6 +68,12 @@ export default function AlertsBell({ logs, setLogs, videoSubs, athletes, isMobil
   // Brief confirmation left in place of a note that was just handled: { [logId]: "replied" | "done" }.
   const [handled, setHandled] = useState({});
   const [showReplied, setShowReplied] = useState(false);
+  // Editing a reply already sent, from the "Replied this week" list.
+  const [editOpen, setEditOpen] = useState(null); // log id
+  const [editText, setEditText] = useState("");
+  const [editSaving, setEditSaving] = useState(false);
+  const [editError, setEditError] = useState("");
+  const [editSaved, setEditSaved] = useState(null); // log id, for the confirmation flash
   const since = new Date(Date.now() - LOOKBACK_DAYS * 86400000).toISOString();
   const isRead = (table, id) => readKeys.has(`${table}:${id}`);
 
@@ -182,6 +188,27 @@ export default function AlertsBell({ logs, setLogs, videoSubs, athletes, isMobil
       setReplyError("Reply could not be saved. Try again.");
     }
     setReplySending(false);
+  };
+
+  // Same save path as a first reply: updates the log row and re-notifies the athlete
+  // (bell and phone), so a changed reply is never sitting there unseen.
+  const saveEdit = async (l) => {
+    if (editSaving || !editText.trim()) return;
+    setEditSaving(true);
+    setEditError("");
+    try {
+      const { row, notified } = await saveNoteReply(l, editText, l.coach_reply_media);
+      if (row && setLogs) setLogs(prev => prev.map(x => (x.id === row.id ? row : x)));
+      setEditOpen(null);
+      setEditText("");
+      setEditSaved(l.id);
+      setTimeout(() => setEditSaved(id => (id === l.id ? null : id)), 2500);
+      if (!notified) window.alert("Reply updated, but the athlete could not be notified.");
+    } catch (e) {
+      console.error("bell edit reply failed", e);
+      setEditError("Reply could not be saved. Try again.");
+    }
+    setEditSaving(false);
   };
 
   const noReplyNeeded = (l) => {
@@ -432,15 +459,47 @@ export default function AlertsBell({ logs, setLogs, videoSubs, athletes, isMobil
                 <button onClick={() => setShowReplied(v => !v)} style={{ width: "100%", textAlign: "left", padding: "10px 16px", background: "none", border: "none", cursor: "pointer", fontFamily: "inherit", fontSize: 12, fontWeight: 700, color: "#15803D" }}>
                   {"✓"} Replied this week ({recentReplies.length}) {showReplied ? "▴" : "▾"}
                 </button>
-                {showReplied && recentReplies.map(l => (
-                  <div key={"rr-" + l.id} onClick={() => { if (onNavigate) { onNavigate(l.athlete_id, "programs", { weekLabel: l.week_label, dayLabel: l.day_label, logId: l.id }); setOpen(false); } }} style={{ padding: "8px 16px 10px", borderTop: "1px solid #F4F4F5", cursor: onNavigate ? "pointer" : "default" }}>
+                {showReplied && recentReplies.map(l => {
+                  const editing = editOpen === l.id;
+                  const goView = () => { if (onNavigate) { onNavigate(l.athlete_id, "programs", { weekLabel: l.week_label, dayLabel: l.day_label, logId: l.id }); setOpen(false); } };
+                  return (
+                  <div key={"rr-" + l.id} style={{ padding: "8px 16px 10px", borderTop: "1px solid #F4F4F5", background: editSaved === l.id ? "#F0FDF4" : "transparent" }}>
                     <div style={{ fontSize: 12, color: "#52525B" }}>
                       <strong>{l.athlete_name || getAthleteName(l.athlete_id)}</strong> · {l.exercise_name || "Exercise"} <span style={{ color: "#A1A1AA" }}>· replied {timeAgo(l.coach_reply_at)}</span>
                     </div>
-                    <div style={{ fontSize: 12, color: "#71717A", marginTop: 2, fontStyle: "italic", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>"{(l.notes || "").trim()}"</div>
-                    <div style={{ fontSize: 12, color: "#1E3A8A", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>You: {l.coach_reply}</div>
+                    <div style={{ fontSize: 12, color: "#71717A", marginTop: 2, fontStyle: "italic", wordBreak: "break-word" }}>"{(l.notes || "").trim()}"</div>
+                    {editing ? (
+                      <div style={{ marginTop: 4 }}>
+                        <textarea
+                          autoFocus
+                          value={editText}
+                          onChange={e => setEditText(e.target.value)}
+                          onKeyDown={e => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); saveEdit(l); } }}
+                          rows={3}
+                          style={{ width: "100%", boxSizing: "border-box", padding: "6px 8px", border: "1px solid #93C5FD", borderRadius: 6, fontSize: 16, fontFamily: "inherit", resize: "vertical" }}
+                        />
+                        {editError && <div style={{ fontSize: 12, color: "#DC2626", marginTop: 2 }}>{editError}</div>}
+                        <div style={{ display: "flex", gap: 8, marginTop: 4, alignItems: "center" }}>
+                          <button onClick={() => saveEdit(l)} disabled={editSaving || !editText.trim()} style={{ padding: "5px 12px", background: "#2563EB", color: "#fff", border: "none", borderRadius: 999, fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", opacity: editSaving || !editText.trim() ? 0.5 : 1 }}>{editSaving ? "Saving…" : "Update reply"}</button>
+                          <button onClick={() => { setEditOpen(null); setEditText(""); setEditError(""); }} disabled={editSaving} style={{ background: "none", border: "none", color: "#71717A", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>Cancel</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <div style={{ fontSize: 12, color: "#1E3A8A", marginTop: 2, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>You: {l.coach_reply}</div>
+                        <div style={{ display: "flex", gap: 12, marginTop: 4, alignItems: "center" }}>
+                          {editSaved === l.id ? (
+                            <span style={{ fontSize: 12, fontWeight: 700, color: "#15803D" }}>{"✓"} Updated · {(l.athlete_name || "").split(" ")[0] || "athlete"} notified</span>
+                          ) : (
+                            <button onClick={() => { setEditOpen(l.id); setEditText(l.coach_reply || ""); setEditError(""); }} style={{ background: "none", border: "none", padding: 0, fontSize: 12, color: "#2563EB", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Edit reply</button>
+                          )}
+                          {onNavigate && <button onClick={goView} style={{ background: "none", border: "none", padding: 0, fontSize: 12, color: "#71717A", fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>View session {"→"}</button>}
+                        </div>
+                      </>
+                    )}
                   </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
