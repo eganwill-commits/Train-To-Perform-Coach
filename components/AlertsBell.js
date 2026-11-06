@@ -17,6 +17,32 @@ import { saveNoteReply } from "../lib/noteReplies";
 */
 const COACH_ID = "coach";
 const LOOKBACK_DAYS = 21;
+const PAGE = 1000;
+
+/*
+  Every dismissal the bell needs to know about.
+
+  This used to be one unbounded select. Supabase caps a response at 1,000 rows, so once
+  the table passed 1,000 dismissals the newest ones were silently cut off: a note the
+  coach replied to or cleared came straight back on the next 15-second refresh, as if
+  nothing had been saved. Only alerts inside the lookback window can be shown, and an
+  alert can only be dismissed after it was created, so dismissals older than the window
+  are never needed. The rest are paged so no cap can drop them again.
+*/
+async function fetchReadKeys(since) {
+  const keys = new Set();
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await supabase.from("coach_alert_reads")
+      .select("source_table,source_id")
+      .eq("coach_id", COACH_ID)
+      .gte("read_at", since)
+      .order("read_at", { ascending: true })
+      .range(from, from + PAGE - 1);
+    if (error) return { error };
+    (data || []).forEach(r => keys.add(`${r.source_table}:${r.source_id}`));
+    if (!data || data.length < PAGE) return { keys };
+  }
+}
 
 // Stable key for a day's worth of logs, which are alerted as one grouped entry.
 const dayKey = (l) => `${l.athlete_id}|${l.week_label || ""}|${l.day_label || ""}`;
@@ -25,6 +51,9 @@ export default function AlertsBell({ logs, setLogs, videoSubs, athletes, isMobil
   const [open, setOpen] = useState(false);
   // Set of "<source_table>:<source_id>" the coach has already dismissed.
   const [readKeys, setReadKeys] = useState(() => new Set());
+  // Dismissals made in this session. A refresh that started before the write landed
+  // would otherwise briefly bring the alert back, so these are always kept.
+  const localReads = useRef(new Set());
   const [unreadMsgs, setUnreadMsgs] = useState([]);
   const [recentNotes, setRecentNotes] = useState([]);
   // Questions and replies an athlete wrote on an exercise card. These were never in
@@ -53,14 +82,14 @@ export default function AlertsBell({ logs, setLogs, videoSubs, athletes, isMobil
       const [msgRes, noteRes, readRes, comRes] = await Promise.all([
         supabase.from("messages").select("*").eq("sender_role", "athlete").is("read_at", null).order("created_at", { ascending: false }).limit(10),
         supabase.from("athlete_notes").select("*").eq("author_role", "athlete").gt("created_at", since).order("created_at", { ascending: false }).limit(30),
-        supabase.from("coach_alert_reads").select("source_table,source_id").eq("coach_id", COACH_ID),
+        fetchReadKeys(since),
         supabase.from("exercise_comments").select("*").eq("author_role", "athlete").is("read_at", null).gt("created_at", since).order("created_at", { ascending: false }).limit(30),
       ]);
       if (comRes.error) console.error("alerts: exercise comments", comRes.error); else setAthleteComments(comRes.data || []);
       if (msgRes.error) console.error("alerts: messages", msgRes.error); else setUnreadMsgs(msgRes.data || []);
       if (noteRes.error) console.error("alerts: notes", noteRes.error); else setRecentNotes(noteRes.data || []);
       if (readRes.error) console.error("alerts: reads", readRes.error);
-      else setReadKeys(new Set((readRes.data || []).map(r => `${r.source_table}:${r.source_id}`)));
+      else setReadKeys(new Set([...readRes.keys, ...localReads.current]));
     };
     pull();
     const iv = setInterval(pull, 15000);
@@ -68,11 +97,22 @@ export default function AlertsBell({ logs, setLogs, videoSubs, athletes, isMobil
   }, [since]);
 
   // Dismiss one alert, durably. Optimistic so the list responds immediately.
+  const markLocal = (keys) => {
+    keys.forEach(k => localReads.current.add(k));
+    setReadKeys(prev => { const next = new Set(prev); keys.forEach(k => next.add(k)); return next; });
+  };
   const dismiss = async (table, id) => {
-    setReadKeys(prev => new Set(prev).add(`${table}:${id}`));
+    const key = `${table}:${id}`;
+    markLocal([key]);
     const { error } = await supabase.from("coach_alert_reads")
       .upsert({ coach_id: COACH_ID, source_table: table, source_id: String(id) }, { onConflict: "coach_id,source_table,source_id" });
-    if (error) console.error("dismiss alert failed", error);
+    if (error) {
+      console.error("dismiss alert failed", error);
+      // Put it back so the bell never claims something was cleared when it was not.
+      localReads.current.delete(key);
+      setReadKeys(prev => { const next = new Set(prev); next.delete(key); return next; });
+      window.alert("That alert could not be cleared. Check your connection and try again.");
+    }
   };
 
   const getAthleteName = (id) => (athletes || []).find(a => a.id === id)?.name || "Unknown";
@@ -132,7 +172,7 @@ export default function AlertsBell({ logs, setLogs, videoSubs, athletes, isMobil
     setReplyError("");
     try {
       const { row, notified } = await saveNoteReply(l, replyText);
-      setReadKeys(prev => new Set(prev).add(`logs:${l.id}`));
+      markLocal([`logs:${l.id}`]);
       if (row && setLogs) setLogs(prev => prev.map(x => (x.id === row.id ? row : x)));
       setReplyOpen(null);
       setReplyText("");
@@ -163,11 +203,7 @@ export default function AlertsBell({ logs, setLogs, videoSubs, athletes, isMobil
       ...freshComments.map(c => ({ source_table: "exercise_comments", source_id: String(c.id) })),
       ...freshNotes.map(n => ({ source_table: "athlete_notes", source_id: String(n.id) })),
     ].map(r => ({ coach_id: COACH_ID, ...r }));
-    setReadKeys(prev => {
-      const next = new Set(prev);
-      rows.forEach(r => next.add(`${r.source_table}:${r.source_id}`));
-      return next;
-    });
+    markLocal(rows.map(r => `${r.source_table}:${r.source_id}`));
     setOpen(false);
     if (rows.length) {
       const { error } = await supabase.from("coach_alert_reads")
