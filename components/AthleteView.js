@@ -1516,7 +1516,8 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
                           authorName={athlete.name}
                           compact
                           autoOpen={focusBlockId === block.id}
-                          names={[block.exerciseName, getSubstitution(block, day.id), ...cuesForBlock(cues, block, getDisplayName(block, day.id)).flatMap(c => c.exercise_names || [])].filter(Boolean)}
+                          names={[block.exerciseName, getSubstitution(block, day.id)].filter(Boolean)}
+                          relatedNames={cuesForBlock(cues, block, getDisplayName(block, day.id)).flatMap(c => c.exercise_names || [])}
                           comments={allComments}
                           videos={videoSubs}
                           logs={logs}
