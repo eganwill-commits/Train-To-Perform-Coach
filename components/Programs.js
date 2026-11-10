@@ -1229,7 +1229,8 @@ function ProgramDetail({ program, programs, exercises, updateExercise, addExerci
                                 role="coach"
                                 authorName="Coach"
                                 compact
-                                names={[block.exerciseName, ...cuesForBlock(videoCues, block, getDisplayName(block)).flatMap(c => c.exercise_names || [])].filter(Boolean)}
+                                names={[block.exerciseName].filter(Boolean)}
+                                relatedNames={cuesForBlock(videoCues, block, getDisplayName(block)).flatMap(c => c.exercise_names || [])}
                                 comments={allComments}
                                 videos={videoSubs}
                                 logs={logs}
@@ -1337,7 +1338,8 @@ function ProgramDetail({ program, programs, exercises, updateExercise, addExerci
                           role="coach"
                           authorName="Coach"
                           compact
-                          names={[block.exerciseName, ...cuesForBlock(videoCues, block, getDisplayName(block)).flatMap(c => c.exercise_names || [])].filter(Boolean)}
+                          names={[block.exerciseName].filter(Boolean)}
+                                relatedNames={cuesForBlock(videoCues, block, getDisplayName(block)).flatMap(c => c.exercise_names || [])}
                           comments={allComments}
                           videos={videoSubs}
                           logs={logs}

@@ -197,7 +197,7 @@ function Topic({ t, role, athleteId, here, replyOpen, onReply, onCancel, onSend,
 
 function ExerciseThreadInner({
   athleteId, programId, weekLabel, dayLabel, dayId, blockId, exerciseName,
-  names, role, authorName, compact, autoOpen,
+  names, relatedNames, role, authorName, compact, autoOpen,
   // Every comment, video and log for this athlete, already loaded by the parent in one
   // query each. The thread picks out this movement's share; fifty cards on a week must
   // not mean fifty round trips.
@@ -207,9 +207,9 @@ function ExerciseThreadInner({
   const coach = role === COMMENT_ROLE.COACH;
   const allNames = useMemo(() => [exerciseName, ...(names || [])].filter(Boolean), [exerciseName, names]);
   const { current, earlier } = useMemo(() => buildMovementTopics({
-    athleteId, blockId, names: allNames, weekLabel, dayLabel,
+    athleteId, blockId, names: allNames, relatedNames, weekLabel, dayLabel,
     comments, videos, logs, currentLogId,
-  }), [athleteId, blockId, allNames, weekLabel, dayLabel, comments, videos, logs, currentLogId]);
+  }), [athleteId, blockId, allNames, relatedNames, weekLabel, dayLabel, comments, videos, logs, currentLogId]);
 
   const unreadNow = unreadIn(current, role);
   const unreadEarlier = unreadIn(earlier, role);
