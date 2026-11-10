@@ -313,7 +313,7 @@ export default function VideoReview({ videoSubs, athletes, programs, logs, updat
   // the set is marked reviewed so nothing in the group still reads "Add feedback".
   const saveFeedback = async (g, fb, media) => {
     const v = g.lead;
-    const res = await updateVideoSub(v.id, withMedia({ coach_feedback: fb, status: "reviewed" }, "coach_feedback_media", media, v.coach_feedback_media));
+    const res = await updateVideoSub(v.id, withMedia({ coach_feedback: fb, coach_feedback_at: new Date().toISOString(), status: "reviewed" }, "coach_feedback_media", media, v.coach_feedback_media));
     if (res?.error) throw res.error;
     await Promise.all(g.clips.filter(c => c.id !== v.id && c.status !== "reviewed").map(c => updateVideoSub(c.id, { status: "reviewed" })));
     markBellRead(g.clips.map(c => c.id));

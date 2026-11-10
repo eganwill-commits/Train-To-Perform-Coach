@@ -171,7 +171,7 @@ function Topic({ t, role, athleteId, here, replyOpen, onReply, onCancel, onSend,
       )}
 
       {t.replies.map(c => (
-        <Bubble key={c.id} who={nameOf(c)} at={when(c.created_at)} tone={c.author_role === COMMENT_ROLE.COACH ? "coach" : "athlete"}>
+        <Bubble key={c.id} who={nameOf(c)} at={when(c.created_at) + (c.edited_at ? " · edited" : "")} tone={c.author_role === COMMENT_ROLE.COACH ? "coach" : "athlete"}>
           <Text>{c.body}</Text>
           <AttachmentDisplay media={c.media} size={compact ? 64 : 80} style={{ marginTop: 4 }} />
         </Bubble>
@@ -371,7 +371,7 @@ function VideoRepliesInner({ video, clips, role, authorName, compact, onChanged 
   return (
     <div style={{ marginTop: 6 }}>
       {rows.map(c => (
-        <Bubble key={c.id} who={c.author_role === role ? "You" : (c.author_name || (c.author_role === COMMENT_ROLE.COACH ? "Coach" : "Athlete"))} at={when(c.created_at)} tone={c.author_role === COMMENT_ROLE.COACH ? "coach" : "athlete"}>
+        <Bubble key={c.id} who={c.author_role === role ? "You" : (c.author_name || (c.author_role === COMMENT_ROLE.COACH ? "Coach" : "Athlete"))} at={when(c.created_at) + (c.edited_at ? " · edited" : "")} tone={c.author_role === COMMENT_ROLE.COACH ? "coach" : "athlete"}>
           <Text>{c.body}</Text>
           <AttachmentDisplay media={c.media} size={compact ? 64 : 80} style={{ marginTop: 4 }} />
         </Bubble>
