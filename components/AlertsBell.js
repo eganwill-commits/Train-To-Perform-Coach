@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "../lib/supabase";
 import { saveNoteReply } from "../lib/noteReplies";
+import { fetchCoachComments, buildYourReplies, saveReplyEdit, REPLY_KIND } from "../lib/yourReplies";
 
 /*
   Read state lives in `coach_alert_reads`, not localStorage.
@@ -17,6 +18,7 @@ import { saveNoteReply } from "../lib/noteReplies";
 */
 const COACH_ID = "coach";
 const LOOKBACK_DAYS = 21;
+const REPLIES_DAYS = 14;
 const PAGE = 1000;
 
 /*
@@ -47,7 +49,7 @@ async function fetchReadKeys(since) {
 // Stable key for a day's worth of logs, which are alerted as one grouped entry.
 const dayKey = (l) => `${l.athlete_id}|${l.week_label || ""}|${l.day_label || ""}`;
 
-export default function AlertsBell({ logs, setLogs, videoSubs, athletes, isMobile, onNavigate }) {
+export default function AlertsBell({ logs, setLogs, videoSubs, setVideoSubs, athletes, isMobile, onNavigate }) {
   const [open, setOpen] = useState(false);
   // Set of "<source_table>:<source_id>" the coach has already dismissed.
   const [readKeys, setReadKeys] = useState(() => new Set());
@@ -69,12 +71,16 @@ export default function AlertsBell({ logs, setLogs, videoSubs, athletes, isMobil
   const [handled, setHandled] = useState({});
   const [showReplied, setShowReplied] = useState(false);
   // Editing a reply already sent, from the "Replied this week" list.
-  const [editOpen, setEditOpen] = useState(null); // log id
+  const [editOpen, setEditOpen] = useState(null); // reply key
   const [editText, setEditText] = useState("");
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState("");
-  const [editSaved, setEditSaved] = useState(null); // log id, for the confirmation flash
+  const [editSaved, setEditSaved] = useState(null); // reply key, for the confirmation flash
+  // The coach's own replies in exercise conversations, for "Your replies".
+  const [coachComments, setCoachComments] = useState([]);
   const since = new Date(Date.now() - LOOKBACK_DAYS * 86400000).toISOString();
+  // "Your replies" looks back two weeks: long enough to find last week's answers.
+  const repliesSince = new Date(Date.now() - REPLIES_DAYS * 86400000).toISOString();
   const isRead = (table, id) => readKeys.has(`${table}:${id}`);
 
   useEffect(() => {
@@ -85,6 +91,7 @@ export default function AlertsBell({ logs, setLogs, videoSubs, athletes, isMobil
 
   useEffect(() => {
     const pull = async () => {
+      fetchCoachComments(repliesSince).then(setCoachComments);
       const [msgRes, noteRes, readRes, comRes] = await Promise.all([
         supabase.from("messages").select("*").eq("sender_role", "athlete").is("read_at", null).order("created_at", { ascending: false }).limit(10),
         supabase.from("athlete_notes").select("*").eq("author_role", "athlete").gt("created_at", since).order("created_at", { ascending: false }).limit(30),
@@ -161,11 +168,8 @@ export default function AlertsBell({ logs, setLogs, videoSubs, athletes, isMobil
   const openNotes = newLogNotes.filter(l => !handled[l.id]);
   const totalNew = logAlerts.length + newVideos.length + unreadMsgs.length + freshNotes.length + openNotes.length + freshComments.length;
 
-  // Replies sent in the last week, newest first, so the coach can see what was answered.
-  const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString();
-  const recentReplies = (logs || [])
-    .filter(l => (l.coach_reply || "").trim() && l.coach_reply_at && l.coach_reply_at > weekAgo)
-    .sort((a, b) => String(b.coach_reply_at).localeCompare(String(a.coach_reply_at)));
+  // Everything you have answered in the last two weeks, newest first, all editable.
+  const yourReplies = buildYourReplies({ logs, videos: videoSubs, comments: coachComments, since: repliesSince });
 
   const flashHandled = (id, kind) => {
     setHandled(h => ({ ...h, [id]: kind }));
@@ -190,19 +194,23 @@ export default function AlertsBell({ logs, setLogs, videoSubs, athletes, isMobil
     setReplySending(false);
   };
 
-  // Same save path as a first reply: updates the log row and re-notifies the athlete
-  // (bell and phone), so a changed reply is never sitting there unseen.
-  const saveEdit = async (l) => {
+  // Every kind of reply saves through its own path and re-notifies the athlete
+  // (bell and phone), so a changed answer is never sitting there unseen.
+  const saveEdit = async (item) => {
     if (editSaving || !editText.trim()) return;
     setEditSaving(true);
     setEditError("");
     try {
-      const { row, notified } = await saveNoteReply(l, editText, l.coach_reply_media);
-      if (row && setLogs) setLogs(prev => prev.map(x => (x.id === row.id ? row : x)));
+      const { row, notified } = await saveReplyEdit(item, editText);
+      if (row) {
+        if (item.kind === REPLY_KIND.LOG && setLogs) setLogs(prev => prev.map(x => (x.id === row.id ? row : x)));
+        if (item.kind === REPLY_KIND.VIDEO && setVideoSubs) setVideoSubs(prev => prev.map(x => (x.id === row.id ? row : x)));
+        if (item.kind === REPLY_KIND.COMMENT) setCoachComments(prev => prev.map(x => (x.id === row.id ? row : x)));
+      }
       setEditOpen(null);
       setEditText("");
-      setEditSaved(l.id);
-      setTimeout(() => setEditSaved(id => (id === l.id ? null : id)), 2500);
+      setEditSaved(item.key);
+      setTimeout(() => setEditSaved(k => (k === item.key ? null : k)), 2500);
       if (!notified) window.alert("Reply updated, but the athlete could not be notified.");
     } catch (e) {
       console.error("bell edit reply failed", e);
@@ -454,46 +462,55 @@ export default function AlertsBell({ logs, setLogs, videoSubs, athletes, isMobil
             )}
 
             {/* What you have already answered, so nothing is replied to twice or lost. */}
-            {recentReplies.length > 0 && (
+            {yourReplies.length > 0 && (
               <div style={{ borderTop: "1px solid #E4E4E7", background: "#FAFAFA" }}>
                 <button onClick={() => setShowReplied(v => !v)} style={{ width: "100%", textAlign: "left", padding: "10px 16px", background: "none", border: "none", cursor: "pointer", fontFamily: "inherit", fontSize: 12, fontWeight: 700, color: "#15803D" }}>
-                  {"✓"} Replied this week ({recentReplies.length}) {showReplied ? "▴" : "▾"}
+                  {"✓"} Your replies ({yourReplies.length}) {showReplied ? "▴" : "▾"}
                 </button>
-                {showReplied && recentReplies.map(l => {
-                  const editing = editOpen === l.id;
-                  const goView = () => { if (onNavigate) { onNavigate(l.athlete_id, "programs", { weekLabel: l.week_label, dayLabel: l.day_label, logId: l.id }); setOpen(false); } };
+                {showReplied && yourReplies.map(item => {
+                  const editing = editOpen === item.key;
+                  const name = item.athleteName || getAthleteName(item.athleteId);
+                  const where = [(item.weekLabel || "").split(/[·—|]/)[0].trim(), (item.dayLabel || "").split("·").pop().trim()].filter(Boolean).join(" · ");
+                  const goView = () => {
+                    if (!onNavigate) return;
+                    if (item.kind === REPLY_KIND.VIDEO) onNavigate(null, "videos", { videoId: item.row.id });
+                    else onNavigate(item.athleteId, "programs", { weekLabel: item.weekLabel, dayLabel: item.dayLabel, logId: item.kind === REPLY_KIND.LOG ? item.row.id : undefined, blockId: item.kind === REPLY_KIND.COMMENT ? item.row.block_id : undefined });
+                    setOpen(false);
+                  };
+                  const kindLabel = item.kind === REPLY_KIND.VIDEO ? "🎥 Video feedback" : item.kind === REPLY_KIND.LOG ? "📝 Reply to note" : "💬 " + item.contextLabel;
                   return (
-                  <div key={"rr-" + l.id} style={{ padding: "8px 16px 10px", borderTop: "1px solid #F4F4F5", background: editSaved === l.id ? "#F0FDF4" : "transparent" }}>
+                  <div key={item.key} style={{ padding: "8px 16px 10px", borderTop: "1px solid #F4F4F5", background: editSaved === item.key ? "#F0FDF4" : "transparent" }}>
                     <div style={{ fontSize: 12, color: "#52525B" }}>
-                      <strong>{l.athlete_name || getAthleteName(l.athlete_id)}</strong> · {l.exercise_name || "Exercise"} <span style={{ color: "#A1A1AA" }}>· replied {timeAgo(l.coach_reply_at)}</span>
+                      <strong>{name}</strong> · {item.exercise || "Exercise"} <span style={{ color: "#A1A1AA" }}>· {timeAgo(new Date(item.at).toISOString())}</span>
                     </div>
-                    <div style={{ fontSize: 12, color: "#71717A", marginTop: 2, fontStyle: "italic", wordBreak: "break-word" }}>"{(l.notes || "").trim()}"</div>
+                    <div style={{ fontSize: 11, color: "#A1A1AA", marginTop: 1 }}>{kindLabel}{where ? ` · ${where}` : ""}</div>
+                    {item.context && <div style={{ fontSize: 12, color: "#71717A", marginTop: 2, fontStyle: "italic", wordBreak: "break-word" }}>"{item.context}"</div>}
                     {editing ? (
                       <div style={{ marginTop: 4 }}>
                         <textarea
                           autoFocus
                           value={editText}
                           onChange={e => setEditText(e.target.value)}
-                          onKeyDown={e => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); saveEdit(l); } }}
-                          rows={3}
+                          onKeyDown={e => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); saveEdit(item); } }}
+                          rows={4}
                           style={{ width: "100%", boxSizing: "border-box", padding: "6px 8px", border: "1px solid #93C5FD", borderRadius: 6, fontSize: 16, fontFamily: "inherit", resize: "vertical" }}
                         />
                         {editError && <div style={{ fontSize: 12, color: "#DC2626", marginTop: 2 }}>{editError}</div>}
                         <div style={{ display: "flex", gap: 8, marginTop: 4, alignItems: "center" }}>
-                          <button onClick={() => saveEdit(l)} disabled={editSaving || !editText.trim()} style={{ padding: "5px 12px", background: "#2563EB", color: "#fff", border: "none", borderRadius: 999, fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", opacity: editSaving || !editText.trim() ? 0.5 : 1 }}>{editSaving ? "Saving…" : "Update reply"}</button>
+                          <button onClick={() => saveEdit(item)} disabled={editSaving || !editText.trim()} style={{ padding: "5px 12px", background: "#2563EB", color: "#fff", border: "none", borderRadius: 999, fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", opacity: editSaving || !editText.trim() ? 0.5 : 1 }}>{editSaving ? "Saving…" : "Update reply"}</button>
                           <button onClick={() => { setEditOpen(null); setEditText(""); setEditError(""); }} disabled={editSaving} style={{ background: "none", border: "none", color: "#71717A", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>Cancel</button>
                         </div>
                       </div>
                     ) : (
                       <>
-                        <div style={{ fontSize: 12, color: "#1E3A8A", marginTop: 2, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>You: {l.coach_reply}</div>
+                        <div style={{ fontSize: 12, color: "#1E3A8A", marginTop: 2, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>You: {item.text}</div>
                         <div style={{ display: "flex", gap: 12, marginTop: 4, alignItems: "center" }}>
-                          {editSaved === l.id ? (
-                            <span style={{ fontSize: 12, fontWeight: 700, color: "#15803D" }}>{"✓"} Updated · {(l.athlete_name || "").split(" ")[0] || "athlete"} notified</span>
+                          {editSaved === item.key ? (
+                            <span style={{ fontSize: 12, fontWeight: 700, color: "#15803D" }}>{"✓"} Updated · {(name || "").split(" ")[0] || "athlete"} notified</span>
                           ) : (
-                            <button onClick={() => { setEditOpen(l.id); setEditText(l.coach_reply || ""); setEditError(""); }} style={{ background: "none", border: "none", padding: 0, fontSize: 12, color: "#2563EB", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Edit reply</button>
+                            <button onClick={() => { setEditOpen(item.key); setEditText(item.text || ""); setEditError(""); }} style={{ background: "none", border: "none", padding: 0, fontSize: 12, color: "#2563EB", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Edit reply</button>
                           )}
-                          {onNavigate && <button onClick={goView} style={{ background: "none", border: "none", padding: 0, fontSize: 12, color: "#71717A", fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>View session {"→"}</button>}
+                          {onNavigate && <button onClick={goView} style={{ background: "none", border: "none", padding: 0, fontSize: 12, color: "#71717A", fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>View {"→"}</button>}
                         </div>
                       </>
                     )}

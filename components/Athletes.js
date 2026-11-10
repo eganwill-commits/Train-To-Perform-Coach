@@ -116,7 +116,7 @@ export default function Athletes({ athletes, programs, addAthlete, updateAthlete
   }, [detail]);
 
   const saveFeedback = async (v, fb, media) => {
-    const res = await updateVideoSub(v.id, withMedia({ coach_feedback: fb, status: "reviewed" }, "coach_feedback_media", media, v.coach_feedback_media));
+    const res = await updateVideoSub(v.id, withMedia({ coach_feedback: fb, coach_feedback_at: new Date().toISOString(), status: "reviewed" }, "coach_feedback_media", media, v.coach_feedback_media));
     if (res?.error) throw res.error;
     const alert_ = await raiseAlertReplacing({
       athleteId: v.athlete_id,
