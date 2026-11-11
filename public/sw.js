@@ -1,4 +1,4 @@
-const CACHE_NAME = "t2p-v3";
+const CACHE_NAME = "t2p-v4";
 const PRECACHE = ["/"];
 
 self.addEventListener("install", (e) => {
@@ -12,6 +12,17 @@ self.addEventListener("activate", (e) => {
     caches.keys().then((keys) =>
       Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)))
     ).then(() => self.clients.claim())
+      /*
+        A running page never picks up a new bundle on its own. On 2026-11-10 a coach tab
+        left open on old code kept hammering the database after the fix shipped. Reload
+        open windows onto the new code - but only background ones, so nobody actively
+        typing a log loses it. Visible tabs pick up the new code on their next open.
+      */
+      .then(() => self.clients.matchAll({ type: "window" }))
+      .then((clients) => Promise.all(clients
+        .filter((c) => c.visibilityState !== "visible" && typeof c.navigate === "function")
+        .map((c) => c.navigate(c.url).catch(() => {}))))
+      .catch(() => {})
   );
 });
 
