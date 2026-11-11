@@ -61,6 +61,10 @@ export default function ToastNotifications({ isCoach, currentUserId, onNavigate 
   const seenMsgIds = useRef(new Set());
   const seenNoteIds = useRef(new Set());
   const initialized = useRef(false);
+  // Held in a ref so a new onNavigate function (CoachApp makes one every render) does not
+  // tear down and restart the poller below - that reset fired an immediate poll per render.
+  const navRef = useRef(onNavigate);
+  navRef.current = onNavigate;
 
   const dismiss = useCallback((id) => {
     setToasts(prev => prev.filter(t => t.id !== id));
@@ -108,7 +112,7 @@ export default function ToastNotifications({ isCoach, currentUserId, onNavigate 
           type: "message",
           title: `New message from ${msg.sender_name}`,
           body: msg.content || (msg.media_url ? "Sent a photo/video" : msg.video_url ? "Shared a link" : "New message"),
-          onClick: onNavigate ? () => onNavigate("messages", msg.athlete_id) : undefined,
+          onClick: navRef.current ? () => navRef.current("messages", msg.athlete_id) : undefined,
         });
       });
     };
@@ -139,7 +143,7 @@ export default function ToastNotifications({ isCoach, currentUserId, onNavigate 
           type: "note",
           title: `New note from ${note.author_name}`,
           body: note.content?.slice(0, 100) || "New note",
-          onClick: onNavigate ? () => onNavigate("programs", note.athlete_id) : undefined,
+          onClick: navRef.current ? () => navRef.current("programs", note.athlete_id) : undefined,
         });
       });
     };
@@ -153,7 +157,7 @@ export default function ToastNotifications({ isCoach, currentUserId, onNavigate 
     }, POLL_INTERVAL);
 
     return () => clearInterval(iv);
-  }, [isCoach, currentUserId, addToast, onNavigate]);
+  }, [isCoach, currentUserId, addToast]);
 
   if (toasts.length === 0) return null;
 

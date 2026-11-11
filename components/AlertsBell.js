@@ -89,25 +89,55 @@ export default function AlertsBell({ logs, setLogs, videoSubs, setVideoSubs, ath
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
+  /*
+    Poll once on mount, then every 15s - and only while the tab is visible.
+
+    This effect used to depend on `since`, which is rebuilt from Date.now() on every
+    render. Every pull set state, the re-render produced a new `since`, the effect tore
+    down and immediately pulled again: an endless request loop that ignored the 15s timer.
+    On 2026-11-10 one open coach tab sent ~2.3M requests and took the database down for
+    every athlete. The windows are now computed inside pull, so the effect runs once.
+  */
   useEffect(() => {
+    let alive = true;
+    let inFlight = false;
     const pull = async () => {
-      fetchCoachComments(repliesSince).then(setCoachComments);
-      const [msgRes, noteRes, readRes, comRes] = await Promise.all([
-        supabase.from("messages").select("*").eq("sender_role", "athlete").is("read_at", null).order("created_at", { ascending: false }).limit(10),
-        supabase.from("athlete_notes").select("*").eq("author_role", "athlete").gt("created_at", since).order("created_at", { ascending: false }).limit(30),
-        fetchReadKeys(since),
-        supabase.from("exercise_comments").select("*").eq("author_role", "athlete").is("read_at", null).gt("created_at", since).order("created_at", { ascending: false }).limit(30),
-      ]);
-      if (comRes.error) console.error("alerts: exercise comments", comRes.error); else setAthleteComments(comRes.data || []);
-      if (msgRes.error) console.error("alerts: messages", msgRes.error); else setUnreadMsgs(msgRes.data || []);
-      if (noteRes.error) console.error("alerts: notes", noteRes.error); else setRecentNotes(noteRes.data || []);
-      if (readRes.error) console.error("alerts: reads", readRes.error);
-      else setReadKeys(new Set([...readRes.keys, ...localReads.current]));
+      if (inFlight || (typeof document !== "undefined" && document.hidden)) return;
+      inFlight = true;
+      try {
+        const sinceNow = new Date(Date.now() - LOOKBACK_DAYS * 86400000).toISOString();
+        const repliesSinceNow = new Date(Date.now() - REPLIES_DAYS * 86400000).toISOString();
+        const [msgRes, noteRes, readRes, comRes, coachComs] = await Promise.all([
+          supabase.from("messages").select("*").eq("sender_role", "athlete").is("read_at", null).order("created_at", { ascending: false }).limit(10),
+          supabase.from("athlete_notes").select("*").eq("author_role", "athlete").gt("created_at", sinceNow).order("created_at", { ascending: false }).limit(30),
+          fetchReadKeys(sinceNow),
+          supabase.from("exercise_comments").select("*").eq("author_role", "athlete").is("read_at", null).gt("created_at", sinceNow).order("created_at", { ascending: false }).limit(30),
+          fetchCoachComments(repliesSinceNow),
+        ]);
+        if (!alive) return;
+        if (coachComs) setCoachComments(coachComs);
+        if (comRes.error) console.error("alerts: exercise comments", comRes.error); else setAthleteComments(comRes.data || []);
+        if (msgRes.error) console.error("alerts: messages", msgRes.error); else setUnreadMsgs(msgRes.data || []);
+        if (noteRes.error) console.error("alerts: notes", noteRes.error); else setRecentNotes(noteRes.data || []);
+        if (readRes.error) console.error("alerts: reads", readRes.error);
+        else setReadKeys(new Set([...readRes.keys, ...localReads.current]));
+      } catch (e) {
+        console.error("alerts: pull failed", e);
+      } finally {
+        inFlight = false;
+      }
     };
     pull();
     const iv = setInterval(pull, 15000);
-    return () => clearInterval(iv);
-  }, [since]);
+    // Catch up straight away when the coach comes back to the tab.
+    const onVis = () => { if (!document.hidden) pull(); };
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      alive = false;
+      clearInterval(iv);
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, []);
 
   // Dismiss one alert, durably. Optimistic so the list responds immediately.
   const markLocal = (keys) => {
