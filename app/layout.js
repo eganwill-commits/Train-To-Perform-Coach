@@ -1,3 +1,4 @@
+import { Analytics } from "@vercel/analytics/next";
 export const metadata = { title: "Train To Perform", description: "Train to Perform — Programming, Tracking & Training" };
 export default function RootLayout({ children }) {
   return (
@@ -61,7 +62,7 @@ export default function RootLayout({ children }) {
           }
         `}} />
       </head>
-      <body>{children}</body>
+      <body>{children}<Analytics /></body>
     </html>
   );
 }

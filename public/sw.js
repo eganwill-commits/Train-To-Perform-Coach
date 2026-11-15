@@ -27,6 +27,8 @@ self.addEventListener("activate", (e) => {
 });
 
 self.addEventListener("fetch", (e) => {
+  // Leave non-GET requests and Vercel Analytics (/_vercel/insights) to the network.
+  if (e.request.method !== "GET" || e.request.url.includes("/_vercel/")) return;
   // Network-first for API and Supabase calls
   if (e.request.url.includes("/api/") || e.request.url.includes("supabase")) {
     e.respondWith(fetch(e.request).catch(() => caches.match(e.request)));
