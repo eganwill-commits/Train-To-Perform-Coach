@@ -30,6 +30,9 @@ export default function VideoFeedbackModal({ open, video, programs, athleteName,
   const [drafting, setDrafting] = useState(false);
   const [draftNote, setDraftNote] = useState("");
   const [cueBusy, setCueBusy] = useState(false);
+  // Show the whole note under the cue on the card, open. On by default for a new cue:
+  // a cue is two lines, and the rest of the note is easy to miss behind a tap.
+  const [showFull, setShowFull] = useState(true);
   // Cues already on the picked exercises. When set, the coach chooses replace / keep both / keep existing.
   const [conflicts, setConflicts] = useState(null);
   // True when the cue box was filled with this video's approved cue (he has already seen it).
@@ -59,7 +62,7 @@ export default function VideoFeedbackModal({ open, video, programs, athleteName,
     setMedia(mediaList(video?.coach_feedback_media));
     setUploading(false);
     setSaving(false);
-    setCue(""); setPicked([]); setExisting(null); setDraftNote(""); setConflicts(null); seededFromExisting.current = false;
+    setCue(""); setPicked([]); setExisting(null); setDraftNote(""); setConflicts(null); setShowFull(true); seededFromExisting.current = false;
     const t = setTimeout(() => {
       const el = areaRef.current;
       if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); }
@@ -87,6 +90,7 @@ export default function VideoFeedbackModal({ open, video, programs, athleteName,
     const prior = video?.id ? await fetchCueForVideo(video.id) : null;
     const live = prior && prior.active ? prior : null;
     setExisting(live);
+    if (live) setShowFull(!!live.show_full_note);
     if (live && fb === (video?.coach_feedback || "")) {
       // Feedback unchanged: show the cue he already approved rather than redrafting it.
       setCue(live.cue);
@@ -153,7 +157,7 @@ export default function VideoFeedbackModal({ open, video, programs, athleteName,
         if (hit.length) found.push({ cue: c, sameVideo: false, overlap: hit.map(e => e.name) });
       });
       if (found.length) { setConflicts(found); return; }
-      await saveCueForVideo({ athleteId: video.athlete_id, video, cue, exercises: list });
+      await saveCueForVideo({ athleteId: video.athlete_id, video, cue, exercises: list, showFullNote: showFull });
       finish();
     } catch (e) {
       console.error("Cue approve failed", e);
@@ -173,17 +177,17 @@ export default function VideoFeedbackModal({ open, video, programs, athleteName,
     try {
       if (choice === "replace") {
         for (const c of others) await detachCueFromExercises(c.cue, list);
-        await saveCueForVideo({ athleteId: video.athlete_id, video, cue, exercises: list });
+        await saveCueForVideo({ athleteId: video.athlete_id, video, cue, exercises: list, showFullNote: showFull });
       } else if (choice === "both") {
         // One cue per video, so "both" on this video's own cue stacks the two lines in one cue.
         const text = same ? `${same.cue.cue.trim()}\n${cue.trim()}` : cue;
-        await saveCueForVideo({ athleteId: video.athlete_id, video, cue: text, exercises: list });
+        await saveCueForVideo({ athleteId: video.athlete_id, video, cue: text, exercises: list, showFullNote: showFull });
       } else {
         // Keep existing: leave every existing cue as it is. The new cue still goes on any
         // picked exercise that had nothing on it (unless it would overwrite this video's cue).
         if (!same) {
           const free = list.filter(e => !others.some(c => cueOverlap(c.cue, [e]).length));
-          if (free.length) await saveCueForVideo({ athleteId: video.athlete_id, video, cue, exercises: free });
+          if (free.length) await saveCueForVideo({ athleteId: video.athlete_id, video, cue, exercises: free, showFullNote: showFull });
         }
       }
       finish();
@@ -272,6 +276,15 @@ export default function VideoFeedbackModal({ open, video, programs, athleteName,
               )}
             </div>
             {draftNote && <div style={{ fontSize: 11, color: "#B45309", marginTop: 4 }}>{draftNote}</div>}
+            <label style={{ display: "flex", alignItems: "flex-start", gap: 8, marginTop: 8, fontSize: 13, color: "#18181B", cursor: "pointer" }}>
+              <input type="checkbox" checked={showFull} onChange={e => setShowFull(e.target.checked)} style={{ marginTop: 3 }} />
+              <span>
+                Include my full note under the cue
+                <span style={{ display: "block", fontSize: 11, color: "#71717A", marginTop: 1 }}>
+                  {showFull ? `${first} sees the whole note on the card, open, below the cue.` : `${first} sees the cue only; the full note is behind a "Full video feedback" tap.`}
+                </span>
+              </span>
+            </label>
           </div>
 
           <div>
@@ -292,6 +305,17 @@ export default function VideoFeedbackModal({ open, video, programs, athleteName,
                 );
               })}
             </div>
+            {(() => {
+              // A cue written for one lift can be wrong for another (a hinge cue saying "don't
+              // let your head drop" put on a trap bar deadlift where the head tips back).
+              const others = picked.filter(k => k !== filmedKey).map(k => byKey.get(k)).filter(Boolean);
+              if (!others.length || !filmedKey) return null;
+              return (
+                <div style={{ marginTop: 6, padding: "8px 10px", background: "#FFFBEB", border: "1px solid #FCD34D", borderRadius: 8, fontSize: 12, color: "#78350F", lineHeight: 1.45 }}>
+                  ⚠ This cue will also show on <b>{others.map(c => c.name).join(", ")}</b>, not just the filmed lift. Check it reads right for each one, or remove it there.
+                </div>
+              );
+            })()}
             {unpicked.length > 0 && (
               <select
                 value=""

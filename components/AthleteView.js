@@ -1416,13 +1416,20 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
                           <div key={c.id} style={{ marginTop: 8, padding: "8px 10px", background: "#FFFBEB", border: "1px solid #FCD34D", borderLeft: "4px solid #F59E0B", borderRadius: 8 }}>
                             <div style={{ fontSize: 10, fontWeight: 800, color: "#B45309", textTransform: "uppercase", letterSpacing: 0.5 }}>★ Coach cue{c.source_label ? ` · from your ${c.source_label} video` : ""}</div>
                             <div style={{ fontSize: 14, color: "#78350F", fontWeight: 700, lineHeight: 1.45, marginTop: 2, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{c.cue}</div>
-                            {(src?.coach_feedback || mediaList(src?.coach_feedback_media).length > 0) && (
+                            {(src?.coach_feedback || mediaList(src?.coach_feedback_media).length > 0) && (c.show_full_note ? (
+                              // The coach chose to show the whole note with the cue, open.
+                              <div style={{ marginTop: 6, paddingTop: 6, borderTop: "1px dashed #FCD34D" }}>
+                                <div style={{ fontSize: 10, fontWeight: 800, color: "#92400E", textTransform: "uppercase", letterSpacing: 0.5 }}>Full video feedback</div>
+                                {src.coach_feedback && <div style={{ marginTop: 2, fontSize: 12.5, color: "#3F3F46", whiteSpace: "pre-wrap", lineHeight: 1.5, wordBreak: "break-word" }}>{src.coach_feedback}</div>}
+                                <AttachmentDisplay media={src.coach_feedback_media} size={64} />
+                              </div>
+                            ) : (
                               <details style={{ marginTop: 4 }}>
                                 <summary style={{ cursor: "pointer", fontSize: 11.5, fontWeight: 700, color: "#92400E" }}>Full video feedback{mediaList(src.coach_feedback_media).length ? " 📎" : ""}</summary>
                                 {src.coach_feedback && <div style={{ marginTop: 4, fontSize: 12, color: "#52525B", whiteSpace: "pre-wrap", lineHeight: 1.45, wordBreak: "break-word" }}>{src.coach_feedback}</div>}
                                 <AttachmentDisplay media={src.coach_feedback_media} size={64} />
                               </details>
-                            )}
+                            ))}
                           </div>
                         );
                       })}

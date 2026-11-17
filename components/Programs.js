@@ -1670,6 +1670,7 @@ function VideoCueNote({ cues }) {
     <div key={c.id} style={{ marginTop: 6, padding: "6px 8px", background: "#FFFBEB", border: "1px solid #FCD34D", borderLeft: "4px solid #F59E0B", borderRadius: 6 }}>
       <div style={{ fontSize: 10, fontWeight: 700, color: "#B45309", textTransform: "uppercase", letterSpacing: 0.4 }}>Video cue{c.source_label ? ` · from ${c.source_label}` : ""} · edit in the athlete&rsquo;s video review</div>
       <div style={{ fontSize: 13, fontWeight: 600, color: "#78350F", marginTop: 1, whiteSpace: "pre-wrap" }}>{c.cue}</div>
+      <div style={{ fontSize: 10, color: "#92400E", marginTop: 2 }}>{c.show_full_note ? "Athlete also sees your full note, open" : "Full note is behind a tap for the athlete"}</div>
     </div>
   ));
 }

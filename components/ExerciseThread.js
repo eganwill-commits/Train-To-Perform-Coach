@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect, useMemo, useRef, Component } from "react";
-import { postComment, markCommentsRead, fetchVideoReplies, COMMENT_ROLE } from "../lib/comments";
+import { postComment, markCommentsRead, markTopicsRead, isLocallyRead, fetchVideoReplies, COMMENT_ROLE } from "../lib/comments";
 import { buildMovementTopics, unreadIn, whereLabel, normName } from "../lib/movementTimeline";
 import { AttachmentComposer, AttachmentDisplay } from "./MediaAttachments";
 import { MediaLink } from "./VideoPlayer";
@@ -211,8 +211,9 @@ function ExerciseThreadInner({
     comments, videos, logs, currentLogId,
   }), [athleteId, blockId, allNames, relatedNames, weekLabel, dayLabel, comments, videos, logs, currentLogId]);
 
-  const unreadNow = unreadIn(current, role);
-  const unreadEarlier = unreadIn(earlier, role);
+  // Coach feedback and log replies the athlete hasn't opened count as new too (see unreadIn).
+  const unreadNow = unreadIn(current, role).filter(id => !isLocallyRead(id));
+  const unreadEarlier = unreadIn(earlier, role).filter(id => !isLocallyRead(id));
   const unread = unreadNow.length + unreadEarlier.length;
 
   // Anything said in this session is shown without a tap: feedback you can't see is
@@ -230,7 +231,7 @@ function ExerciseThreadInner({
   const visibleKey = visibleUnread.join(",");
   useEffect(() => {
     if (!visibleKey) return;
-    markCommentsRead(visibleKey.split(",")).then(() => onChanged && onChanged());
+    markTopicsRead(visibleKey.split(",")).then(() => onChanged && onChanged());
   }, [visibleKey]);
 
   const send = (topic) => async (body, media) => {
