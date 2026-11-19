@@ -14,6 +14,7 @@ import { MediaLink } from "./VideoPlayer";
 import { weekStartFromLabel, weekNumberLabel, currentWeekIndex as weekCurrentIndex, sessionDate } from "../lib/weeks";
 import { fetchAllComments } from "../lib/comments";
 import { saveNoteReply } from "../lib/noteReplies";
+import { fetchNoteReads, isNoteUnread, sharedNote } from "../lib/noteReads";
 import { AttachmentDisplay } from "./MediaAttachments";
 import { mediaList, mediaErrorMessage } from "../lib/feedbackMedia";
 import { fetchCues, cuesForBlock } from "../lib/cues";
@@ -648,6 +649,16 @@ function ProgramDetail({ program, programs, exercises, updateExercise, addExerci
   }, [videoSubs, program.athlete_id]);
   // Keep a ref to latest program to prevent stale closures in async handlers
   const programRef = useRef(program);
+  // Has the athlete tapped "Got it" on each shared day note? Shown next to the share toggle.
+  const [noteReads, setNoteReads] = useState({});
+  useEffect(() => {
+    if (!program?.id || !program?.athlete_id) return;
+    let live = true;
+    const load = () => fetchNoteReads({ athleteId: program.athlete_id, programId: program.id }).then(m => { if (live) setNoteReads(m); });
+    load();
+    const iv = setInterval(load, 60000);
+    return () => { live = false; clearInterval(iv); };
+  }, [program?.id, program?.athlete_id]);
   programRef.current = program;
 
   const [aw, setAw] = useState(() => weekCurrentIndex(program.weeks || [], program.start_date));
@@ -1481,9 +1492,20 @@ function ProgramDetail({ program, programs, exercises, updateExercise, addExerci
                     Coach Notes{" "}
                     <span style={{ textTransform: "none", letterSpacing: 0, fontWeight: 600, color: day.coachNotesShared ? "#1E40AF" : "#71717A" }}>
                       {day.coachNotesShared
-                        ? `· ${(ath?.name || "The athlete").split(" ")[0]} sees this under the session (no notification)`
+                        ? `· ${(ath?.name || "The athlete").split(" ")[0]} sees this flagged at the top of the session`
                         : "· Private: only you see this"}
                     </span>
+                    {sharedNote(day) && program.athlete_id && (() => {
+                      const r = noteReads[`${program.id}:${day.id}`];
+                      const unread = isNoteUnread(noteReads, program.id, day);
+                      return (
+                        <span style={{ marginLeft: 6, textTransform: "none", letterSpacing: 0, fontSize: 10.5, fontWeight: 700, padding: "1px 6px", borderRadius: 999, color: unread ? "#B45309" : "#15803D", background: unread ? "#FEF3C7" : "#DCFCE7" }}>
+                          {unread
+                            ? (r ? "Edited · not re-read yet" : "Not read yet")
+                            : `Read ✓ ${new Date(r.read_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}`}
+                        </span>
+                      );
+                    })()}
                   </label>
                   <label style={{ display: "flex", alignItems: "center", gap: 4, cursor: "pointer", fontSize: 11, color: day.coachNotesShared ? "#1E40AF" : "#A1A1AA", fontWeight: 600 }}>
                     <input

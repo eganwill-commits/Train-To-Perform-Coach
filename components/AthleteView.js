@@ -39,6 +39,7 @@ import { fetchAllComments } from "../lib/comments";
 import { fetchCues, cuesForBlock } from "../lib/cues";
 import { MUST_LOG_CATS, NUDGE_CATS, findMissingNumberSessions, mustLogProgress } from "../lib/logging";
 import { fetchDismissals } from "../lib/dismissals";
+import { fetchNoteReads, isNoteUnread, markNoteRead, sharedNote } from "../lib/noteReads";
 
 function useIsMobile(bp = 768) {
   const [m, setM] = useState(false);
@@ -412,6 +413,26 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
     const iv = setInterval(load, 60000);
     return () => { live = false; clearInterval(iv); };
   }, [athlete?.id]);
+  // Coach note read receipts: a shared day note is flagged until the athlete taps "Got it".
+  const [noteReads, setNoteReads] = useState({});
+  const [noteOpen, setNoteOpen] = useState({}); // day.id -> reopened after being read
+  const [markingNote, setMarkingNote] = useState(null);
+  useEffect(() => {
+    if (!athlete?.id) return;
+    let live = true;
+    const load = () => fetchNoteReads({ athleteId: athlete.id }).then(m => { if (live) setNoteReads(m); });
+    load();
+    const iv = setInterval(load, 60000);
+    return () => { live = false; clearInterval(iv); };
+  }, [athlete?.id]);
+  const acknowledgeNote = async (programId, day) => {
+    setMarkingNote(day.id);
+    const row = await markNoteRead({ athleteId: athlete.id, programId, day });
+    setMarkingNote(null);
+    if (!row) { window.alert("Couldn't save that. Check your connection and tap again."); return; }
+    setNoteReads(prev => ({ ...prev, [`${programId}:${day.id}`]: row }));
+    setNoteOpen(prev => ({ ...prev, [day.id]: false }));
+  };
   const [uploadingVideo, setUploadingVideo] = useState(null); // block.id being uploaded
   const [uploadPct, setUploadPct] = useState(null);           // % sent for that block, large clips only
   const [videoSuccess, setVideoSuccess] = useState(null); // block.id that succeeded
@@ -1030,6 +1051,35 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
         );
       })()}
 
+      {/*
+        Unread coach notes, top of the page. Current and past weeks only. One tap lands on
+        the first unread session with its note open at the top of the card.
+      */}
+      {prog && (() => {
+        const unread = [];
+        weeks.forEach((w, wi) => {
+          if (wi > currentWeekIndex) return;
+          (w.days || []).forEach(d => { if (isNoteUnread(noteReads, prog.id, d)) unread.push({ wi, d, w }); });
+        });
+        if (!unread.length) return null;
+        // Today's week first, then most recent.
+        unread.sort((a, b) => b.wi - a.wi);
+        const first = unread[0];
+        return (
+          <button onClick={() => goToDay(first.wi, first.d.id)} style={{ width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, margin: "0 0 12px", padding: "12px 14px", background: "#FEF2F2", border: "2px solid #DC2626", borderRadius: 10, cursor: "pointer", fontFamily: "inherit", textAlign: "left" }}>
+            <span>
+              <span style={{ display: "block", fontSize: 14, fontWeight: 800, color: "#991B1B" }}>
+                📝 Your coach left you {unread.length === 1 ? "a note" : `${unread.length} notes`} to read
+              </span>
+              <span style={{ display: "block", fontSize: 12, color: "#7F1D1D", marginTop: 2 }}>
+                {weekNumberLabel(first.w.label, first.wi)} · {(first.d.label || "").split("·").slice(0, 2).join("·").trim()}
+              </span>
+            </span>
+            <span style={{ flexShrink: 0, fontSize: 13, fontWeight: 800, color: "#DC2626", whiteSpace: "nowrap" }}>Read it {"→"}</span>
+          </button>
+        );
+      })()}
+
       {/* Notes Board */}
       <NotesBoard athleteId={athlete.id} authorName={athlete.name} authorRole="athlete" isMobile={isMobile} />
 
@@ -1050,7 +1100,11 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
               const weekStart = weekStartFromLabel(w.label, i, prog.start_date);
               const weekEnd = new Date(weekStart); weekEnd.setDate(weekStart.getDate() + 4);
               const fmt = (d) => d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-              return <button key={w.id} onClick={() => setAw(i)} style={{ padding: "4px 8px", borderRadius: 6, border: `2px solid ${bd}`, background: bg, color: fg, fontWeight: 600, fontSize: 11, cursor: "pointer", fontFamily: "inherit", lineHeight: 1.2, textAlign: "center", opacity: isUpcoming && !isActive ? 0.7 : 1 }}>
+              // Unread coach note in this week. Current and past weeks only: every future
+              // week has notes the athlete hasn't reached yet, and dotting them all is noise.
+              const weekUnread = i <= currentWeekIndex && (w.days || []).some(d => isNoteUnread(noteReads, prog.id, d));
+              return <button key={w.id} onClick={() => setAw(i)} style={{ position: "relative", padding: "4px 8px", borderRadius: 6, border: `2px solid ${bd}`, background: bg, color: fg, fontWeight: 600, fontSize: 11, cursor: "pointer", fontFamily: "inherit", lineHeight: 1.2, textAlign: "center", opacity: isUpcoming && !isActive ? 0.7 : 1 }}>
+                {weekUnread && <span title="Unread coach note" style={{ position: "absolute", top: -5, right: -5, width: 11, height: 11, borderRadius: "50%", background: "#DC2626", border: "2px solid #fff" }} />}
                 {st === "completed" ? "✓" : st === "missed" ? "✗" : ""}{isCurrent ? "→ " : ""}{weekNumberLabel(w.label, i)}
                 <div style={{ fontSize: 8, fontWeight: 500, opacity: 0.75, marginTop: 1 }}>{fmt(weekStart)}–{fmt(weekEnd)}</div>
               </button>;
@@ -1088,7 +1142,7 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
           {week && (week.days || []).length > 1 && (() => {
             const today = new Date(); today.setHours(0, 0, 0, 0);
             return (
-              <div style={{ display: "flex", gap: 6, margin: "6px 0 10px", overflowX: "auto", paddingBottom: 2, WebkitOverflowScrolling: "touch" }}>
+              <div style={{ display: "flex", gap: 6, margin: "0 0 10px", overflowX: "auto", paddingTop: 6, paddingRight: 6, paddingBottom: 2, WebkitOverflowScrolling: "touch" }}>
                 {week.days.map(d => {
                   const dt = sessionDate(week.label, aw, d.label, prog.start_date);
                   const isToday = dt.getTime() === today.getTime();
@@ -1097,13 +1151,15 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
                   const on = !showWholeWeek && shownId === d.id;
                   const st = d.status || week.status || "";
                   const wd = dt.toLocaleDateString("en-US", { weekday: "short" });
+                  const dayUnread = isNoteUnread(noteReads, prog.id, d);
                   return (
                     <button key={d.id} onClick={() => { setShowWholeWeek(false); setActiveDay(d.id); }} style={{
-                      flexShrink: 0, minWidth: 58, padding: "6px 10px", borderRadius: 10, cursor: "pointer", fontFamily: "inherit", textAlign: "center",
+                      position: "relative", flexShrink: 0, minWidth: 58, padding: "6px 10px", borderRadius: 10, cursor: "pointer", fontFamily: "inherit", textAlign: "center",
                       border: on ? "2px solid #18181B" : isToday ? "2px solid #F59E0B" : "1px solid #E4E4E7",
                       background: on ? "#18181B" : "#fff", color: on ? "#fff" : "#18181B",
                     }}>
-                      <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: 0.5, color: on ? "#FCD34D" : isToday ? "#B45309" : "#A1A1AA", height: 11 }}>{isToday ? "TODAY" : ""}</div>
+                      {dayUnread && <span title="Unread coach note" style={{ position: "absolute", top: -5, right: -5, width: 12, height: 12, borderRadius: "50%", background: "#DC2626", border: "2px solid #fff" }} />}
+                      <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: 0.5, color: on ? "#FCD34D" : isToday ? "#B45309" : "#A1A1AA", height: 11 }}>{isToday ? "TODAY" : dayUnread ? "📝 NOTE" : ""}</div>
                       <div style={{ fontSize: 13, fontWeight: 700 }}>
                         {st === "completed" ? "✓ " : st === "missed" ? "✗ " : ""}{wd}
                       </div>
@@ -1185,6 +1241,53 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
                 </span>
               </div>
             </div>
+
+            {/*
+              Coach note, top of the session.
+
+              It used to render at the very bottom, under every exercise, as a small amber
+              box - easy to finish a session without ever scrolling to it. Now it is the first
+              thing in the card and stays loud until the athlete taps "Got it". Once read it
+              folds to one line they can reopen. Edit the note and it flags again.
+
+              View As Athlete shows it exactly as the athlete sees it, with the button inert:
+              reading the note is the athlete's acknowledgement, not the coach's.
+            */}
+            {(() => {
+              const text = sharedNote(day);
+              if (!text) return null;
+              const preview = !addLog;
+              const unread = isNoteUnread(noteReads, prog.id, day);
+              const read = noteReads[`${prog.id}:${day.id}`];
+              if (!unread && !noteOpen[day.id]) {
+                return (
+                  <button onClick={() => setNoteOpen(prev => ({ ...prev, [day.id]: true }))} style={{ width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 8, padding: "8px 10px", background: "#FFFBEB", border: "1px solid #FDE68A", borderRadius: 8, cursor: "pointer", fontFamily: "inherit", textAlign: "left" }}>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: "#92400E" }}>📝 Coach note for this session</span>
+                    <span style={{ fontSize: 11, fontWeight: 600, color: "#16A34A", whiteSpace: "nowrap" }}>
+                      ✓ Read{read?.read_at ? ` ${new Date(read.read_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}` : ""} · <span style={{ color: "#B45309", textDecoration: "underline" }}>Reopen</span>
+                    </span>
+                  </button>
+                );
+              }
+              return (
+                <div style={{ marginBottom: 10, padding: isMobile ? "10px 11px" : "12px 14px", background: "#FFFBEB", border: unread ? "2px solid #DC2626" : "1px solid #FDE68A", borderRadius: 10, boxShadow: unread ? "0 0 0 4px rgba(220,38,38,.12)" : undefined }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                    <span style={{ fontSize: 12, fontWeight: 800, color: unread ? "#991B1B" : "#92400E", textTransform: "uppercase", letterSpacing: 0.5 }}>
+                      📝 {unread ? "Coach note · Read before you start" : "Coach note"}
+                    </span>
+                    {unread && <span style={{ flexShrink: 0, fontSize: 10, fontWeight: 800, color: "#fff", background: "#DC2626", padding: "2px 7px", borderRadius: 999, letterSpacing: 0.5 }}>{read ? "UPDATED" : "NEW"}</span>}
+                  </div>
+                  <div style={{ fontSize: 14, color: "#78350F", whiteSpace: "pre-wrap", lineHeight: 1.5, wordBreak: "break-word" }}>{text}</div>
+                  {unread ? (
+                    <button disabled={preview || markingNote === day.id} onClick={() => acknowledgeNote(prog.id, day)} style={{ width: "100%", marginTop: 10, padding: "11px 12px", background: preview ? "#D4D4D8" : "#16A34A", color: "#fff", border: "none", borderRadius: 8, fontSize: 14, fontWeight: 700, cursor: preview ? "default" : "pointer", fontFamily: "inherit" }}>
+                      {markingNote === day.id ? "Saving…" : preview ? "Got it (athlete taps this)" : "✓ Got it, I've read this"}
+                    </button>
+                  ) : (
+                    <button onClick={() => setNoteOpen(prev => ({ ...prev, [day.id]: false }))} style={{ marginTop: 8, background: "none", border: "none", padding: 0, color: "#B45309", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Hide note</button>
+                  )}
+                </div>
+              );
+            })()}
 
             {/* Where are you training today? One pick re-writes every exercise in this session. */}
             {(() => {
@@ -1599,13 +1702,7 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
               );
             })}
 
-            {/* Shared Coach Notes */}
-            {day.coachNotes && day.coachNotesShared && (
-              <div style={{ marginTop: 8, padding: "8px 10px", background: "#FFFBEB", borderRadius: 8, border: "1px solid #FDE68A" }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: "#92400E", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 3 }}>📝 Coach Notes</div>
-                <div style={{ fontSize: 13, color: "#78350F", whiteSpace: "pre-wrap", lineHeight: 1.4 }}>{day.coachNotes}</div>
-              </div>
-            )}
+            {/* Shared coach note now renders at the top of the session - see above. */}
 
             {/*
               The key numbers, not every number.
