@@ -37,6 +37,7 @@ import { mediaList } from "../lib/feedbackMedia";
 import { weekStartFromLabel, weekNumberLabel, currentWeekIndex as weekCurrentIndex, baselineColumnLabels, sessionDate, sessionDateISO as scheduledSessionISO, defaultDayId } from "../lib/weeks";
 import { fetchAllComments } from "../lib/comments";
 import { fetchCues, cuesForBlock } from "../lib/cues";
+import { buildMovementTopics, latestCoachWord, shortWeek } from "../lib/movementTimeline";
 import { MUST_LOG_CATS, NUDGE_CATS, findMissingNumberSessions, mustLogProgress } from "../lib/logging";
 import { fetchDismissals } from "../lib/dismissals";
 import { fetchNoteReads, isNoteUnread, markNoteRead, sharedNote } from "../lib/noteReads";
@@ -101,22 +102,6 @@ function pickCurrentProgram(programs, today = new Date()) {
   Coach notes, shown in full only on request. Some notes run to a dozen lines and include
   set-up meant for the coach; the athlete sees the start and can open the rest.
 */
-function ClampedNotes({ text, limit = 220 }) {
-  const [open, setOpen] = useState(false);
-  const t = text || "";
-  const long = t.length > limit;
-  return (
-    <div style={{ marginTop: 6, padding: "6px 8px", background: "#fff", borderRadius: 6, border: "1px solid #E4E4E7", fontSize: 12, color: "#52525B", whiteSpace: "pre-wrap", lineHeight: 1.45, wordBreak: "break-word" }}>
-      {long && !open ? t.slice(0, limit).replace(/\s+\S*$/, "") + "…" : t}
-      {long && (
-        <button onClick={() => setOpen(!open)} style={{ display: "block", marginTop: 4, background: "none", border: "none", padding: 0, color: "#2563EB", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
-          {open ? "Show less" : "Read the full note"}
-        </button>
-      )}
-    </div>
-  );
-}
-
 export default function AthleteView({ athlete, onLogout, readOnly, initialProgramId }) {
   const [page, setPage] = useState("my-program");
   const [programs, setPrograms] = useState([]);
@@ -1368,6 +1353,21 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
               const last = (NUDGE_CATS.has(block.category) || block.category === "COND")
                 ? lastPerformance(logs, block, { displayName: getDisplayName(block, day.id), weekLabel: week.label, dayLabel: day.label, onOrBefore: sessionDateISO })
                 : null;
+              // The coach's last feedback on this movement from an earlier session (video
+              // feedback, a reply to a log note, a comment). Shown on the row itself.
+              const coachWord = (() => {
+                const dn = getDisplayName(block, day.id);
+                const { earlier } = buildMovementTopics({
+                  athleteId: athlete.id, blockId: block.id,
+                  names: [dn, block.exerciseName, getSubstitution(block, day.id)].filter(Boolean),
+                  relatedNames: cuesForBlock(cues, block, dn).flatMap(c => c.exercise_names || []),
+                  weekLabel: week.label, dayLabel: day.label,
+                  comments: allComments, videos: videoSubs, logs, currentLogId: loggedResult?.id,
+                });
+                return latestCoachWord(earlier);
+              })();
+              const coachWordWhen = coachWord ? [shortWeek(coachWord.where), coachWord.at ? new Date(coachWord.at).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : ""].filter(Boolean).join(" · ") : "";
+              const clamp = (n) => ({ display: "-webkit-box", WebkitLineClamp: n, WebkitBoxOrient: "vertical", overflow: "hidden" });
               const gh = groupHeader(day.blocks, bi);
               const gTag = groupTag(day.blocks, bi);
               const inGroup = isInGroup(day.blocks, bi);
@@ -1422,6 +1422,24 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
                         })()}
                         {!isOpen && <div style={{ fontSize: 11, color: "#71717A" }}>{[block.sets && block.reps ? `${block.sets}×${block.reps}` : null, block.load ? `@ ${block.load}` : null].filter(Boolean).join(" ") || ""}</div>}
                         {!isOpen && last && <div style={{ fontSize: 11, color: "#1D4ED8", fontWeight: 600 }}>Last time: {describeLog(last)}</div>}
+                        {/*
+                          Exercise notes on the row, no tap needed. The coach's note for this
+                          exercise, and his feedback from the last time this movement was done.
+                          Both used to sit inside the expanded card (the feedback two levels
+                          down, under "Earlier on this movement"), so most sessions went by
+                          without them being read. Clamped here; full text when opened.
+                        */}
+                        {!isOpen && block.notes && (
+                          <div style={{ fontSize: 12, color: "#3F3F46", lineHeight: 1.4, marginTop: 3, wordBreak: "break-word", ...clamp(2) }}>
+                            <span style={{ fontWeight: 700, color: "#92400E" }}>📝 </span>{block.notes}
+                          </div>
+                        )}
+                        {!isOpen && coachWord && (
+                          <div style={{ marginTop: 4, padding: "5px 8px", background: "#EFF6FF", borderLeft: "3px solid #2563EB", borderRadius: 6 }}>
+                            <div style={{ fontSize: 10, fontWeight: 800, color: "#1E40AF", textTransform: "uppercase", letterSpacing: 0.4 }}>💬 Coach, last time{coachWordWhen ? ` · ${coachWordWhen}` : ""}</div>
+                            <div style={{ fontSize: 12, color: "#1E3A8A", lineHeight: 1.4, marginTop: 1, wordBreak: "break-word", whiteSpace: "pre-wrap", ...clamp(3) }}>{coachWord.text || "Sent you an attachment. Tap to see it."}</div>
+                          </div>
+                        )}
                       </div>
                       {hasInput && <span style={{ width: 7, height: 7, borderRadius: 4, background: "#16A34A", flexShrink: 0 }} />}
                       {!hasInput && loggedResult && <span style={{ width: 7, height: 7, borderRadius: 4, background: "#16A34A", flexShrink: 0 }} />}
@@ -1452,6 +1470,13 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
                   {/* Expanded */}
                   {isOpen && (
                     <div style={{ padding: "0 8px 10px", borderTop: `1px solid ${cc?.border || "#E4E4E7"}` }}>
+                      {coachWord && (
+                        <div style={{ marginTop: 8, padding: "8px 10px", background: "#EFF6FF", border: "1px solid #BFDBFE", borderLeft: "4px solid #2563EB", borderRadius: 8 }}>
+                          <div style={{ fontSize: 10, fontWeight: 800, color: "#1E40AF", textTransform: "uppercase", letterSpacing: 0.5 }}>💬 Coach, last time{coachWordWhen ? ` · ${coachWordWhen}` : ""}</div>
+                          {coachWord.text && <div style={{ fontSize: 13.5, color: "#1E3A8A", lineHeight: 1.5, marginTop: 3, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{coachWord.text}</div>}
+                          {coachWord.hasMedia && <div style={{ fontSize: 11.5, color: "#1E40AF", marginTop: 4, fontWeight: 600 }}>📎 Attachment in the conversation below</div>}
+                        </div>
+                      )}
                       {/* Equipment options — athlete picks what they have today */}
                       {(() => {
                         const exo = exerciseFor(block);
@@ -1539,7 +1564,12 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
                           <summary style={{ cursor: "pointer", fontSize: 11.5, fontWeight: 700, color: "#71717A" }}>Coach's full notes</summary>
                           <div style={{ marginTop: 4, padding: "6px 8px", background: "#fff", borderRadius: 6, border: "1px solid #E4E4E7", fontSize: 12, color: "#52525B", whiteSpace: "pre-wrap", lineHeight: 1.45, wordBreak: "break-word" }}>{block.notes}</div>
                         </details>
-                      ) : <ClampedNotes text={block.notes} />)}
+                      ) : (
+                        <div style={{ marginTop: 8, padding: "8px 10px", background: "#FFFBEB", border: "1px solid #FDE68A", borderRadius: 8 }}>
+                          <div style={{ fontSize: 10, fontWeight: 800, color: "#92400E", textTransform: "uppercase", letterSpacing: 0.5 }}>📝 Coach's note</div>
+                          <div style={{ fontSize: 13.5, color: "#78350F", lineHeight: 1.5, marginTop: 2, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{block.notes}</div>
+                        </div>
+                      ))}
                       {videoUrl && (showDemo === block.id ? (
                         <div>
                           <VideoPlayer url={videoUrl} title={swapVideo ? getSubstitution(block, day.id) : getDisplayName(block, day.id)} compact={isMobile} />
