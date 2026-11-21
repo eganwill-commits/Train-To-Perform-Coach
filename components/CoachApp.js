@@ -4,6 +4,7 @@ import { supabase, supabaseUrl, supabaseAnonKey } from "../lib/supabase";
 import { setSandbox } from "../lib/sandbox";
 import { PILLAR_COLORS, GENERIC_COLORS, NAV_ITEMS } from "../lib/constants";
 import Dashboard from "./Dashboard";
+import Board from "./Board";
 import Athletes from "./Athletes";
 import AthleteView from "./AthleteView";
 import Programs from "./Programs";
@@ -66,7 +67,7 @@ async function fetchAllLogs() {
 const COACH_DEEP_PAGES = new Set(["videos", "messages", "programs"]);
 
 export default function CoachApp({ onLogout }) {
-  const [page, setPage] = useState("dashboard");
+  const [page, setPage] = useState("board");
   const [focusAthleteId, setFocusAthleteId] = useState(null);
   // What inside the athlete's program the alert pointed at (week/day/log), so "View"
   // lands on the thing itself instead of the athlete's dashboard.
@@ -609,6 +610,7 @@ export default function CoachApp({ onLogout }) {
         )}
         <main className="t2p-main" style={{ flex: 1, padding: isMobile ? "12px 10px" : 32, maxWidth: "100%", overflowX: "hidden" }}>
           <CoachPushPrompt />
+          {page === "board" && <Board athletes={athletes} programs={programs} logs={logs} videoSubs={videoSubs} updateVideoSub={updateVideoSub} updateProgram={updateProgram} isMobile={isMobile} onNavigate={navToAthlete} />}
           {page === "dashboard" && <Dashboard {...pp} onNavigate={navToAthlete} />}
           {page === "seasons" && <Seasons {...pp} />}
           {page === "athletes" && <Athletes {...pp} focusAthleteId={focusAthleteId} onFocusClear={() => setFocusAthleteId(null)} />}
