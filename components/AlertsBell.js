@@ -473,7 +473,7 @@ export default function AlertsBell({ logs, setLogs, videoSubs, setVideoSubs, ath
                   const name = note.author_name || "Unknown";
                   const initials = getInitials(name);
                   return (
-                  <div key={note.id} onClick={() => { dismiss("athlete_notes", note.id); if (onNavigate) { onNavigate(note.athlete_id, "programs"); setOpen(false); } }} style={{ display: "flex", gap: 10, padding: "12px 16px", borderBottom: "1px solid #F4F4F5", alignItems: "start", cursor: onNavigate ? "pointer" : "default" }}>
+                  <div key={note.id} onClick={() => { dismiss("athlete_notes", note.id); if (onNavigate) { onNavigate(note.athlete_id, "programs", { notes: true }); setOpen(false); } }} style={{ display: "flex", gap: 10, padding: "12px 16px", borderBottom: "1px solid #F4F4F5", alignItems: "start", cursor: onNavigate ? "pointer" : "default" }}>
                     <div style={{ width: 36, height: 36, borderRadius: 18, background: "#FFFBEB", color: "#D97706", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 13, flexShrink: 0 }}>{initials}</div>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
