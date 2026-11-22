@@ -125,9 +125,10 @@ export default function Programs({ programs, addProgram, updateProgram, deletePr
     const mine = (programs || []).filter(p => p.athlete_id === focusAthleteId);
     if (mine.length === 0) return;
     const wanted = focusTarget?.weekLabel;
-    const match = wanted
-      ? mine.find(p => (p.weeks || []).some(w => w.label === wanted))
-      : null;
+    const blockId = focusTarget?.blockId;
+    const holdsBlock = (p) => (p.weeks || []).some(w => (w.days || []).some(d => (d.blocks || []).some(b => b.id === blockId)));
+    const match = (blockId ? mine.find(holdsBlock) : null)
+      || (wanted ? mine.find(p => (p.weeks || []).some(w => w.label === wanted)) : null);
     setDetail((match || mine[0]).id);
   }, [focusAthleteId, focusTarget, programs]);
   // Back from "View as athlete": reopen the program the coach left from.
@@ -713,17 +714,52 @@ function ProgramDetail({ program, programs, exercises, updateExercise, addExerci
     and left them to find the session and the note by hand - which is the same hunting
     problem the bell is supposed to remove.
   */
+  /*
+    And from there to the exercise itself. A comment or log-note alert carries the block
+    (or the log row) it is about, so the coach lands ON that exercise card, expanded, with
+    its conversation open - not at the top of a day of ten exercises. The block id is
+    looked up across the whole program, so a block moved to another day or week is still
+    found. Athlete notes (not tied to an exercise) scroll to the Notes board.
+  */
   const focusDayRef = useRef(null);
+  const focusBlockRef = useRef(null);
+  const notesRef = useRef(null);
   const [dayGlow, setDayGlow] = useState(null);
+  const [focusBlock, setFocusBlock] = useState(null);   // { blockId } or { logId }
   useEffect(() => {
-    if (!focusTarget?.dayLabel) return;
+    if (!focusTarget) return;
+    if (focusTarget.notes) {
+      const t = setTimeout(() => notesRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 220);
+      const t2 = setTimeout(() => { if (onFocusClear) onFocusClear(); }, 1000);
+      return () => { clearTimeout(t); clearTimeout(t2); };
+    }
     const weeks = program.weeks || [];
-    const wi = focusTarget.weekLabel ? weeks.findIndex(w => w.label === focusTarget.weekLabel) : -1;
+    let wi = focusTarget.weekLabel ? weeks.findIndex(w => w.label === focusTarget.weekLabel) : -1;
+    let dayLabel = focusTarget.dayLabel || null;
+    if (focusTarget.blockId) {
+      weeks.forEach((w, i) => (w.days || []).forEach(d => {
+        if ((d.blocks || []).some(b => b.id === focusTarget.blockId)) { wi = i; dayLabel = d.label; }
+      }));
+    }
+    // A log note names its log row, not its block: find the exercise it was logged against.
+    let blockId = focusTarget.blockId || null;
+    if (!blockId && focusTarget.logId) {
+      const log = (logs || []).find(l => l.id === focusTarget.logId);
+      const day = log && wi >= 0 ? (weeks[wi].days || []).find(d => d.label === (log.day_label || dayLabel)) : null;
+      const hit = day ? (day.blocks || []).find(b => logMatchesBlock(log, b, getDisplayName(b))) : null;
+      if (hit) blockId = hit.id;
+    }
+    if (!dayLabel) return;
     if (wi >= 0) setAw(wi);
-    setDayGlow(focusTarget.dayLabel);
-    const t1 = setTimeout(() => focusDayRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 220);
+    setDayGlow(dayLabel);
+    const fb = blockId ? { blockId } : focusTarget.logId ? { logId: focusTarget.logId } : null;
+    setFocusBlock(fb);
+    if (blockId) setExpandedBlock(blockId);   // phone layout: open the card
+    // Wait for the week to render, then go to the exercise (or the day if none matched).
+    const t1 = setTimeout(() => (focusBlockRef.current || focusDayRef.current)?.scrollIntoView({ behavior: "smooth", block: fb ? "center" : "start" }), 260);
     const t2 = setTimeout(() => { setDayGlow(null); if (onFocusClear) onFocusClear(); }, 5000);
-    return () => { clearTimeout(t1); clearTimeout(t2); };
+    const t3 = setTimeout(() => setFocusBlock(null), 8000);
+    return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
   }, [focusTarget, program.id]);
 
   /*
@@ -1006,7 +1042,9 @@ function ProgramDetail({ program, programs, exercises, updateExercise, addExerci
       </div>
 
       {/* Notes Board */}
-      <NotesBoard athleteId={program.athlete_id} authorName="Coach" authorRole="coach" isMobile={isMobile} />
+      <div ref={notesRef} style={{ scrollMarginTop: 70 }}>
+        <NotesBoard athleteId={program.athlete_id} authorName="Coach" authorRole="coach" isMobile={isMobile} />
+      </div>
 
       <div style={{ display: "flex", gap: 6, marginBottom: 4, flexWrap: "wrap" }}>
         {weeks.map((w, i) => {
@@ -1142,8 +1180,9 @@ function ProgramDetail({ program, programs, exercises, updateExercise, addExerci
 
                 const gh = groupHeader(day.blocks, bi);
                 const gTag = groupTag(day.blocks, bi);
+                const isFocusBlock = !!focusBlock && (focusBlock.blockId === block.id || (focusBlock.logId && blockLogMap[block.id]?.id === focusBlock.logId));
                 return (
-                  <div key={block.id}>
+                  <div key={block.id} ref={isFocusBlock ? focusBlockRef : undefined} style={{ scrollMarginTop: 80, borderRadius: 12, boxShadow: isFocusBlock ? "0 0 0 3px #2563EB, 0 0 0 7px rgba(37,99,235,.18)" : undefined, transition: "box-shadow .4s ease" }}>
                   {gh && (
                     <div style={{ margin: "10px 0 6px", padding: "6px 10px", background: gh.type === "superset" ? "#F5F3FF" : "#FFF7ED", border: `1px solid ${gh.type === "superset" ? "#C4B5FD" : "#FDBA74"}`, borderRadius: 8 }}>
                       <div style={{ fontSize: 12, fontWeight: 800, color: gh.type === "superset" ? "#5B21B6" : "#9A3412" }}>{gh.title}</div>
@@ -1247,6 +1286,7 @@ function ProgramDetail({ program, programs, exercises, updateExercise, addExerci
                                 logs={logs}
                                 currentLogId={blockLogMap[block.id]?.id}
                                 onChanged={reloadComments}
+                                autoOpen={isFocusBlock}
                               />
                               <BlockVideos videos={videosByBlock[block.id]} onOpen={onOpenVideo} />
                               {block.notes && !expandedBlock && <div style={{ fontSize: 11, color: "#71717A", marginTop: 4, fontStyle: "italic", whiteSpace: "pre-wrap", lineHeight: 1.4, wordBreak: "break-word" }}>{block.notes}</div>}
@@ -1356,6 +1396,7 @@ function ProgramDetail({ program, programs, exercises, updateExercise, addExerci
                           logs={logs}
                           currentLogId={blockLogMap[block.id]?.id}
                           onChanged={reloadComments}
+                          autoOpen={isFocusBlock}
                         />
                         <BlockVideos videos={videosByBlock[block.id]} onOpen={onOpenVideo} />
 

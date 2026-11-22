@@ -60,8 +60,8 @@ export default function Board({ athletes, programs, logs, videoSubs, updateVideo
     if (item.kind === ITEM.VIDEO) onNavigate(null, "videos", { videoId: item.id });
     else if (item.kind === ITEM.MESSAGE) onNavigate(athleteId, "messages");
     else if (item.kind === ITEM.COMMENT) onNavigate(athleteId, "programs", { weekLabel: item.row.week_label, dayLabel: item.row.day_label, blockId: item.row.block_id });
-    else if (item.kind === ITEM.LOG_NOTE) onNavigate(athleteId, "programs", { weekLabel: item.row.week_label, dayLabel: item.row.day_label });
-    else onNavigate(athleteId, "programs");
+    else if (item.kind === ITEM.LOG_NOTE) onNavigate(athleteId, "programs", { weekLabel: item.row.week_label, dayLabel: item.row.day_label, logId: item.id });
+    else onNavigate(athleteId, "programs", { notes: true });
   };
 
   // Handled outside the app: take it off the board without replying.
