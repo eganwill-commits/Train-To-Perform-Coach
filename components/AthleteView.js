@@ -914,6 +914,10 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
 
   const weeks = prog.weeks || [];
   const week = weeks[aw];
+  // A program can hide the pillar badges from the athlete (week.hidePillars, set on every
+  // week by the coach toggle), e.g. a family week where MVT/PWR/STR labels only confuse.
+  // Display only: the categories still drive logging prompts and coach views.
+  const hidePillars = !!(week && week.hidePillars);
   const inputStyle = { width: "100%", padding: "7px", border: "1px solid #E4E4E7", borderRadius: 6, fontSize: 16, fontFamily: "inherit", marginTop: 2, boxSizing: "border-box" };
 
   return (
@@ -1326,7 +1330,7 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
               </details>
             ); })()}
             {day.blocks.map((block, bi) => {
-              const cc = colors[block.category];
+              const cc = hidePillars ? null : colors[block.category];
               const videoUrl = getVideoUrl(block, day.id);
               const swapVideo = !!getSwapVideoUrl(block, day.id);
               const isOpen = expandedBlock === block.id;
@@ -1407,7 +1411,7 @@ function MyProgram({ programs, setPrograms, exercises, colors, cats, isMobile, a
                   */}
                   <div style={{ display: "flex", alignItems: "center", padding: "8px 8px", gap: 6 }}>
                     <div onClick={() => setExpandedBlock(isOpen ? null : block.id)} style={{ display: "flex", alignItems: "center", flex: 1, minWidth: 0, cursor: "pointer", gap: 6 }}>
-                      <Badge color={cc?.bg || "#999"}>{block.category}</Badge>
+                      {!hidePillars && <Badge color={cc?.bg || "#999"}>{block.category}</Badge>}
                       <div style={{ flex: 1, minWidth: 0 }}>
                         {gTag && <div style={{ fontSize: 10, fontWeight: 800, color: (block.groupType || "circuit") === "superset" ? "#6D28D9" : "#C2410C", letterSpacing: 0.3, textTransform: "uppercase" }}>{gTag}</div>}
                         <div style={{ fontWeight: 600, fontSize: 13, lineHeight: 1.3, textDecoration: exStatus === "missed" ? "line-through" : "none", wordBreak: "break-word" }}>{getDisplayName(block, day.id)}{(block.progress === "new" || block.progress === "prog") && <> <ProgressTag value={block.progress} /></>}</div>
