@@ -1022,6 +1022,10 @@ function ProgramDetail({ program, programs, exercises, updateExercise, addExerci
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
         <span style={{ fontSize: 12, fontWeight: 600, color: "#71717A" }}>Delivery:</span>
         <DeliveryToggle small value={deliveryOf(program)} onChange={(v) => { if (v !== deliveryOf(program)) updateProgram(program.id, { delivery: v }); }} />
+        <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, color: "#52525B", cursor: "pointer", marginLeft: 8 }}>
+          <input type="checkbox" checked={(program.weeks || []).length > 0 && (program.weeks || []).every(w => w.hidePillars)} onChange={e => updateProgram(program.id, { weeks: (program.weeks || []).map(w => ({ ...w, hidePillars: e.target.checked })) })} />
+          Hide pillar badges from the athlete
+        </label>
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
         <span style={{ fontSize: 12, fontWeight: 600, color: "#71717A" }}>Season:</span>
