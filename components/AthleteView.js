@@ -31,6 +31,7 @@ const localDateISO = () => {
 };
 
 import AthleteAlertsBell from "./AthleteAlertsBell";
+import CoachFeedbackPopup from "./CoachFeedbackPopup";
 import ExerciseThread, { VideoReplies } from "./ExerciseThread";
 import { AttachmentDisplay } from "./MediaAttachments";
 import { mediaList } from "../lib/feedbackMedia";
@@ -270,6 +271,7 @@ export default function AthleteView({ athlete, onLogout, readOnly, initialProgra
   return (
     <div className="t2p-root" style={{ fontFamily: "'DM Sans', sans-serif", display: "flex", background: "#FAFAFA", overflow: "hidden" }}>
       <ToastNotifications currentUserId={athlete.id} onNavigate={(pg) => toastNav(pg)} />
+      <CoachFeedbackPopup athlete={athlete} isMobile={isMobile} onNavigate={nav} readOnly={ro} />
       {isMobile && navOpen && <div onClick={() => setNavOpen(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.35)", zIndex: 999 }} />}
       <nav className="t2p-nav" style={{
         width: 220, minWidth: 220, background: "#18181B", color: "#fff",
